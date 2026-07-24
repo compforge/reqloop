@@ -1,0 +1,11 @@
+{
+  "name": "@qiankunli/baton-plugin-hello",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Minimal Baton Plugin Package for Marketplace smoke testing.",
+  "type": "module",
+  "scripts": {
+    "test": "bun test"
+  },
+  "license": "MIT"
+}

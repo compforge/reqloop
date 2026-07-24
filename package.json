@@ -5,9 +5,11 @@
   "description": "Baton plugin marketplace for requirement-level engineering loops.",
   "type": "module",
   "workspaces": [
-    "*/"
+    "plugins/*"
   ],
+  "scripts": {
+    "check": "bun test"
+  },
   "license": "MIT",
   "packageManager": "bun@1.3.14"
 }
-
