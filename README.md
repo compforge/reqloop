@@ -2,10 +2,11 @@
 
 # reqloop
 
-reqloop is the official Baton marketplace for requirement-level engineering
-loops. It is a multi-plugin repository: every directory under `plugins/` is an
-independently versioned Baton PluginPackage, while the repository root owns
-only marketplace discovery and shared contribution rules.
+reqloop is the official [Baton](https://github.com/qiankunli/baton) marketplace
+for requirement-level engineering loops. It is a multi-plugin repository: every
+directory under `plugins/` is an independently versioned Baton PluginPackage,
+while the repository root owns only marketplace discovery and shared
+contribution rules.
 
 The intended end-to-end development flow is:
 
@@ -24,7 +25,32 @@ develop a plugin
 The repository is being bootstrapped together with Baton's external plugin and
 marketplace support. The first Package is intentionally minimal so the complete
 local development flow can be exercised before Resource/Reconcile behavior,
-remote installation, and marketplace updates are added.
+and marketplace updates are added.
+
+## Install and use in Baton
+
+Register this Git repository as a Marketplace, inspect its Packages, and install
+Hello:
+
+```bash
+baton plugins marketplace add https://github.com/qiankunli/reqloop.git
+baton plugins available --marketplace reqloop
+baton plugins install qiankunli/hello --marketplace reqloop
+baton plugins list
+```
+
+For local development, replace the Git URL with the path to your checkout:
+
+```bash
+baton plugins marketplace add /path/to/reqloop
+```
+
+Package installation makes Hello available to Baton. To use it in a session,
+start `baton`, enter `/plugins`, open **Installed**, select **Hello**, and choose
+**Enable in this session**. This creates and activates a PluginInstance owned by
+the current BatonSession; reopening the session restores it. Hello intentionally
+registers no commands or Resources yet, so successful activation is the expected
+result for this first lifecycle-validation Package.
 
 ## Repository layout
 
