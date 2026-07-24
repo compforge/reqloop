@@ -1,0 +1,29 @@
+.baton-plugin/marketplace.json
+  s_a1dab3d9f874f1::t_2a83a44893f9d1 12-15
+plugins/hello-counter/.baton-plugin/plugin.json
+  s_a1dab3d9f874f1::t_dea1fa7e881747 1-8
+plugins/hello-counter/README.md
+  s_a1dab3d9f874f1::t_853e39fa13ea6c 1-98
+plugins/hello-counter/package.json
+  s_a1dab3d9f874f1::t_0826e02a94914d 1-6
+plugins/hello-counter/src/index.ts
+  s_a1dab3d9f874f1::t_22efbad024c675 1-112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "71ff8356db5224695693f8fbe5b7597c2c2d58c8",
+  "prompts": {},
+  "sessions": {
+    "s_a1dab3d9f874f1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "03ec848f-1906-416e-9914-67274bd98c52",
+        "model": "unknown"
+      },
+      "human_author": "liqiankun.1111 <liqiankun.1111@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
