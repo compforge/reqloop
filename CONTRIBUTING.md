@@ -2,10 +2,10 @@
 
 ## 目录约定
 
-每个 Plugin 是仓库根的一个直接子目录，不额外嵌套 `plugins/`：
+每个 Plugin 收束在 `plugins/` 域下：
 
 ```text
-<plugin-name>/
+plugins/<plugin-name>/
 ├── .baton-plugin/
 │   └── plugin.json
 ├── src/
@@ -23,7 +23,7 @@
 
 ## 新增 Plugin
 
-1. 新建 `<plugin-name>/`，实现 Baton 公共 Plugin API 暴露的 `PluginPackage`。
+1. 新建 `plugins/<plugin-name>/`，实现 Baton 公共 Plugin API 暴露的 `PluginPackage`。
 2. 添加 `.baton-plugin/plugin.json`，声明稳定 `pluginId`、版本、入口、Contribution 和权限。
 3. 在 `.baton-plugin/marketplace.json` 的 `plugins` 数组注册该目录。
 4. 在根 `README.md` 和 `README.zh-CN.md` 的 Plugin 列表增加入口。
@@ -50,4 +50,3 @@ baton plugins list
 
 `link` 只用于开发，直接引用可变工作区；普通安装必须复制或获取不可变的 Package 版本。两者
 使用同一份 manifest 和 PluginPackage 入口，避免形成“开发能跑、安装不能跑”的第二套协议。
-

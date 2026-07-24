@@ -1,0 +1,8 @@
+{
+  "manifestVersion": 1,
+  "pluginId": "qiankunli/hello",
+  "version": "0.0.1",
+  "entry": "./src/index.ts",
+  "displayName": "Hello",
+  "description": "A minimal Baton Plugin Package for validating Marketplace installation and loading."
+}

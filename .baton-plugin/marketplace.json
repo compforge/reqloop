@@ -5,6 +5,10 @@
     "url": "https://github.com/qiankunli"
   },
   "description": "Baton plugin marketplace for requirement-level engineering loops.",
-  "plugins": []
+  "plugins": [
+    {
+      "pluginId": "qiankunli/hello",
+      "source": "./plugins/hello"
+    }
+  ]
 }
-
