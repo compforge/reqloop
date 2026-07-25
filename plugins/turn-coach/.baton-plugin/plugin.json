@@ -1,0 +1,8 @@
+{
+  "manifestVersion": 1,
+  "pluginId": "qiankunli/turn-coach",
+  "version": "0.0.1",
+  "entry": "./src/index.ts",
+  "displayName": "Turn Coach",
+  "description": "Reviews completed Baton turns through a persistent proposed-input workflow."
+}

@@ -22,18 +22,18 @@ develop a plugin
 
 ## Status
 
-The repository is being bootstrapped together with Baton's external plugin and
-marketplace support. The first Package is intentionally minimal so the complete
-local development flow can be exercised before Resource/Reconcile behavior,
-and marketplace updates are added.
+The repository grows with Baton's external plugin runtime. Hello validates the
+smallest Package lifecycle, while Hello Counter and Turn Coach exercise
+Resource/Reconcile, Builtin Resource watches, and durable proposals without
+depending on external systems.
 
 ## Install and use in Baton
 
-Register this Git repository as a Marketplace and install Hello:
+Register this Git repository as a Marketplace and install Turn Coach:
 
 ```bash
 baton plugins marketplace add https://github.com/qiankunli/reqloop.git
-baton plugins install qiankunli/hello --marketplace reqloop
+baton plugins install qiankunli/turn-coach --marketplace reqloop
 baton plugins list
 ```
 
@@ -43,12 +43,13 @@ For local development, replace the Git URL with the path to your checkout:
 baton plugins marketplace add /path/to/reqloop
 ```
 
-Package installation makes Hello available to Baton. To use it in a session,
-start `baton`, enter `/plugins`, open **Installed**, select **Hello**, and choose
+Package installation makes Turn Coach available to Baton. To use it in a session,
+start `baton`, enter `/plugins`, open **Installed**, select **Turn Coach**, and choose
 **Enable in this session**. This creates and activates a PluginInstance owned by
-the current BatonSession; reopening the session restores it. Hello intentionally
-registers no commands or Resources yet, so successful activation is the expected
-result for this first lifecycle-validation Package.
+the current BatonSession; reopening the session restores it. After each turn
+completed while the Plugin is enabled, Turn Coach records its progress in a PluginResource and offers a
+`proposed-input` that asks the active Harness to review the turn and recommend the
+best next step.
 
 ## Repository layout
 
@@ -67,5 +68,9 @@ Resource/Reconcile and Proposal contracts.
 
 - [Hello](./plugins/hello/README.md) — a minimal `0.0.1` Package for validating
   Marketplace discovery, installation, and loading.
+- [Hello Counter](./plugins/hello-counter/README.md) — demonstrates a writable
+  PluginResource combined with a `baton.turn` watch.
+- [Turn Coach](./plugins/turn-coach/README.md) — an end-to-end canary for
+  Builtin Resource replay, persistent state, and proposed input.
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) before adding a plugin.
