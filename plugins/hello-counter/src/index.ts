@@ -16,7 +16,7 @@ interface CounterStatus {
 
 const helloCounter: PluginPackage = Object.freeze({
   pluginId: "qiankunli/hello-counter",
-  version: "0.0.1",
+  version: "0.0.2",
 
   async activate(context: PluginActivationContext): Promise<void> {
     // 1. 注册 CounterState PluginResource
