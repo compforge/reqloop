@@ -20,16 +20,16 @@ Baton PluginPackage，仓库根只负责 Marketplace 发现和公共贡献约定
 
 ## 当前状态
 
-本仓库正与 Baton 的外部 Plugin 和 Marketplace 支持一起初始化。第一份 Package 有意保持最小，
-先打通完整的本地开发链路，再增加 Resource/Reconcile 和 Marketplace 更新。
+Marketplace 已包含生命周期示例和首个 Requirement Loop Package。ReqLoop 仅依赖 Baton
+公开的 Resource/Reconcile、`requeueAfter` 和 `proposed-input` 契约，不导入 Baton 内部实现。
 
 ## 在 Baton 中安装和使用
 
-将本 Git 仓库注册为 Marketplace，并安装其中的 Hello Package：
+将本 Git 仓库注册为 Marketplace，并安装 ReqLoop：
 
 ```bash
 baton plugins marketplace add https://github.com/qiankunli/reqloop.git
-baton plugins install qiankunli/hello --marketplace reqloop
+baton plugins install qiankunli/reqloop --marketplace reqloop
 baton plugins list
 ```
 
@@ -39,10 +39,9 @@ baton plugins list
 baton plugins marketplace add /path/to/reqloop
 ```
 
-安装 Package 后，启动 `baton`，输入 `/plugins`，进入 **Installed**，选择 **Hello**，再执行
-**Enable in this session**。Baton 会为当前 BatonSession 创建并激活 PluginInstance，重新打开
-该 Session 时也会自动恢复。Hello 当前有意不注册 Command 或 Resource，因此能成功激活就是
-这个首个生命周期验证 Package 的预期效果。
+安装 Package 后，启动 `baton`，输入 `/plugins`，进入 **Installed**，选择 **ReqLoop**，再执行
+**Enable in this session**。它会观察当前 Session 仓库中的 devloop review 终态；comments 需要
+检查时，向用户提供一条驱动当前 Harness 的建议输入。
 
 ## 仓库结构
 
@@ -60,5 +59,7 @@ Binding、Contribution、Resource/Reconcile 和 Proposal 契约。
 
 - [Hello](./plugins/hello/README.md) — 用于验证 Marketplace 发现、安装和加载的最小 `0.0.1`
   Package。
+- [ReqLoop](./plugins/reqloop/README.md) — 需求级闭环协调；`0.1.0` 首先支持 devloop review
+  完成提醒。
 
 新增 Plugin 前请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)。

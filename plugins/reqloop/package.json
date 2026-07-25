@@ -1,0 +1,14 @@
+{
+  "name": "@qiankunli/baton-plugin-reqloop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Requirement-loop coordination plugin for Baton.",
+  "type": "module",
+  "scripts": {
+    "test": "bun test"
+  },
+  "peerDependencies": {
+    "@qiankun01/baton-plugin": ">=0.1.0"
+  },
+  "license": "MIT"
+}

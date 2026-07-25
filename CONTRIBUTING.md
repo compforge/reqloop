@@ -31,7 +31,8 @@ plugins/<plugin-name>/
 
 ## 边界
 
-- 只允许从 Baton 发布的公共 Plugin API 导入契约；禁止依赖 Baton 仓库相对路径或内部模块。
+- 只允许从 `@qiankun01/baton-plugin` 导入 Baton 公共 Plugin 类型；禁止依赖 Baton 仓库相对
+  路径、宿主包或内部模块。
 - Command 和 Resource 是 `PluginContribution` 的变体，不各自建设 Package、Instance 或
   Binding 生命周期。
 - Resource 的 `spec` 保存用户认可的期望，`status` 保存可重新观测的事实；Connector 缓存不能

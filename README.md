@@ -22,18 +22,17 @@ develop a plugin
 
 ## Status
 
-The repository is being bootstrapped together with Baton's external plugin and
-marketplace support. The first Package is intentionally minimal so the complete
-local development flow can be exercised before Resource/Reconcile behavior,
-and marketplace updates are added.
+The Marketplace now includes lifecycle examples and the first requirement-loop
+Package. ReqLoop uses Baton's Resource/Reconcile, `requeueAfter`, and
+`proposed-input` contracts without importing Baton internals.
 
 ## Install and use in Baton
 
-Register this Git repository as a Marketplace and install Hello:
+Register this Git repository as a Marketplace and install ReqLoop:
 
 ```bash
 baton plugins marketplace add https://github.com/qiankunli/reqloop.git
-baton plugins install qiankunli/hello --marketplace reqloop
+baton plugins install qiankunli/reqloop --marketplace reqloop
 baton plugins list
 ```
 
@@ -43,12 +42,11 @@ For local development, replace the Git URL with the path to your checkout:
 baton plugins marketplace add /path/to/reqloop
 ```
 
-Package installation makes Hello available to Baton. To use it in a session,
-start `baton`, enter `/plugins`, open **Installed**, select **Hello**, and choose
-**Enable in this session**. This creates and activates a PluginInstance owned by
-the current BatonSession; reopening the session restores it. Hello intentionally
-registers no commands or Resources yet, so successful activation is the expected
-result for this first lifecycle-validation Package.
+Package installation makes ReqLoop available to Baton. To use it in a session,
+start `baton`, enter `/plugins`, open **Installed**, select **ReqLoop**, and
+choose **Enable in this session**. It observes devloop review completion for the
+session's current repository and proposes a Harness follow-up when comments need
+inspection.
 
 ## Repository layout
 
@@ -67,5 +65,7 @@ Resource/Reconcile and Proposal contracts.
 
 - [Hello](./plugins/hello/README.md) — a minimal `0.0.1` Package for validating
   Marketplace discovery, installation, and loading.
+- [ReqLoop](./plugins/reqloop/README.md) — requirement-level coordination;
+  `0.1.0` starts with devloop review completion follow-up.
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) before adding a plugin.
