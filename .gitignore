@@ -1,5 +1,6 @@
 .DS_Store
 .devloop/
+.claude/
 node_modules/
 dist/
 coverage/
