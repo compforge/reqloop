@@ -20,7 +20,7 @@ are ignored.
 
 ```text
 pluginId: qiankunli/reqloop
-version:  0.1.0
+version:  0.0.1
 ```
 
 Install this Marketplace in Baton, install `qiankunli/reqloop`, then enable it

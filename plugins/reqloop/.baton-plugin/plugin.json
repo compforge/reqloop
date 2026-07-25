@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "pluginId": "qiankunli/reqloop",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "entry": "./src/index.ts",
   "displayName": "ReqLoop",
   "description": "Requirement-loop coordination for Baton, starting with devloop review completion follow-up."

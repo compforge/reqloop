@@ -11,7 +11,7 @@ import {
 } from "./connectors/devloop-review.ts";
 
 export const REQLOOP_PLUGIN_ID = "qiankunli/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.1.0";
+export const REQLOOP_PACKAGE_VERSION = "0.0.1";
 export const REQLOOP_REVIEW_WATCH_KIND = "reqloop.review-watch";
 export const REQLOOP_REVIEW_WATCH_ID = "current-repo";
 const REVIEW_POLL_INTERVAL_MS = 2_000;

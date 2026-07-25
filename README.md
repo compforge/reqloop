@@ -73,7 +73,7 @@ Resource/Reconcile and Proposal contracts.
 - [Turn Coach](./plugins/turn-coach/README.md) — an end-to-end canary for
   Builtin Resource replay, persistent state, and proposed input.
 - [ReqLoop](./plugins/reqloop/README.md) — requirement-level coordination;
-  `0.1.0` starts with devloop review completion follow-up.
+  `0.0.1` starts with devloop review completion follow-up.
 
 See the [Requirement Loop design](./docs/reqloop.md) for the domain model,
 Connector boundary, and Harness collaboration model.

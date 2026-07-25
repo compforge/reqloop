@@ -66,7 +66,7 @@ Binding、Contribution、Resource/Reconcile 和 Proposal 契约。
   `baton.turn` watch 的组合。
 - [Turn Coach](./plugins/turn-coach/README.md) — 验证 Builtin Resource replay、持久状态和
   proposed input 的端到端 canary。
-- [ReqLoop](./plugins/reqloop/README.md) — 需求级闭环协调；`0.1.0` 首先支持 devloop review
+- [ReqLoop](./plugins/reqloop/README.md) — 需求级闭环协调；`0.0.1` 首先支持 devloop review
   完成提醒。
 
 领域模型、Connector 边界与 Harness 协作方式见
