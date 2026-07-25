@@ -67,7 +67,7 @@ Resource/Reconcile and Proposal contracts.
 - [Hello](./plugins/hello/README.md) — a minimal `0.0.1` Package for validating
   Marketplace discovery, installation, and loading.
 - [ReqLoop](./plugins/reqloop/README.md) — requirement-level coordination;
-  `0.1.0` starts with devloop review completion follow-up.
+  `0.0.1` starts with devloop review completion follow-up.
 
 See the [Requirement Loop design](./docs/reqloop.md) for the domain model,
 Connector boundary, and Harness collaboration model.

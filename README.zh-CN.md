@@ -60,7 +60,7 @@ Binding、Contribution、Resource/Reconcile 和 Proposal 契约。
 
 - [Hello](./plugins/hello/README.md) — 用于验证 Marketplace 发现、安装和加载的最小 `0.0.1`
   Package。
-- [ReqLoop](./plugins/reqloop/README.md) — 需求级闭环协调；`0.1.0` 首先支持 devloop review
+- [ReqLoop](./plugins/reqloop/README.md) — 需求级闭环协调；`0.0.1` 首先支持 devloop review
   完成提醒。
 
 领域模型、Connector 边界与 Harness 协作方式见
