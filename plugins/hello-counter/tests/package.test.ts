@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
+import type { PluginActivationContext } from "@baton/plugin";
+
 import helloCounter from "../src/index.ts";
 
 interface PluginManifest {
@@ -23,5 +25,59 @@ describe("Hello Counter PluginPackage", () => {
     expect(packageJson.version).toBe(manifest.version);
     expect(manifest.entry).toBe("./src/index.ts");
     expect(typeof helloCounter.activate).toBe("function");
+  });
+
+  test("projects initialized counter state into the Board and omits empty status", async () => {
+    let board:
+      | {
+          project(resource: unknown): readonly {
+            key: string;
+            title: string;
+            status?: string;
+            detail?: string;
+            tone?: string;
+          }[];
+        }
+      | undefined;
+    await helloCounter.activate({
+      registerResource(contribution: { board?: typeof board }) {
+        board = contribution.board;
+      },
+      watchBuiltinResource() {},
+    } as unknown as PluginActivationContext);
+
+    const resource = {
+      kind: "CounterState",
+      metadata: {
+        resourceId: "main",
+        batonSessionId: "bs_test",
+        pluginInstanceId: "hello_counter",
+        generation: 1,
+        resourceVersion: 2,
+        createdAt: "2026-07-25T00:00:00.000Z",
+        updatedAt: "2026-07-25T00:00:00.000Z",
+      },
+      spec: { enabled: true },
+      status: {},
+    };
+    expect(board?.project(resource)).toEqual([]);
+    expect(
+      board?.project({
+        ...resource,
+        status: {
+          totalTurns: 2,
+          lastUserText: "Add the Board",
+          observedGeneration: 1,
+        },
+      }),
+    ).toEqual([
+      {
+        key: "summary",
+        title: "Hello Counter",
+        status: "2 turns",
+        detail: "Latest: Add the Board",
+        tone: "success",
+      },
+    ]);
   });
 });
