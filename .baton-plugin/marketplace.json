@@ -9,6 +9,10 @@
     {
       "pluginId": "qiankunli/hello",
       "source": "./plugins/hello"
+    },
+    {
+      "pluginId": "qiankunli/hello-counter",
+      "source": "./plugins/hello-counter"
     }
   ]
 }
