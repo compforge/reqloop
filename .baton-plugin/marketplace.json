@@ -13,6 +13,10 @@
     {
       "pluginId": "qiankunli/hello-counter",
       "source": "./plugins/hello-counter"
+    },
+    {
+      "pluginId": "qiankunli/turn-coach",
+      "source": "./plugins/turn-coach"
     }
   ]
 }
