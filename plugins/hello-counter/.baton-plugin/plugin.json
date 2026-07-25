@@ -1,0 +1,8 @@
+{
+  "manifestVersion": 1,
+  "pluginId": "qiankunli/hello-counter",
+  "version": "0.1.0",
+  "entry": "./src/index.ts",
+  "displayName": "Hello Counter",
+  "description": "A simple plugin that counts user turns and demonstrates PluginResource + Builtin Resource watch"
+}
