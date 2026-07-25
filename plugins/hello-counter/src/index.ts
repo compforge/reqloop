@@ -49,6 +49,10 @@ const helloCounter: PluginPackage = Object.freeze({
             `[hello-counter] Turn detected: ${turnResource.data.turnId}`,
           );
 
+          // 演示：访问完整的 turns 历史
+          // const allTurns = baton.turns;
+          // console.log(`[hello-counter] Total turns in history: ${allTurns.length}`);
+
           // 查找或创建 CounterState
           const counterList = await context.resources.list<
             CounterSpec,
@@ -58,19 +62,20 @@ const helloCounter: PluginPackage = Object.freeze({
           let counter = counterList.find((c) => c.metadata.resourceId === "main");
 
           if (!counter) {
-            // 第一次：创建 CounterState
+            // 第一次：创建 CounterState（status 会初始化为空对象）
             console.log("[hello-counter] Creating initial CounterState");
             counter = await context.resources.create<CounterSpec, CounterStatus>(
               "CounterState",
               {
                 resourceId: "main",
                 spec: { enabled: true },
-                status: {
-                  totalTurns: 0,
-                  observedGeneration: 0,
-                },
               },
             );
+            // 首次创建后，立即初始化 status
+            counter = await context.resources.patchStatus(counter, {
+              totalTurns: 0,
+              observedGeneration: 0,
+            });
           }
 
           // 检查是否启用
@@ -83,16 +88,15 @@ const helloCounter: PluginPackage = Object.freeze({
           const newTotal = (counter.status?.totalTurns || 0) + 1;
           console.log(`[hello-counter] Updating count: ${newTotal}`);
 
-          await context.resources.patchStatus<CounterSpec, CounterStatus>(
-            "CounterState",
-            "main",
-            {
-              totalTurns: newTotal,
-              lastTurnId: turnResource.data.turnId,
-              lastUserText: turnResource.data.userText?.slice(0, 50), // 只保存前50字符
-              observedGeneration: counter.metadata.generation,
-            },
-          );
+          // 演示：如果需要删除资源，可以使用 delete()
+          // await context.resources.delete("CounterState", "main");
+
+          counter = await context.resources.patchStatus(counter, {
+            totalTurns: newTotal,
+            lastTurnId: turnResource.data.turnId,
+            lastUserText: turnResource.data.userText?.slice(0, 50), // 只保存前50字符
+            observedGeneration: counter.metadata.generation,
+          });
 
           // 返回 proposed-input 建议
           return {
