@@ -25,11 +25,10 @@ Baton PluginPackage，仓库根只负责 Marketplace 发现和公共贡献约定
 
 ## 在 Baton 中安装和使用
 
-将本 Git 仓库注册为 Marketplace，查看其中的 Package 并安装 Hello：
+将本 Git 仓库注册为 Marketplace，并安装其中的 Hello Package：
 
 ```bash
 baton plugins marketplace add https://github.com/qiankunli/reqloop.git
-baton plugins available --marketplace reqloop
 baton plugins install qiankunli/hello --marketplace reqloop
 baton plugins list
 ```

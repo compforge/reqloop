@@ -29,12 +29,10 @@ and marketplace updates are added.
 
 ## Install and use in Baton
 
-Register this Git repository as a Marketplace, inspect its Packages, and install
-Hello:
+Register this Git repository as a Marketplace and install Hello:
 
 ```bash
 baton plugins marketplace add https://github.com/qiankunli/reqloop.git
-baton plugins available --marketplace reqloop
 baton plugins install qiankunli/hello --marketplace reqloop
 baton plugins list
 ```
