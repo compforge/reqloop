@@ -1,0 +1,21 @@
+plugins/hello-counter/src/index.ts
+  s_dae84d55fcb64d::t_41017a09a7d146 52-55,90-99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "82b60d8122e663a40a60d25bf7055822ed9ae6c6",
+  "prompts": {},
+  "sessions": {
+    "s_dae84d55fcb64d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "68408228-f83d-4421-94e6-d02b0e140f74",
+        "model": "unknown"
+      },
+      "human_author": "liqiankun.1111 <liqiankun.1111@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
