@@ -1,0 +1,21 @@
+plugins/hello-counter/package.json
+  s_2da2217c177a54::t_60e570aada4161 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b5e5557d0a5e232395eb45bd95fa88033538f70d",
+  "prompts": {},
+  "sessions": {
+    "s_2da2217c177a54": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4c5b498b-e535-4b6b-9c67-48f8d157031b",
+        "model": "unknown"
+      },
+      "human_author": "liqiankun.1111 <liqiankun.1111@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
