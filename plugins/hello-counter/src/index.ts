@@ -49,6 +49,10 @@ const helloCounter: PluginPackage = Object.freeze({
             `[hello-counter] Turn detected: ${turnResource.data.turnId}`,
           );
 
+          // 演示：访问完整的 turns 历史
+          // const allTurns = baton.turns;
+          // console.log(`[hello-counter] Total turns in history: ${allTurns.length}`);
+
           // 查找或创建 CounterState
           const counterList = await context.resources.list<
             CounterSpec,
@@ -82,6 +86,16 @@ const helloCounter: PluginPackage = Object.freeze({
           // 更新计数
           const newTotal = (counter.status?.totalTurns || 0) + 1;
           console.log(`[hello-counter] Updating count: ${newTotal}`);
+
+          // 演示：如果需要更新 spec（如切换启用状态），可以使用 update()
+          // await context.resources.update<CounterSpec, CounterStatus>(
+          //   "CounterState",
+          //   "main",
+          //   { enabled: false }
+          // );
+
+          // 演示：如果需要删除资源，可以使用 delete()
+          // await context.resources.delete("CounterState", "main");
 
           await context.resources.patchStatus<CounterSpec, CounterStatus>(
             "CounterState",
