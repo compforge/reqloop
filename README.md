@@ -55,6 +55,7 @@ repository and proposes a Harness follow-up when comments need inspection.
 ```text
 .baton-plugin/marketplace.json  Marketplace index
 plugins/<plugin-name>/          One independently versioned Baton plugin
+docs/reqloop.md                 Requirement Loop domain and Connector design
 CONTRIBUTING.md                 Rules for adding a plugin
 AGENTS.md                       Architecture and maintenance constraints
 ```
@@ -73,5 +74,8 @@ Resource/Reconcile and Proposal contracts.
   Builtin Resource replay, persistent state, and proposed input.
 - [ReqLoop](./plugins/reqloop/README.md) — requirement-level coordination;
   `0.1.0` starts with devloop review completion follow-up.
+
+See the [Requirement Loop design](./docs/reqloop.md) for the domain model,
+Connector boundary, and Harness collaboration model.
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) before adding a plugin.

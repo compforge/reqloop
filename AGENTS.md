@@ -25,6 +25,8 @@ reqloop/
 │       ├── tests/
 │       ├── package.json
 │       └── README.md
+├── docs/
+│   └── reqloop.md         # Requirement Loop 领域模型与 Connector 设计
 ├── CONTRIBUTING.md        # 新 Plugin 接入与索引规则
 └── README.md              # Marketplace 用户入口
 ```
@@ -51,5 +53,4 @@ reqloop/
 - `CONTRIBUTING.md` — 新增 Plugin 的目录、manifest 与验证要求
 - Baton Plugin 设计：
   `https://github.com/qiankunli/baton/blob/main/docs/plugin.md`
-- reqloop 领域设计：
-  `https://github.com/qiankunli/baton/blob/main/docs/reqloop.md`
+- `docs/reqloop.md` — Requirement Loop 领域模型、内部 Connector 与 Harness 协作边界

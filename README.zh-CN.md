@@ -50,6 +50,7 @@ Session 仓库中的 devloop review 终态，在 comments 需要检查时提供�
 ```text
 .baton-plugin/marketplace.json  Marketplace 索引
 plugins/<plugin-name>/          一份独立版本的 Baton Plugin
+docs/reqloop.md                 Requirement Loop 领域模型与 Connector 设计
 CONTRIBUTING.md                 新 Plugin 接入规则
 AGENTS.md                       架构与维护约束
 ```
@@ -67,5 +68,8 @@ Binding、Contribution、Resource/Reconcile 和 Proposal 契约。
   proposed input 的端到端 canary。
 - [ReqLoop](./plugins/reqloop/README.md) — 需求级闭环协调；`0.1.0` 首先支持 devloop review
   完成提醒。
+
+领域模型、Connector 边界与 Harness 协作方式见
+[Requirement Loop 设计](./docs/reqloop.md)。
 
 新增 Plugin 前请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)。
