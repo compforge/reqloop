@@ -41,6 +41,14 @@ plugins/<plugin-name>/
 
 ## 本地开发
 
+发布新版本时统一使用根目录 target，避免遗漏 Plugin manifest、运行时声明或说明文档：
+
+```bash
+make bump-version PLUGIN=hello-counter VERSION=0.0.3
+```
+
+该命令会同步版本并运行对应 Plugin 的测试。
+
 Baton 的 link、manifest 校验和 Plugin 测试命令尚在实现中。最终约定会收敛为：
 
 ```text
