@@ -17,6 +17,10 @@
     {
       "pluginId": "qiankunli/turn-coach",
       "source": "./plugins/turn-coach"
+    },
+    {
+      "pluginId": "qiankunli/reqloop",
+      "source": "./plugins/reqloop"
     }
   ]
 }

@@ -23,17 +23,18 @@ develop a plugin
 ## Status
 
 The repository grows with Baton's external plugin runtime. Hello validates the
-smallest Package lifecycle, while Hello Counter and Turn Coach exercise
-Resource/Reconcile, Builtin Resource watches, and durable proposals without
-depending on external systems.
+smallest Package lifecycle; Hello Counter and Turn Coach exercise
+Resource/Reconcile, Builtin Resource watches, and durable proposals; ReqLoop is
+the first requirement-loop Package and observes external devloop review state.
 
 ## Install and use in Baton
 
-Register this Git repository as a Marketplace and install Turn Coach:
+Register this Git repository as a Marketplace and install the Package you need:
 
 ```bash
 baton plugins marketplace add https://github.com/qiankunli/reqloop.git
 baton plugins install qiankunli/turn-coach --marketplace reqloop
+baton plugins install qiankunli/reqloop --marketplace reqloop
 baton plugins list
 ```
 
@@ -43,13 +44,11 @@ For local development, replace the Git URL with the path to your checkout:
 baton plugins marketplace add /path/to/reqloop
 ```
 
-Package installation makes Turn Coach available to Baton. To use it in a session,
-start `baton`, enter `/plugins`, open **Installed**, select **Turn Coach**, and choose
-**Enable in this session**. This creates and activates a PluginInstance owned by
-the current BatonSession; reopening the session restores it. After each turn
-completed while the Plugin is enabled, Turn Coach records its progress in a PluginResource and offers a
-`proposed-input` that asks the active Harness to review the turn and recommend the
-best next step.
+Package installation makes it available to Baton. To use it in a session, start
+`baton`, enter `/plugins`, open **Installed**, select the Package, and choose
+**Enable in this session**. Turn Coach reviews completed turns and recommends the
+next step; ReqLoop observes devloop review completion for the session's current
+repository and proposes a Harness follow-up when comments need inspection.
 
 ## Repository layout
 
@@ -72,5 +71,7 @@ Resource/Reconcile and Proposal contracts.
   PluginResource combined with a `baton.turn` watch.
 - [Turn Coach](./plugins/turn-coach/README.md) — an end-to-end canary for
   Builtin Resource replay, persistent state, and proposed input.
+- [ReqLoop](./plugins/reqloop/README.md) — requirement-level coordination;
+  `0.1.0` starts with devloop review completion follow-up.
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) before adding a plugin.

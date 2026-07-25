@@ -21,16 +21,17 @@ Baton PluginPackage，仓库根只负责 Marketplace 发现和公共贡献约定
 ## 当前状态
 
 本仓库随 Baton 的外部 Plugin runtime 一起演进。Hello 验证最小 Package 生命周期，
-Hello Counter 和 Turn Coach 则在不依赖外部系统的前提下验证 Resource/Reconcile、
-Builtin Resource watch 和持久 Proposal。
+Hello Counter 和 Turn Coach 验证 Resource/Reconcile、Builtin Resource watch 和持久
+Proposal；ReqLoop 是首个 Requirement Loop Package，用于观察外部 devloop review 状态。
 
 ## 在 Baton 中安装和使用
 
-将本 Git 仓库注册为 Marketplace，并安装其中的 Turn Coach Package：
+将本 Git 仓库注册为 Marketplace，并安装所需 Package：
 
 ```bash
 baton plugins marketplace add https://github.com/qiankunli/reqloop.git
 baton plugins install qiankunli/turn-coach --marketplace reqloop
+baton plugins install qiankunli/reqloop --marketplace reqloop
 baton plugins list
 ```
 
@@ -40,11 +41,9 @@ baton plugins list
 baton plugins marketplace add /path/to/reqloop
 ```
 
-安装 Package 后，启动 `baton`，输入 `/plugins`，进入 **Installed**，选择 **Turn Coach**，再执行
-**Enable in this session**。Baton 会为当前 BatonSession 创建并激活 PluginInstance，重新打开
-该 Session 时也会自动恢复。Plugin 启用后的每个 turn 完成时，Turn Coach 会用
-PluginResource 记录处理进度，并产生一条 `proposed-input`，建议当前 Harness 复盘刚才的结果
-并给出最合适的下一步。
+安装 Package 后，启动 `baton`，输入 `/plugins`，进入 **Installed**，选择对应 Package，再执行
+**Enable in this session**。Turn Coach 会复盘已完成的 turn 并建议下一步；ReqLoop 会观察当前
+Session 仓库中的 devloop review 终态，在 comments 需要检查时提供一条驱动当前 Harness 的建议输入。
 
 ## 仓库结构
 
@@ -66,5 +65,7 @@ Binding、Contribution、Resource/Reconcile 和 Proposal 契约。
   `baton.turn` watch 的组合。
 - [Turn Coach](./plugins/turn-coach/README.md) — 验证 Builtin Resource replay、持久状态和
   proposed input 的端到端 canary。
+- [ReqLoop](./plugins/reqloop/README.md) — 需求级闭环协调；`0.1.0` 首先支持 devloop review
+  完成提醒。
 
 新增 Plugin 前请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)。
