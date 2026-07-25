@@ -1,0 +1,25 @@
+plugins/hello-counter/README.md
+  s_72c4ed834b6209::t_7e6f0795889e0b 1-31
+plugins/hello-counter/package.json
+  s_72c4ed834b6209::t_a25dbe84bf26ec 1-11
+plugins/hello-counter/tests/package.test.ts
+  s_72c4ed834b6209::t_e759c65a7af584 1-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "14ef742dd599106b194d8804f217dd5c614d0bf8",
+  "prompts": {},
+  "sessions": {
+    "s_72c4ed834b6209": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d0b51f92-3481-48de-b6de-647444f32407",
+        "model": "unknown"
+      },
+      "human_author": "liqiankun.1111 <liqiankun.1111@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
