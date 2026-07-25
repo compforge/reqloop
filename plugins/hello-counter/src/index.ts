@@ -16,7 +16,7 @@ interface CounterStatus {
 
 const helloCounter: PluginPackage = Object.freeze({
   pluginId: "qiankunli/hello-counter",
-  version: "0.0.2",
+  version: "0.0.3",
 
   async activate(context: PluginActivationContext): Promise<void> {
     // 1. 注册 CounterState PluginResource
@@ -36,6 +36,23 @@ const helloCounter: PluginPackage = Object.freeze({
 
           // 正常情况下，这里什么都不做，因为实际计数由 baton.turn watch 触发
           return {};
+        },
+      },
+      board: {
+        project(resource) {
+          const totalTurns = resource.status.totalTurns;
+          if (typeof totalTurns !== "number") return [];
+          return [
+            {
+              key: "summary",
+              title: "Hello Counter",
+              status: `${totalTurns} turn${totalTurns === 1 ? "" : "s"}`,
+              ...(resource.status.lastUserText
+                ? { detail: `Latest: ${resource.status.lastUserText}` }
+                : {}),
+              tone: resource.spec.enabled ? "success" : "muted",
+            },
+          ];
         },
       },
     });
