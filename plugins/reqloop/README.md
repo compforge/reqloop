@@ -79,17 +79,24 @@ produces the Harness follow-up input.
 ReqLoop owns a provider-neutral `reqloop.pull-request` Resource for GitHub PRs
 and GitLab MRs. Its immutable spec identifies `source + repository + number`;
 status records lifecycle, review-thread state and activity, mergeability,
-Requirement association, and observation time. Every Controller cron Source
+optional Requirement association, and observation time. Every Controller cron Source
 first calls `ForgeConnector.list()` to
 materialize missing PullRequest Resources, then keyed reconciliation calls
 `get()` to refresh each PullRequest. `GitHubForgeConnector` and
 `GitLabForgeConnector` provide both operations. Selecting `/requirements`
 materializes a stable `reqloop.requirement` Resource. An open PullRequest is
-shown on the Board while standalone; once the user links it to a Requirement,
-only the Requirement card remains. Merged PullRequests leave the Board and
+shown on the Board while standalone. Linking it to a Requirement keeps the
+PullRequest Resource independent but presents the Requirement as the primary
+Board item. Merged PullRequests leave the Board and
 stop polling. Review-thread lookup degrades to `unknown` when an instance or
 token does not expose that API, and ordinary conversation comments are never
 treated as unresolved review threads.
+
+`RequirementController` refreshes active Requirements from their configured
+Connector. When at least one linked PullRequest exists, all linked
+PullRequests are merged, and every review-thread state is `none` or `resolved`, it
+shows a deduplicated toast asking the user to close the Requirement in its
+source platform. ReqLoop does not mutate external Requirement state yet.
 
 ```text
 devloop review-history.jsonl
@@ -123,9 +130,13 @@ Meego。代码平台按同样边界接 `ForgeConnector`，参考 devloop 的 pro
 但不导入其实现。PullRequestController 的 cron Source 先通过 Connector `list()` 创建缺失
 `reqloop.pull-request` Resource，再由逐 Resource reconcile 调用 `get()` 刷新生命周期、review
 thread、merge conflict 和 review activity fingerprint。`/requirements` 选中的需求会物化为
-稳定的 `reqloop.requirement` Resource。未关联且活跃的 PullRequest 会单独显示在 Board；用户经
-一次持久 Interaction 将它关联到 Requirement 后，只保留 Requirement 卡片。merged 后生命周期
+稳定的 `reqloop.requirement` Resource。孤立且活跃的 PullRequest 会单独显示在 Board；关联
+Requirement 后仍保留独立 Resource，但 Board 以 Requirement 为主展示。merged 后生命周期
 结束并停止轮询。devloop review 也通过完整 PullRequest identity 汇入同一个 Resource。
+
+RequirementController 会通过配置的 Connector 定时刷新活跃需求。若至少存在一个关联 PR、所有
+关联 PR 都已 merged，且 review thread 状态均为 none 或 resolved，它会去重吐出 toast，提醒用户前往
+需求平台关闭需求；当前阶段不会代用户修改外部需求状态。
 
 `requirements` 是以 source 为 key 的具名 Connector 集合，存在即生效，允许同时配置多个需求
 平台或同一平台的多个实例。Meego 的 `story`、`issue` 等分类由 Connector 填入 `category`。

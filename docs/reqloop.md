@@ -119,9 +119,9 @@ PR/MR 的小闭环；reqloop 用独立 Resource 观察需求级收尾条件。�
 询问，`linked` 保存 Requirement ResourceRef，`standalone` 表示用户明确选择独立跟踪。即使
 Interaction 被取消，持久的 `prompted` 也阻止系统在每次 reconcile 时重复打扰用户。
 
-Board 展示活跃 Requirement，也展示尚未关联的活跃 PullRequest。PullRequest 一旦关联，就由
-所属 Requirement 汇总其生命周期、review thread、merge conflict 和 review finding，不再
-重复生成卡片。已 merged 的 PullRequest 生命周期结束，从 Board 消失且不再轮询 Forge；closed
+Board 展示活跃 Requirement，也单独展示孤立的活跃 PullRequest。PullRequest 关联 Requirement
+后仍保持独立 Resource 和生命周期，但 Board 以 Requirement 为主，不再重复生成 PR 卡片；
+关联 PR 只作为完成建议的辅助证据。已 merged 的 PullRequest 从 Board 消失且不再轮询 Forge；closed
 但未 merged 的对象可以继续低成本观察，以识别 reopen。
 
 ### 状态、事件、决定与动作
@@ -377,9 +377,9 @@ Harness Work 类型；Harness 的路由、成本、并发、取消和可靠投�
    后续由 reqloop 自己发起的远端 review 仍可由 VerdictConnector 配合 `requeueAfter` 查询。
 6. review 要求修改时，Controller 返回包含 review 意见的修复 `proposed-input` Output；用户审核后再次
    驱动 Harness。
-7. Deployment、Verdict 和 Completion Policy 满足，且不存在活跃 PR/MR 时，Controller 更新
-   conditions，询问用户是否关闭 Requirement；确认后在已由 `spec` 授权的范围内调用 Connector，
-   外部关闭被重新观察成功后不再向 Board 展示该 Requirement。
+7. 首期 Completion Policy 在至少存在一个关联 PR、所有关联 PR 已 merged 且 review thread
+   状态均为 none 或 resolved 时，吐出一次去重 toast，提醒用户前往需求平台关闭 Requirement。外部关闭由
+   Connector 重新观察成功后，不再向 Board 展示该 Requirement；当前阶段不执行外部写操作。
 
 Harness turn 停止、Board 更新或 Context 可用都不自动代表下一步已完成。reqloop 总是重新读取
 最新 Resource 和外部状态，再决定更新 status、调用 Connector、建议 Harness 输入或等待。
@@ -389,8 +389,9 @@ Harness turn 停止、Board 更新或 Context 可用都不自动代表下一步�
 对 reqloop 而言，Board 是与 Baton、其他 Plugin 和多个 Harness 共享的协作状态，而不只是一个
 面向用户的进度面板：
 
-> 类比刑侦团队的案件板：每个 Requirement 是一张案件卡；MR、部署、review、阻塞和待核实问题
-> 是卡片汇总的线索与进展，不各自占一张顶级卡。reqloop、Harness 和用户都能从同一块板上形成
+> 类比刑侦团队的案件板：每个 Requirement 是一张案件卡；孤立 PR 也有自己的卡片，关联 PR
+> 则作为 Requirement 的线索和进展，避免同一工作重复占据顶层位置。reqloop、Harness 和用户
+> 都能从同一块板上形成
 > 当前认知，但各领域事实仍由自己的 Resource 或外部系统负责。
 
 - 用户通过 BoardView 观察 Requirement Loop 的目标、进度、结果、blocker 和待处理请求；
@@ -487,9 +488,9 @@ Baton 作为通用产品需要一个清晰的默认故事。reqloop 随 Baton �
 8. reqloop 通过独立 Marketplace Package 交付、可禁用、可升级；Baton core 在没有 reqloop 时
    仍完整工作。
 9. Plugin 声明能力不等于获得权限；敏感 desired state 在写入 spec 前完成授权。
-10. reqloop 只能修改自己的 Resource status；Board presentation 展示活跃 Requirement 与未关联
-    的活跃 PullRequest，已关联 PullRequest 只通过 Requirement 汇总，其他 owner 的产出只能
-    作为 observation 读取。
+10. reqloop 只能修改自己的 Resource status；Board presentation 展示活跃 Requirement 与孤立
+    的活跃 PullRequest；关联不改变 PullRequest 的独立身份，只改变 Board 的主展示对象。其他
+    owner 的产出只能作为 observation 读取。
 11. 固定周期观察使用 Controller cron Source；`requeueAfter` 只服务一次性动态复查，并持久化为
     `nextReconcileAt`。
 12. Resource、Input、Harness 结果、cron 和 timer 只触发重新检查；Controller 不把触发当成必须逐条
