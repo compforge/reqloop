@@ -23,7 +23,7 @@ reqloop/
 │       │   └── plugin.json
 │       ├── src/
 │       │   ├── requirements/       # Requirement 中立模型、Connector port 与 /requirements
-│       │   └── pull-requests/      # PullRequest Resource、观察状态与 Board Controller
+│       │   └── pull-requests/      # PullRequest Resource、Controller、Forge 与 review Connector
 │       ├── tests/
 │       ├── package.json
 │       └── README.md
