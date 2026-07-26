@@ -74,7 +74,7 @@ Proposal contracts.
 - [Turn Coach](./plugins/turn-coach/README.md) — an end-to-end canary for
   Baton-owned Resource replay, persistent state, and proposed input.
 - [ReqLoop](./plugins/reqloop/README.md) — requirement-level coordination;
-  `0.1.7` materializes Requirement resources, discovers PullRequests through
+  `0.1.8` materializes Requirement resources, discovers PullRequests through
   Controller Sources, and asks once whether each PullRequest should join a
   Requirement.
 

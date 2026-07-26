@@ -164,6 +164,7 @@ describe("ReqLoop PluginPackage", () => {
       provider: "meego",
       async list(query) {
         calls.push(`list:${query?.text ?? ""}:${query?.limit ?? ""}`);
+        if (query?.text === "missing") return [];
         return [
           {
             source: "meego",
@@ -208,9 +209,14 @@ describe("ReqLoop PluginPackage", () => {
       REQUIREMENT_RESOURCE_KIND,
       PULL_REQUEST_RESOURCE_KIND,
     ]);
-    expect(await command!.execute({ argument: "intake" })).toEqual({
+    expect(await command!.execute({ argument: "intake" })).toMatchObject({
       kind: "picker",
       title: "Requirements · meego",
+      search: {
+        mode: "remote",
+        query: "intake",
+        placeholder: "Search requirements",
+      },
       options: [
         {
           name: "Add requirement intake",
@@ -218,6 +224,29 @@ describe("ReqLoop PluginPackage", () => {
           value: '["meego","story","REQ-7"]',
         },
       ],
+    });
+    const recoverySearch = {
+      argument: "intake",
+      searchQuery: "recovery",
+    };
+    expect(await command!.execute(recoverySearch)).toMatchObject({
+      kind: "picker",
+      search: {
+        mode: "remote",
+        query: "recovery",
+      },
+    });
+    const missingSearch = {
+      argument: "intake",
+      searchQuery: "missing",
+    };
+    expect(await command!.execute(missingSearch)).toMatchObject({
+      kind: "picker",
+      search: {
+        mode: "remote",
+        query: "missing",
+      },
+      options: [],
     });
     expect(
       await command!.execute({
@@ -230,6 +259,8 @@ describe("ReqLoop PluginPackage", () => {
     });
     expect(calls).toEqual([
       "list:intake:50",
+      "list:recovery:50",
+      "list:missing:50",
       "get:meego:story:REQ-7",
     ]);
   });
@@ -448,6 +479,11 @@ describe("ReqLoop PluginPackage", () => {
     expect(await command!.execute({ argument: "" })).toMatchObject({
       kind: "picker",
       title: "Requirements · 2 sources",
+      search: {
+        mode: "remote",
+        query: "",
+        placeholder: "Search requirements",
+      },
       options: [
         { value: '["primary","story","REQ-1"]' },
         { value: '["secondary","issue","BUG-2"]' },

@@ -105,7 +105,11 @@ export function createRequirementsCommand(
         if (resources) upsertRequirement(resources, requirement);
         return message(requirementDetail(requirement));
       }
-      const text = input.argument.trim();
+      const searchQuery =
+        "searchQuery" in input && typeof input.searchQuery === "string"
+          ? input.searchQuery
+          : undefined;
+      const text = (searchQuery ?? input.argument).trim();
       const requirements = (
         await Promise.all(
           connectors.map((connector) =>
@@ -116,19 +120,17 @@ export function createRequirementsCommand(
           ),
         )
       ).flat();
-      if (requirements.length === 0) {
-        return message(
-          text
-            ? `No requirements matched "${text}".`
-            : "No requirements are available.",
-        );
-      }
       return {
         kind: "picker",
         title:
           connectors.length === 1
             ? `Requirements · ${connectors[0]!.source}`
             : `Requirements · ${connectors.length} sources`,
+        search: {
+          mode: "remote",
+          query: text,
+          placeholder: "Search requirements",
+        },
         options: requirements.map((requirement) => ({
           name: requirement.title,
           description: `${requirement.source} · ${requirement.category} · ${requirement.id} · ${requirement.state}`,

@@ -239,6 +239,10 @@ Connector 只做三件事：
 Connector 不负责 Baton session 路由、Board 渲染、Harness 选择、完成条件或跨领域编排。
 这些职责分别属于 Baton 和 reqloop domain。
 
+`/requirements` 的搜索词属于一次 Picker 交互，不是 Requirement 状态。Baton 负责输入防抖和
+过期响应丢弃，reqloop Command 将最新查询词交给 RequirementConnector，再返回新的 Picker
+快照。当前使用有界结果集且不分页；空结果仍返回 Picker，以保留搜索上下文。
+
 Connector port 不依赖具体传输方式。首版 Meego adapter 通过公开发布的 Meegle CLI 调用平台：
 它复用 CLI 已有的 OAuth、系统钥匙串、profile 和结构化 JSON 输出，避开 Meego Plugin
 OpenAPI 的权限发布与空间安装链路；代价是使用者需要额外安装 CLI 并建立个人登录态。后续若
