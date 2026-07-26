@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
-import type { PluginActivationContext } from "@baton/plugin";
+import type { PluginActivationContext } from "@qiankun01/baton-plugin";
 
 import helloCounter from "../src/index.ts";
 

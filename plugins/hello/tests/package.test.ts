@@ -15,8 +15,8 @@ describe("Hello PluginPackage", () => {
       readFileSync(new URL("../.baton-plugin/plugin.json", import.meta.url), "utf8"),
     ) as PluginManifest;
 
-    expect(hello.pluginId).toBe(manifest.pluginId);
-    expect(hello.version).toBe(manifest.version);
+    expect(manifest.pluginId).toBe(hello.pluginId);
+    expect(manifest.version).toBe(hello.version);
     expect(manifest.entry).toBe("./src/index.ts");
     expect(typeof hello.activate).toBe("function");
   });

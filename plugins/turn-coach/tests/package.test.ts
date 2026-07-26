@@ -203,8 +203,10 @@ describe("Turn Coach PluginPackage", () => {
         "Original request: Check the implementation and tell me what should happen next.",
       ].join("\n"),
     });
-    expect(harness.state?.status).toEqual({
-      activatedAt: harness.state.status.activatedAt,
+    const state = harness.state;
+    if (!state) throw new Error("TurnCoachState was not created");
+    expect(state.status).toEqual({
+      activatedAt: state.status.activatedAt,
       coachedTurns: 2,
       lastCoachedRevision: 12,
       lastTurnId: "t_2",

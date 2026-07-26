@@ -1,8 +1,8 @@
 .DS_Store
 .devloop/
 .claude/
+.worktrees/
 node_modules/
 dist/
 coverage/
 *.log
-
