@@ -8,6 +8,22 @@ directory under `plugins/` is an independently versioned Baton PluginPackage,
 while the repository root owns only marketplace discovery and shared
 plugin authoring rules.
 
+## Architecture at a glance
+
+A Baton Plugin coordinates a long-running domain loop, but it does not call a
+Harness directly. It proposes or submits scoped work through Baton's normal
+input, context, permission, and routing path. Harnesses provide intelligent
+execution capabilities, while Harness Plugins such as devloop constrain the
+development loop inside a Harness.
+
+![Baton, Plugin, and Harness](./docs/baton-plugin-harness.svg)
+
+ReqLoop connects requirement, code, review, CI, and deployment systems; turns
+their state and durable user decisions into Resources; and gradually advances
+from observation and recommendations toward explicitly scoped automation.
+
+![ReqLoop workflow](./docs/reqloop-workflow.svg)
+
 The intended end-to-end development flow is:
 
 ```text
@@ -57,6 +73,8 @@ repository and proposes a Harness follow-up when comments need inspection.
 .baton-plugin/marketplace.json  Marketplace index
 plugins/<plugin-name>/          One independently versioned Baton plugin
 docs/reqloop.md                 Requirement Loop domain and Connector design
+docs/baton-plugin-harness.*     Baton Plugin and Harness relationship
+docs/reqloop-workflow.*         ReqLoop workflow (SVG and PNG)
 CONTRIBUTING.md                 Rules for adding a plugin
 AGENTS.md                       Architecture and maintenance constraints
 ```
