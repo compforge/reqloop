@@ -6,7 +6,7 @@ reqloop is the official [Baton](https://github.com/qiankunli/baton) marketplace
 for requirement-level engineering loops. It is a multi-plugin repository: every
 directory under `plugins/` is an independently versioned Baton PluginPackage,
 while the repository root owns only marketplace discovery and shared
-contribution rules.
+plugin authoring rules.
 
 The intended end-to-end development flow is:
 
@@ -24,7 +24,7 @@ develop a plugin
 
 The repository grows with Baton's external plugin runtime. Hello validates the
 smallest Package lifecycle; Hello Counter and Turn Coach exercise
-Resource/Reconcile, Builtin Resource watches, and durable proposals; ReqLoop is
+Resource/Reconcile, Baton-owned Resource watches, and durable proposals; ReqLoop is
 the first requirement-loop Package, contributes `/requirements`, and observes
 external devloop review state.
 
@@ -62,19 +62,19 @@ AGENTS.md                       Architecture and maintenance constraints
 ```
 
 Plugin domain models and Connectors stay inside their owning plugin. Baton core
-only supplies the generic Package, Instance, Binding, Contribution,
-Resource/Reconcile and Proposal contracts.
+only supplies the generic Package, Instance, Binding, Resource/Controller and
+Proposal contracts.
 
 ## Plugins
 
 - [Hello](./plugins/hello/README.md) — a minimal `0.0.1` Package for validating
   Marketplace discovery, installation, and loading.
 - [Hello Counter](./plugins/hello-counter/README.md) — demonstrates a writable
-  PluginResource combined with a `baton.turn` watch.
+  Resource combined with a `baton.turn` Controller.
 - [Turn Coach](./plugins/turn-coach/README.md) — an end-to-end canary for
-  Builtin Resource replay, persistent state, and proposed input.
+  Baton-owned Resource replay, persistent state, and proposed input.
 - [ReqLoop](./plugins/reqloop/README.md) — requirement-level coordination;
-  `0.1.2` adds provider-neutral requirement list/read and keeps devloop review
+  `0.1.3` adds provider-neutral requirement list/read and keeps devloop review
   completion follow-up.
 
 See the [Requirement Loop design](./docs/reqloop.md) for the domain model,

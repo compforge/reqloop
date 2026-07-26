@@ -39,9 +39,9 @@ reqloop/
 
 1. Marketplace 只负责发现和交付不可变的 PluginPackage；PluginInstance、Binding、Resource、
    Proposal 和调度状态归 BatonSession 及 Baton Manager。
-2. 每个 Plugin 的 manifest 声明可审阅的 Contribution 和权限，运行期注册必须与声明一致；
-   Command、Resource 等变体统一收束在 PluginContribution 下。
-3. Plugin 的领域逻辑与外部 Connector 分离：Reconciler 负责根据 `spec/status` 收敛状态，
+2. 每个 Plugin 的 manifest 声明稳定身份和可审阅权限；运行期能力通过 Command 与 Controller
+   注册，Resource kind 在 Marketplace 内保持唯一。
+3. Plugin 的领域逻辑与外部 Connector 分离：Controller 通过 `reconcile` 根据 `spec/status` 收敛状态，
    Connector 只负责协议调用和 DTO 映射，不能反向拥有 loop。
    Requirement/Forge 等对象保持 provider-neutral，provider 属于 Connector 或其绑定的
    repository，不摊进每个领域对象。连接参数归 Plugin 配置，cursor/cache 归 Baton 注入的

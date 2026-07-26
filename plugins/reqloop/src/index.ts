@@ -1,7 +1,7 @@
 import type {
   PluginActivationContext,
   PluginPackage,
-  PluginResource,
+  Resource,
 } from "@qiankun01/baton-plugin";
 
 import {
@@ -16,10 +16,10 @@ import {
 } from "./requirements/connectors/meego.ts";
 
 export const REQLOOP_PLUGIN_ID = "qiankunli/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.1.2";
+export const REQLOOP_PACKAGE_VERSION = "0.1.3";
 export const REQLOOP_REVIEW_WATCH_KIND = "reqloop.review-watch";
 export const REQLOOP_REVIEW_WATCH_ID = "current-repo";
-const REVIEW_POLL_INTERVAL_MS = 2_000;
+const REVIEW_POLL_CRON = "*/2 * * * * *";
 
 interface ReviewWatchSpec {
   readonly repo: string;
@@ -41,7 +41,7 @@ function currentRepo(context: PluginActivationContext): string {
 
 function existingWatch(
   context: PluginActivationContext,
-): Readonly<PluginResource<ReviewWatchSpec, ReviewWatchStatus>> | undefined {
+): Readonly<Resource<ReviewWatchSpec, ReviewWatchStatus>> | undefined {
   return context.resources
     .list<ReviewWatchSpec, ReviewWatchStatus>(REQLOOP_REVIEW_WATCH_KIND)
     .find(
@@ -94,33 +94,36 @@ export function createReqloopPackage(options: {
         );
       }
 
-      context.registerResource<ReviewWatchSpec, ReviewWatchStatus>({
+      context.registerController<ReviewWatchSpec, ReviewWatchStatus>({
         resourceKind: REQLOOP_REVIEW_WATCH_KIND,
-        reconciler: {
-          async reconcile(_baton, resource) {
-            const observation = connector.latest();
-            if (
-              !observation ||
-              observation.key === resource.status.observedReviewKey
-            ) {
-              return { requeueAfterMs: REVIEW_POLL_INTERVAL_MS };
-            }
-            context.resources.patchStatus(resource, {
-              observedReviewKey: observation.key,
-              observedSha: observation.sha,
-              observedStatus: observation.status,
-            });
-            if (!actionableReview(observation)) {
-              return { requeueAfterMs: REVIEW_POLL_INTERVAL_MS };
-            }
-            return {
-              requeueAfterMs: REVIEW_POLL_INTERVAL_MS,
-              output: {
-                kind: "proposed-input",
-                text: reviewFollowUpText(observation),
-              },
-            };
-          },
+        sources: [{
+          type: "cron",
+          sourceId: "review-poll",
+          cron: REVIEW_POLL_CRON,
+          timeZone: "UTC",
+        }],
+        async reconcile(_baton, resource) {
+          const observation = connector.latest();
+          if (
+            !observation ||
+            observation.key === resource.status.observedReviewKey
+          ) {
+            return;
+          }
+          context.resources.patchStatus(resource, {
+            observedReviewKey: observation.key,
+            observedSha: observation.sha,
+            observedStatus: observation.status,
+          });
+          if (!actionableReview(observation)) {
+            return;
+          }
+          return {
+            output: {
+              kind: "proposed-input",
+              text: reviewFollowUpText(observation),
+            },
+          };
         },
       });
     },

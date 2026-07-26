@@ -5,11 +5,11 @@ without depending on an external service:
 
 ```text
 pluginId: qiankunli/turn-coach
-version:  0.0.1
+version:  0.0.2
 ```
 
-It watches the read-only `baton.turn` Builtin Resource, keeps a
-`TurnCoachState/main` PluginResource for the current BatonSession, and returns a
+It observes the read-only `baton.turn` Baton-owned Resource, keeps a
+`TurnCoachState/main` Resource for the current BatonSession, and returns a
 `proposed-input` after each turn completed while the Plugin is enabled.
 Submitting the proposal asks the active Harness to check the previous result for
 missing work or risks and choose one concrete next step.

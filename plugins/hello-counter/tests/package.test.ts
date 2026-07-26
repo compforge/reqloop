@@ -27,23 +27,24 @@ describe("Hello Counter PluginPackage", () => {
     expect(typeof helloCounter.activate).toBe("function");
   });
 
-  test("projects initialized counter state into the Board and omits empty status", async () => {
-    let board:
-      | {
-          project(resource: unknown): readonly {
-            key: string;
-            title: string;
-            status?: string;
-            detail?: string;
-            tone?: string;
-          }[];
-        }
+  test("presents initialized counter state on the Board and omits empty status", async () => {
+    let present:
+      | ((resource: unknown) => {
+          title: string;
+          status?: string;
+          detail?: string;
+          tone?: string;
+        } | undefined)
       | undefined;
     await helloCounter.activate({
-      registerResource(contribution: { board?: typeof board }) {
-        board = contribution.board;
+      registerController(controller: {
+        resourceKind: string;
+        present?: typeof present;
+      }) {
+        if (controller.resourceKind === "CounterState") {
+          present = controller.present;
+        }
       },
-      watchBuiltinResource() {},
     } as unknown as PluginActivationContext);
 
     const resource = {
@@ -60,9 +61,9 @@ describe("Hello Counter PluginPackage", () => {
       spec: { enabled: true },
       status: {},
     };
-    expect(board?.project(resource)).toEqual([]);
+    expect(present?.(resource)).toBeUndefined();
     expect(
-      board?.project({
+      present?.({
         ...resource,
         status: {
           totalTurns: 2,
@@ -70,14 +71,11 @@ describe("Hello Counter PluginPackage", () => {
           observedGeneration: 1,
         },
       }),
-    ).toEqual([
-      {
-        key: "summary",
-        title: "Hello Counter",
-        status: "2 turns",
-        detail: "Latest: Add the Board",
-        tone: "success",
-      },
-    ]);
+    ).toEqual({
+      title: "Hello Counter",
+      status: "2 turns",
+      detail: "Latest: Add the Board",
+      tone: "success",
+    });
   });
 });
