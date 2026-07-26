@@ -1,9 +1,15 @@
 import type {
   BatonSnapshot,
   Controller,
+  Resource,
   ResourceClient,
 } from "@qiankun01/baton-plugin";
 
+import type {
+  RequirementSpec,
+  RequirementStatus,
+} from "../requirements/protocol.ts";
+import { REQUIREMENT_RESOURCE_KIND } from "../requirements/resource.ts";
 import type {
   ForgeConnector,
   PullRequestIdentity,
@@ -24,6 +30,8 @@ import {
 const PULL_REQUEST_POLL_CRON = "*/30 * * * * *";
 const REVIEW_ACTION_INSPECT = "inspect";
 const REVIEW_ACTION_SKIP = "skip";
+const ASSOCIATION_STANDALONE = "standalone";
+const ASSOCIATION_REQUIREMENT_PREFIX = "requirement:";
 
 function sameIdentity(
   left: PullRequestIdentity,
@@ -36,13 +44,28 @@ function sameIdentity(
   );
 }
 
-function reviewDecision(
+function interactionDecision(
   baton: Readonly<BatonSnapshot>,
   decisionKey: string,
 ): BatonSnapshot["pluginInteractions"][number] | undefined {
   return baton.pluginInteractions.find(
     (interaction) => interaction.decisionKey === decisionKey,
   );
+}
+
+function activeRequirements(
+  resources: ResourceClient,
+): readonly Readonly<Resource<RequirementSpec, RequirementStatus>>[] {
+  return resources
+    .list<RequirementSpec, RequirementStatus>(REQUIREMENT_RESOURCE_KIND)
+    .filter(({ status }) =>
+      status.externalState !== "completed" &&
+      status.externalState !== "closed"
+    );
+}
+
+function requirementOptionId(resourceId: string): string {
+  return `${ASSOCIATION_REQUIREMENT_PREFIX}${resourceId}`;
 }
 
 export function createPullRequestController(
@@ -75,6 +98,9 @@ export function createPullRequestController(
       : {}),
     async reconcile(baton, resource) {
       if (!resources) return;
+      // A merged PR/MR is terminal for reqloop. Keeping the persisted Resource
+      // preserves history without continuing external polling.
+      if (resource.status.lifecycle === "merged") return;
       const { identity } = resource.spec;
       const connector = connectorsBySource.get(identity.source);
       let current = resource;
@@ -84,6 +110,76 @@ export function createPullRequestController(
           throw new Error("ForgeConnector returned a different PullRequest");
         }
         current = upsertPullRequestObservation(resources, observation);
+      }
+      if (current.status.lifecycle === "merged") return;
+
+      const association = current.status.requirementAssociation;
+      if (!association) {
+        const requirements = activeRequirements(resources);
+        if (requirements.length > 0) {
+          const decisionKey =
+            `associate-requirement:${current.metadata.resourceId}`;
+          current = resources.patchStatus(current, {
+            requirementAssociation: {
+              state: "prompted",
+              decisionKey,
+            },
+          });
+          return {
+            output: {
+              kind: "interaction",
+              decisionKey,
+              title: "Associate pull request",
+              prompt: `Which Requirement should ${identity.repository} PR/MR ${identity.number} join?`,
+              options: [
+                ...requirements.map((requirement) => ({
+                  optionId: requirementOptionId(
+                    requirement.metadata.resourceId,
+                  ),
+                  label: requirement.spec.title,
+                  description:
+                    `${requirement.spec.identity.source} · ` +
+                    `${requirement.spec.identity.category} · ` +
+                    requirement.spec.identity.id,
+                })),
+                {
+                  optionId: ASSOCIATION_STANDALONE,
+                  label: "Keep standalone",
+                  role: "reject" as const,
+                },
+              ],
+            },
+          };
+        }
+      } else if (association.state === "prompted") {
+        const decision = interactionDecision(
+          baton,
+          association.decisionKey,
+        );
+        if (decision?.outcome?.kind === "answered") {
+          const selected = decision.outcome.values[0];
+          if (selected === ASSOCIATION_STANDALONE) {
+            current = resources.patchStatus(current, {
+              requirementAssociation: { state: "standalone" },
+            });
+          } else if (selected?.startsWith(ASSOCIATION_REQUIREMENT_PREFIX)) {
+            const resourceId = selected.slice(
+              ASSOCIATION_REQUIREMENT_PREFIX.length,
+            );
+            if (resourceId) {
+              current = resources.patchStatus(current, {
+                requirementAssociation: {
+                  state: "linked",
+                  requirement: {
+                    resourceKind: REQUIREMENT_RESOURCE_KIND,
+                    resourceId,
+                    resourceOwner: "plugin",
+                  },
+                },
+              });
+            }
+          }
+        }
       }
 
       const review = reviewConnector?.latest();
@@ -99,7 +195,7 @@ export function createPullRequestController(
       if (!actionableReview(review)) return;
 
       const decisionKey = `inspect-review:${review.key}`;
-      const decision = reviewDecision(baton, decisionKey);
+      const decision = interactionDecision(baton, decisionKey);
       if (!decision) {
         return {
           output: {
@@ -132,6 +228,36 @@ export function createPullRequestController(
           },
         };
       }
+    },
+    present(resource) {
+      if (
+        resource.status.lifecycle !== "open" ||
+        resource.status.requirementAssociation?.state === "linked"
+      ) {
+        return undefined;
+      }
+      const blockers = [
+        ...(resource.status.mergeability === "conflicted"
+          ? ["Merge conflict"]
+          : []),
+        ...(resource.status.reviewThreads === "unresolved"
+          ? ["Unresolved review threads"]
+          : []),
+      ];
+      return {
+        title:
+          `${resource.spec.identity.repository} #` +
+          resource.spec.identity.number,
+        status: blockers.length > 0 ? blockers.join(" · ") : "Open",
+        detail: resource.status.requirementAssociation?.state === "prompted"
+          ? "Waiting for Requirement association"
+          : "Standalone PullRequest",
+        tone: resource.status.mergeability === "conflicted"
+          ? "error"
+          : resource.status.reviewThreads === "unresolved"
+          ? "warning"
+          : "default",
+      };
     },
   };
 }

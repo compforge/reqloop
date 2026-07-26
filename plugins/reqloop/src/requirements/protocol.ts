@@ -33,6 +33,20 @@ export interface Requirement extends RequirementSummary {
   readonly acceptanceCriteria?: readonly string[];
 }
 
+export interface RequirementSpec {
+  readonly identity: RequirementIdentity;
+  readonly title: string;
+  readonly description?: string;
+  readonly acceptanceCriteria?: readonly string[];
+}
+
+export interface RequirementStatus {
+  readonly externalState?: RequirementState;
+  readonly assignee?: string;
+  readonly updatedAt?: string;
+  readonly url?: string;
+}
+
 export interface RequirementListQuery {
   readonly text?: string;
   readonly limit?: number;

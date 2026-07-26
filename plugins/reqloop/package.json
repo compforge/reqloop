@@ -1,6 +1,6 @@
 {
   "name": "@qiankunli/baton-plugin-reqloop",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "private": true,
   "description": "Requirement-loop coordination plugin for Baton.",
   "type": "module",

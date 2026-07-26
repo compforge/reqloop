@@ -1,6 +1,7 @@
 import type {
   Command,
   PluginCommandResult,
+  ResourceClient,
 } from "@qiankun01/baton-plugin";
 
 import type {
@@ -8,6 +9,7 @@ import type {
   RequirementConnector,
   RequirementIdentity,
 } from "./protocol.ts";
+import { upsertRequirement } from "./resource.ts";
 
 const REQUIREMENT_LIST_LIMIT = 50;
 
@@ -73,6 +75,7 @@ function decodeRequirementIdentity(value: string): RequirementIdentity {
 
 export function createRequirementsCommand(
   connectors: readonly RequirementConnector[] = [],
+  resources?: ResourceClient,
 ): Command {
   const sources = new Set(connectors.map(({ source }) => source));
   if (sources.size !== connectors.length) {
@@ -98,9 +101,9 @@ export function createRequirementsCommand(
             `requirement source is not configured: ${identity.source}`,
           );
         }
-        return message(
-          requirementDetail(await connector.get(identity)),
-        );
+        const requirement = await connector.get(identity);
+        if (resources) upsertRequirement(resources, requirement);
+        return message(requirementDetail(requirement));
       }
       const text = input.argument.trim();
       const requirements = (

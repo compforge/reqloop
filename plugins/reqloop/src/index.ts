@@ -9,6 +9,9 @@ import {
 import type { RequirementConnector } from "./requirements/protocol.ts";
 import { createRequirementsCommand } from "./requirements/command.ts";
 import {
+  createRequirementController,
+} from "./requirements/controller.ts";
+import {
   createMeegoRequirementConnectors,
 } from "./requirements/connectors/meego.ts";
 import {
@@ -24,7 +27,7 @@ import type {
 import { upsertPullRequestReview } from "./pull-requests/resource.ts";
 
 export const REQLOOP_PLUGIN_ID = "qiankunli/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.1.6";
+export const REQLOOP_PACKAGE_VERSION = "0.1.7";
 
 function currentRepo(context: PluginActivationContext): string {
   const cwd = context.session.cwd;
@@ -50,8 +53,9 @@ export function createReqloopPackage(options: {
           ? [options.requirementConnector]
           : createMeegoRequirementConnectors());
       context.registerCommand(
-        createRequirementsCommand(requirementConnectors),
+        createRequirementsCommand(requirementConnectors, context.resources),
       );
+      context.registerController(createRequirementController());
       const forgeConnectors =
         options.forgeConnectors ?? createForgeConnectors();
       const reviewConnector =
@@ -86,4 +90,6 @@ export * from "./pull-requests/protocol.ts";
 export * from "./pull-requests/review.ts";
 export * from "./pull-requests/resource.ts";
 export * from "./requirements/connectors/meego.ts";
+export * from "./requirements/controller.ts";
 export * from "./requirements/protocol.ts";
+export * from "./requirements/resource.ts";

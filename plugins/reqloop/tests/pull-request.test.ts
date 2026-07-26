@@ -5,6 +5,7 @@ import {
 } from "bun:test";
 
 import type {
+  BatonSnapshot,
   Resource,
   ResourceClient,
 } from "@qiankun01/baton-plugin";
@@ -17,6 +18,9 @@ import {
   type PullRequestObservation,
   type PullRequestSpec,
   type PullRequestStatus,
+  REQUIREMENT_RESOURCE_KIND,
+  type RequirementSpec,
+  type RequirementStatus,
   upsertPullRequestObservation,
 } from "../src/index.ts";
 
@@ -25,13 +29,23 @@ function resourceClient(): {
   readonly current: () => Readonly<
     Resource<PullRequestSpec, PullRequestStatus>
   > | undefined;
+  readonly addRequirement: (resourceId?: string) => void;
 } {
   let resource:
     | Readonly<Resource<PullRequestSpec, PullRequestStatus>>
     | undefined;
+  let requirement:
+    | Readonly<Resource<RequirementSpec, RequirementStatus>>
+    | undefined;
   const client = {
-    list() {
-      return resource ? [resource] : [];
+    list(kind?: string) {
+      if (kind === REQUIREMENT_RESOURCE_KIND) {
+        return requirement ? [requirement] : [];
+      }
+      if (kind === PULL_REQUEST_RESOURCE_KIND) {
+        return resource ? [resource] : [];
+      }
+      return [resource, requirement].filter(Boolean);
     },
     create(
       kind: string,
@@ -72,7 +86,51 @@ function resourceClient(): {
       return resource;
     },
   } as unknown as ResourceClient;
-  return { client, current: () => resource };
+  return {
+    client,
+    current: () => resource,
+    addRequirement(resourceId = "req_active") {
+      requirement = {
+        kind: REQUIREMENT_RESOURCE_KIND,
+        metadata: {
+          resourceId,
+          batonSessionId: "bs_test",
+          pluginInstanceId: "pi_reqloop",
+          generation: 1,
+          resourceVersion: 1,
+          createdAt: "2026-07-26T00:00:00.000Z",
+          updatedAt: "2026-07-26T00:00:00.000Z",
+        },
+        spec: {
+          identity: {
+            source: "meego",
+            category: "story",
+            id: "REQ-7",
+          },
+          title: "Requirement intake",
+        },
+        status: { externalState: "in_progress" },
+      };
+    },
+  };
+}
+
+function batonSnapshot(
+  pluginInteractions: BatonSnapshot["pluginInteractions"] = [],
+): BatonSnapshot {
+  return {
+    session: {
+      batonSessionId: "bs_test",
+      runState: "idle",
+      revision: 0,
+    },
+    activeTurns: [],
+    inputs: [],
+    harnessTargets: [],
+    pendingInteractions: [],
+    pluginInteractions,
+    turns: [],
+  };
 }
 
 const observation: PullRequestObservation = {
@@ -108,6 +166,7 @@ describe("PullRequest Resource", () => {
     expect(created.status).toEqual({
       lifecycle: "open",
       reviewThreads: "unresolved",
+      reviewActivityKey: null,
       mergeability: "ready",
       observedAt: "2026-07-26T08:00:00.000Z",
     });
@@ -117,11 +176,39 @@ describe("PullRequest Resource", () => {
     expect(resources.current()).toEqual(repeated);
   });
 
-  test("keeps PullRequest as a supporting Resource outside the Board", () => {
+  test("shows only standalone open PullRequests on the Board", () => {
     const controller = createPullRequestController();
+    const resources = resourceClient();
+    const pullRequest = upsertPullRequestObservation(
+      resources.client,
+      observation,
+    );
 
     expect(controller.resourceKind).toBe(PULL_REQUEST_RESOURCE_KIND);
-    expect(controller.present).toBeUndefined();
+    expect(controller.present?.(pullRequest)).toEqual({
+      title: "qiankunli/reqloop #17",
+      status: "Unresolved review threads",
+      detail: "Standalone PullRequest",
+      tone: "warning",
+    });
+    expect(controller.present?.({
+      ...pullRequest,
+      status: {
+        ...pullRequest.status,
+        requirementAssociation: {
+          state: "linked",
+          requirement: {
+            resourceKind: REQUIREMENT_RESOURCE_KIND,
+            resourceId: "req_active",
+            resourceOwner: "plugin",
+          },
+        },
+      },
+    })).toBeUndefined();
+    expect(controller.present?.({
+      ...pullRequest,
+      status: { ...pullRequest.status, lifecycle: "merged" },
+    })).toBeUndefined();
   });
 
   test("refreshes a PullRequest through its configured Forge", async () => {
@@ -161,8 +248,100 @@ describe("PullRequest Resource", () => {
     expect(resources.current()?.status).toEqual({
       lifecycle: "merged",
       reviewThreads: "resolved",
+      reviewActivityKey: null,
       mergeability: "ready",
       observedAt: "2026-07-26T10:00:00.000Z",
     });
+  });
+
+  test("asks once whether a PullRequest joins a Requirement", async () => {
+    const resources = resourceClient();
+    resources.addRequirement();
+    const pullRequest = upsertPullRequestObservation(
+      resources.client,
+      observation,
+    );
+    const controller = createPullRequestController(resources.client);
+
+    const prompted = await controller.reconcile(
+      batonSnapshot(),
+      pullRequest,
+    );
+    expect(prompted?.output).toMatchObject({
+      kind: "interaction",
+      title: "Associate pull request",
+      options: [
+        {
+          optionId: "requirement:req_active",
+          label: "Requirement intake",
+        },
+        {
+          optionId: "standalone",
+          label: "Keep standalone",
+          role: "reject",
+        },
+      ],
+    });
+    expect(resources.current()?.status.requirementAssociation).toEqual({
+      state: "prompted",
+      decisionKey: expect.any(String),
+    });
+    if (prompted?.output?.kind !== "interaction") {
+      throw new Error("expected association Interaction");
+    }
+
+    const current = resources.current()!;
+    await controller.reconcile(
+      batonSnapshot([{
+        interactionId: "ix_associate",
+        decisionKey: prompted.output.decisionKey,
+        resource: {
+          resourceKind: PULL_REQUEST_RESOURCE_KIND,
+          resourceId: current.metadata.resourceId,
+          resourceOwner: "plugin",
+        },
+        outcome: {
+          kind: "answered",
+          values: ["requirement:req_active"],
+        },
+      }]),
+      current,
+    );
+    expect(resources.current()?.status.requirementAssociation).toEqual({
+      state: "linked",
+      requirement: {
+        resourceKind: REQUIREMENT_RESOURCE_KIND,
+        resourceId: "req_active",
+        resourceOwner: "plugin",
+      },
+    });
+    expect(controller.present?.(resources.current()!)).toBeUndefined();
+  });
+
+  test("does not poll a merged PullRequest again", async () => {
+    const resources = resourceClient();
+    const merged = upsertPullRequestObservation(resources.client, {
+      ...observation,
+      lifecycle: "merged",
+    });
+    let calls = 0;
+    const forge: ForgeConnector = {
+      source: "github-primary",
+      provider: "github",
+      async list() {
+        return [];
+      },
+      async get() {
+        calls += 1;
+        return observation;
+      },
+    };
+
+    await createPullRequestController(
+      resources.client,
+      [forge],
+    ).reconcile(batonSnapshot(), merged);
+
+    expect(calls).toBe(0);
   });
 });

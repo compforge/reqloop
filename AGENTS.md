@@ -22,7 +22,7 @@ reqloop/
 │       ├── .baton-plugin/
 │       │   └── plugin.json
 │       ├── src/
-│       │   ├── requirements/       # Requirement 中立模型、Connector port 与 /requirements
+│       │   ├── requirements/       # Requirement Resource、Controller、Connector 与命令
 │       │   └── pull-requests/      # PullRequest Resource、Controller、Forge 与 review Connector
 │       ├── tests/
 │       ├── package.json

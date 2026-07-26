@@ -1,3 +1,5 @@
+import type { ResourceRef } from "@qiankun01/baton-plugin";
+
 /** Stable external identity shared by GitHub PRs and GitLab MRs. */
 export interface PullRequestIdentity {
   /** Configured ForgeConnector source. */
@@ -10,6 +12,7 @@ export interface PullRequestIdentity {
 
 export type PullRequestLifecycle = "open" | "merged" | "closed";
 export type PullRequestReviewThreads =
+  | "none"
   | "unresolved"
   | "resolved"
   | "unknown";
@@ -22,12 +25,32 @@ export interface PullRequestSpec {
   readonly identity: PullRequestIdentity;
 }
 
+export type PullRequestRequirementAssociation =
+  | {
+      readonly state: "prompted";
+      readonly decisionKey: string;
+    }
+  | {
+      readonly state: "linked";
+      readonly requirement: ResourceRef;
+    }
+  | {
+      readonly state: "standalone";
+    };
+
 /** Empty status means the external PR/MR has not been observed yet. */
 export interface PullRequestStatus {
   readonly lifecycle?: PullRequestLifecycle;
   readonly reviewThreads?: PullRequestReviewThreads;
+  /** Opaque Forge-derived fingerprint; a change means review activity changed. */
+  readonly reviewActivityKey?: string | null;
   readonly mergeability?: PullRequestMergeability;
   readonly observedAt?: string;
+  /**
+   * Absence means the association question has not been asked. `prompted`
+   * remains durable even if the interaction is cancelled, so it is asked once.
+   */
+  readonly requirementAssociation?: PullRequestRequirementAssociation;
   readonly review?: PullRequestReviewStatus;
 }
 
@@ -35,6 +58,7 @@ export interface PullRequestObservation {
   readonly identity: PullRequestIdentity;
   readonly lifecycle: PullRequestLifecycle;
   readonly reviewThreads: PullRequestReviewThreads;
+  readonly reviewActivityKey?: string;
   readonly mergeability: PullRequestMergeability;
   readonly observedAt: string;
 }

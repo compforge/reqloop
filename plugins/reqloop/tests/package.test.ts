@@ -32,6 +32,7 @@ import reqloop, {
   type PullRequestSpec,
   type PullRequestStatus,
   type RequirementConnector,
+  REQUIREMENT_RESOURCE_KIND,
 } from "../src/index.ts";
 
 const roots: string[] = [];
@@ -203,7 +204,10 @@ describe("ReqLoop PluginPackage", () => {
       commandId: "requirements",
       name: "requirements",
     });
-    expect(resourceKinds).toEqual([PULL_REQUEST_RESOURCE_KIND]);
+    expect(resourceKinds).toEqual([
+      REQUIREMENT_RESOURCE_KIND,
+      PULL_REQUEST_RESOURCE_KIND,
+    ]);
     expect(await command!.execute({ argument: "intake" })).toEqual({
       kind: "picker",
       title: "Requirements · meego",
@@ -487,8 +491,10 @@ describe("ReqLoop PluginPackage", () => {
       | undefined;
 
     const resources = {
-      list() {
-        return resource ? [resource] : [];
+      list(kind?: string) {
+        return kind === PULL_REQUEST_RESOURCE_KIND && resource
+          ? [resource]
+          : [];
       },
       create(
         kind: string,

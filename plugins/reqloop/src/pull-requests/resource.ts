@@ -72,6 +72,11 @@ export function upsertPullRequestObservation(
   return resources.patchStatus(resource, {
     lifecycle: observation.lifecycle,
     reviewThreads: observation.reviewThreads,
+    reviewActivityKey:
+      observation.reviewActivityKey ??
+      (observation.reviewThreads === "unknown"
+        ? resource.status.reviewActivityKey ?? null
+        : null),
     mergeability: observation.mergeability,
     observedAt: observation.observedAt,
   });
