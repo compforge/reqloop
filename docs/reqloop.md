@@ -144,6 +144,12 @@ Connector 只做三件事：
 Connector 不负责 Baton session 路由、Board 渲染、Harness 选择、完成条件或跨领域编排。
 这些职责分别属于 Baton 和 reqloop domain。
 
+Connector port 不依赖具体传输方式。首版 Meego adapter 通过公开发布的 Meegle CLI 调用平台：
+它复用 CLI 已有的 OAuth、系统钥匙串、profile 和结构化 JSON 输出，避开 Meego Plugin
+OpenAPI 的权限发布与空间安装链路；代价是使用者需要额外安装 CLI 并建立个人登录态。后续若
+OpenAPI 接入条件成熟，只替换 Meego adapter，不改变 Requirement 模型、Command 或
+ReqLoopRun。
+
 实现可以叫 `MeegoRequirementConnector`、`TeambitionRequirementConnector`、
 `GitHubForgeConnector`、`GitLabForgeConnector`、`BitsDeploymentConnector`。它们由 reqloop
 内部 registry 根据 PluginInstance 配置选择；
@@ -155,14 +161,15 @@ adapter。reqloop 复用这套模型原则，但不导入 devloop 的实现或�
 
 ### 配置与多实例
 
-一个 reqloop PluginInstance 可以配置多个具名 Connector，例如一个需求源、dev/test/prod
-部署目标和多个 verdict source。Credential 仍由 Baton 按 reqloop 声明的 capability 注入，
-但配置 schema 和使用方式由 reqloop 定义。
+一个 reqloop PluginInstance 可以配置多个具名 Connector，例如多个需求源、dev/test/prod
+部署目标和多个 verdict source。配置 schema 和使用方式由 reqloop 定义；Credential 当前随
+具名 Connector 存在本机配置中，后续再迁移到 Baton 的 secret binding。
 
-用户级连接配置与私有持久状态分开：配置由 Baton 的 Plugin 配置承载；cursor、缓存和平台侧
-opaque identity 由 Baton 提供的 host-owned data 目录承载。该目录会位于 `~/.baton` 下，但在
-Baton 明确 `PluginActivationContext.dataDir` 及迁移契约前，reqloop 不硬编码具体路径。
-ReqLoopRun 仍是 BatonSession-scoped PluginResource，不能搬进这个私有目录。
+首版用户级连接配置临时独立存放在 `~/.baton/plugins/reqloop.json`，以 source 为 key
+同时启用多个 Connector；Meego source 只保存 `projectKey`、可选 CLI profile 和 category
+列表，OAuth token 由 Meegle CLI 管理。它不与其它 Plugin 混入同一个配置文件。待 Baton
+提供正式的 Plugin config/data 路径契约后再迁移，reqloop 的运行时状态仍不能进入配置文件。
+ReqLoopRun 始终是 BatonSession-scoped PluginResource。
 
 首版 Connector 随 reqloop package 交付，不急于开放第三方 Connector SDK。等出现独立发布、
 版本兼容和多团队贡献的真实需求后，再设计 reqloop 自己的扩展机制，避免提前在 Baton 中恢复

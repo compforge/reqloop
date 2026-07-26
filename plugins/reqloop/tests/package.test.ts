@@ -10,6 +10,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -24,6 +25,8 @@ import type {
 import reqloop, {
   createReqloopPackage,
   DevloopReviewConnector,
+  loadMeegoRequirementConfigs,
+  MeegleCliRequirementConnector,
   REQLOOP_REVIEW_WATCH_KIND,
   type RequirementConnector,
 } from "../src/index.ts";
@@ -112,21 +115,26 @@ describe("ReqLoop PluginPackage", () => {
     const root = testRoot();
     const calls: string[] = [];
     const requirementConnector: RequirementConnector = {
+      source: "meego",
       provider: "meego",
       async list(query) {
         calls.push(`list:${query?.text ?? ""}:${query?.limit ?? ""}`);
         return [
           {
+            source: "meego",
             id: "REQ-7",
+            category: "story",
             title: "Add requirement intake",
             state: "in_progress",
           },
         ];
       },
-      async get(requirementId) {
-        calls.push(`get:${requirementId}`);
+      async get(identity) {
+        calls.push(
+          `get:${identity.source}:${identity.category}:${identity.id}`,
+        );
         return {
-          id: requirementId,
+          ...identity,
           title: "Add requirement intake",
           state: "in_progress",
           description: "Expose a provider-neutral requirement command.",
@@ -153,21 +161,253 @@ describe("ReqLoop PluginPackage", () => {
       options: [
         {
           name: "Add requirement intake",
-          description: "REQ-7 · in_progress",
-          value: "REQ-7",
+          description: "meego · story · REQ-7 · in_progress",
+          value: '["meego","story","REQ-7"]',
         },
       ],
     });
     expect(
       await command!.execute({
         argument: "intake",
-        selectedValue: "REQ-7",
+        selectedValue: '["meego","story","REQ-7"]',
       }),
     ).toMatchObject({
       kind: "message",
       text: expect.stringContaining("Acceptance criteria:\n- List requirements"),
     });
-    expect(calls).toEqual(["list:intake:50", "get:REQ-7"]);
+    expect(calls).toEqual([
+      "list:intake:50",
+      "get:meego:story:REQ-7",
+    ]);
+  });
+
+  test("loads multiple Meego requirement sources from standalone config", () => {
+    const path = join(testRoot(), "reqloop.json");
+    writeFileSync(
+      path,
+      JSON.stringify({
+        version: 1,
+        requirements: {
+          primary: {
+            provider: "meego",
+            projectKey: "primary-project",
+          },
+          secondary: {
+            provider: "meego",
+            projectKey: "secondary-project",
+            profile: "secondary-profile",
+            categories: ["story"],
+          },
+        },
+      }),
+    );
+
+    expect(loadMeegoRequirementConfigs(path)).toEqual([
+      {
+        source: "primary",
+        provider: "meego",
+        projectKey: "primary-project",
+        categories: ["story", "issue"],
+      },
+      {
+        source: "secondary",
+        provider: "meego",
+        projectKey: "secondary-project",
+        profile: "secondary-profile",
+        categories: ["story"],
+      },
+    ]);
+  });
+
+  test("maps Meegle CLI query and detail output to requirements", async () => {
+    const calls: string[][] = [];
+    const connector = new MeegleCliRequirementConnector(
+      {
+        source: "llmops",
+        provider: "meego",
+        projectKey: "llmops",
+        profile: "work",
+        categories: ["story", "issue"],
+      },
+      async (args) => {
+        calls.push([...args]);
+        const category = args.join(" ").includes("`issue`")
+          ? "issue"
+          : "story";
+        if (args[1] === "query") {
+          return {
+            data: {
+              "1": [{
+                moql_field_list: [
+                  {
+                    key: "work_item_id",
+                    value: {
+                      long_value: category === "story" ? 1001 : 2002,
+                    },
+                  },
+                  {
+                    key: "name",
+                    value: {
+                      string_value: category === "story"
+                        ? "Requirement intake"
+                        : "Fix requirement picker",
+                    },
+                  },
+                  {
+                    key: "work_item_status",
+                    value: {
+                      key_label_value_list: [{
+                        key: category === "story" ? "doing" : "open",
+                        label: category === "story" ? "开发中" : "待处理",
+                      }],
+                    },
+                  },
+                  {
+                    key: "current_status_operator",
+                    value: {
+                      user_value_list: [{ name_cn: "Owner" }],
+                    },
+                  },
+                  {
+                    key: "updated_at",
+                    value: {
+                      string_value: category === "story"
+                        ? "2026-01-01 10:00:00"
+                        : "2026-01-02 10:00:00",
+                    },
+                  },
+                ],
+              }],
+            },
+          };
+        }
+        return {
+          work_item_attribute: {
+            work_item_id: "1001",
+            work_item_name: "Requirement intake",
+            work_item_status: { key: "doing", name: "开发中" },
+            update_time: "2026-01-01T10:00:00+08:00",
+            role_members: [{
+              key: "operator",
+              members: [{ name: "Owner" }],
+            }],
+          },
+          work_item_fields: [
+            {
+              key: "description",
+              value: "Normalize requirement platforms.",
+            },
+            {
+              key: "acceptance_criteria",
+              value: "- List requirements\n- Read details",
+            },
+          ],
+        };
+      },
+    );
+
+    expect(await connector.list({ text: "requirement", limit: 10 })).toEqual([
+      {
+        source: "llmops",
+        category: "issue",
+        id: "2002",
+        title: "Fix requirement picker",
+        state: "open",
+        assignee: "Owner",
+        updatedAt: "2026-01-02 10:00:00",
+      },
+      {
+        source: "llmops",
+        category: "story",
+        id: "1001",
+        title: "Requirement intake",
+        state: "in_progress",
+        assignee: "Owner",
+        updatedAt: "2026-01-01 10:00:00",
+      },
+    ]);
+    expect(
+      await connector.get({
+        source: "llmops",
+        category: "story",
+        id: "1001",
+      }),
+    ).toEqual({
+      source: "llmops",
+      category: "story",
+      id: "1001",
+      title: "Requirement intake",
+      state: "in_progress",
+      assignee: "Owner",
+      updatedAt: "2026-01-01T10:00:00+08:00",
+      description: "Normalize requirement platforms.",
+      acceptanceCriteria: ["List requirements", "Read details"],
+    });
+    expect(calls).toHaveLength(3);
+    expect(calls[0]).toContain("--profile");
+    expect(calls[2]).toContain('["description"]');
+  });
+
+  test("aggregates active requirement sources and routes detail reads", async () => {
+    const calls: string[] = [];
+    const connector = (
+      source: string,
+      category: string,
+      id: string,
+    ): RequirementConnector => ({
+      source,
+      provider: "test",
+      async list() {
+        calls.push(`list:${source}`);
+        return [{
+          source,
+          category,
+          id,
+          title: `${source} requirement`,
+          state: "open",
+        }];
+      },
+      async get(identity) {
+        calls.push(`get:${source}:${identity.id}`);
+        return {
+          ...identity,
+          title: `${source} requirement`,
+          state: "open",
+        };
+      },
+    });
+    let command: PluginCommandContribution | undefined;
+    const context = {
+      session: { batonSessionId: "bs_test", cwd: testRoot() },
+      registerCommand(contribution: PluginCommandContribution) {
+        command = contribution;
+      },
+    } as unknown as PluginActivationContext;
+
+    await createReqloopPackage({
+      requirementConnectors: [
+        connector("primary", "story", "REQ-1"),
+        connector("secondary", "issue", "BUG-2"),
+      ],
+    }).activate(context);
+
+    expect(await command!.execute({ argument: "" })).toMatchObject({
+      kind: "picker",
+      title: "Requirements · 2 sources",
+      options: [
+        { value: '["primary","story","REQ-1"]' },
+        { value: '["secondary","issue","BUG-2"]' },
+      ],
+    });
+    await command!.execute({
+      argument: "",
+      selectedValue: '["secondary","issue","BUG-2"]',
+    });
+    expect(calls).toEqual([
+      "list:primary",
+      "list:secondary",
+      "get:secondary:BUG-2",
+    ]);
   });
 
   test("persists the activation baseline and proposes actionable follow-up", async () => {
@@ -266,6 +506,7 @@ describe("ReqLoop PluginPackage", () => {
     } as unknown as PluginActivationContext;
     const plugin = createReqloopPackage({
       connector,
+      requirementConnectors: [],
     });
 
     await plugin.activate(context);
