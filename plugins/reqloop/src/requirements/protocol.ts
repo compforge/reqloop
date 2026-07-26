@@ -45,6 +45,14 @@ export interface RequirementStatus {
   readonly assignee?: string;
   readonly updatedAt?: string;
   readonly url?: string;
+  /** Board-facing projection of linked, non-closed PullRequest Resources. */
+  readonly linkedPullRequests?: {
+    readonly total: number;
+    readonly open: number;
+    readonly merged: number;
+    readonly conflicted: number;
+    readonly unresolvedReviewThreads: number;
+  };
   /** Deduplicates the non-durable reminder for one ready set of linked PRs. */
   readonly closeReminderKey?: string;
 }

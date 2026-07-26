@@ -65,7 +65,8 @@ Package installation makes it available to Baton. To use it in a session, start
 `baton`, enter `/plugins`, open **Installed**, select the Package, and choose
 **Enable in this session**. Turn Coach reviews completed turns and recommends the
 next step; ReqLoop observes devloop review completion for the session's current
-repository and proposes a Harness follow-up when comments need inspection.
+repository, asks the user to accept or ignore actionable comments once, and
+proposes a Harness fix only when accepted.
 
 ## Repository layout
 

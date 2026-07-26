@@ -57,7 +57,8 @@ baton plugins marketplace add /path/to/reqloop
 
 安装 Package 后，启动 `baton`，输入 `/plugins`，进入 **Installed**，选择对应 Package，再执行
 **Enable in this session**。Turn Coach 会复盘已完成的 turn 并建议下一步；ReqLoop 会观察当前
-Session 仓库中的 devloop review 终态，在 comments 需要检查时提供一条驱动当前 Harness 的建议输入。
+Session 仓库中的 devloop review 终态，对可处理 comments 只询问一次 accept 或 ignore，并仅在
+accept 后提供一条驱动当前 Harness 修复的建议输入。
 
 ## 仓库结构
 

@@ -90,17 +90,21 @@ export class GitHubForgeConnector implements ForgeConnector {
         `/pulls?state=all&sort=created&direction=desc&per_page=${count}`,
       { headers: this.#headers() },
     );
-    return records("GitHub PullRequests", data).map((pullRequest, index) => {
-      const number = pullRequest.number;
-      if (!Number.isSafeInteger(number) || (number as number) < 1) {
-        throw new Error(`GitHub PullRequests[${index}].number is invalid`);
-      }
-      return {
-        source: this.source,
-        repository,
-        number: number as number,
-      };
-    });
+    return records("GitHub PullRequests", data)
+      .filter((pullRequest) =>
+        pullRequest.state === "open" || Boolean(pullRequest.merged_at)
+      )
+      .map((pullRequest, index) => {
+        const number = pullRequest.number;
+        if (!Number.isSafeInteger(number) || (number as number) < 1) {
+          throw new Error(`GitHub PullRequests[${index}].number is invalid`);
+        }
+        return {
+          source: this.source,
+          repository,
+          number: number as number,
+        };
+      });
   }
 
   async get(identity: PullRequestIdentity): Promise<PullRequest> {

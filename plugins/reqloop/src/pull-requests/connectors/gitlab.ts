@@ -94,8 +94,11 @@ export class GitLabForgeConnector implements ForgeConnector {
         `/merge_requests?state=all&order_by=created_at&sort=desc&per_page=${count}`,
       { headers: this.#headers() },
     );
-    return records("GitLab MergeRequests", data).map(
-      (mergeRequest, index) => {
+    return records("GitLab MergeRequests", data)
+      .filter((mergeRequest) =>
+        mergeRequest.state === "opened" || mergeRequest.state === "merged"
+      )
+      .map((mergeRequest, index) => {
         const number = mergeRequest.iid;
         if (!Number.isSafeInteger(number) || (number as number) < 1) {
           throw new Error(`GitLab MergeRequests[${index}].iid is invalid`);
@@ -105,8 +108,7 @@ export class GitLabForgeConnector implements ForgeConnector {
           repository,
           number: number as number,
         };
-      },
-    );
+      });
   }
 
   async get(identity: PullRequestIdentity): Promise<PullRequest> {

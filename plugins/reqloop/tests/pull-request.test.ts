@@ -16,6 +16,7 @@ import {
   PULL_REQUEST_RESOURCE_KIND,
   pullRequestResourceId,
   type PullRequest,
+  type PullRequestReviewConnector,
   type PullRequestSpec,
   type PullRequestStatus,
   REQUIREMENT_RESOURCE_KIND,
@@ -318,31 +319,94 @@ describe("PullRequest Resource", () => {
     expect(controller.present?.(resources.current()!)).toBeUndefined();
   });
 
-  test("does not poll a merged PullRequest again", async () => {
+  test("does not poll merged or closed PullRequests again", async () => {
+    for (const lifecycle of ["merged", "closed"] as const) {
+      const resources = resourceClient();
+      const terminal = upsertPullRequest(resources.client, {
+        ...observation,
+        lifecycle,
+      });
+      let calls = 0;
+      const forge: ForgeConnector = {
+        source: "github-primary",
+        provider: "github",
+        async list() {
+          return [];
+        },
+        async get() {
+          calls += 1;
+          return observation;
+        },
+      };
+
+      await createPullRequestController(
+        resources.client,
+        [forge],
+      ).reconcile(batonSnapshot(), terminal);
+
+      expect(calls).toBe(0);
+    }
+  });
+
+  test("records an ignored review decision and does not remind again", async () => {
     const resources = resourceClient();
-    const merged = upsertPullRequest(resources.client, {
-      ...observation,
-      lifecycle: "merged",
-    });
-    let calls = 0;
-    const forge: ForgeConnector = {
-      source: "github-primary",
-      provider: "github",
-      async list() {
-        return [];
-      },
-      async get() {
-        calls += 1;
-        return observation;
+    const pullRequest = upsertPullRequest(
+      resources.client,
+      observation,
+    );
+    const reviewConnector: PullRequestReviewConnector = {
+      latest() {
+        return {
+          identity: observation.identity,
+          key: "review_ignored",
+          status: "success",
+          sha: "head",
+          count: 1,
+          failed: 0,
+          findings: [{
+            path: "src/app.ts",
+            message: "review comment",
+          }],
+        };
       },
     };
-
-    await createPullRequestController(
+    const controller = createPullRequestController(
       resources.client,
-      [forge],
-    ).reconcile(batonSnapshot(), merged);
+      [],
+      reviewConnector,
+    );
+    const prompted = await controller.reconcile(
+      batonSnapshot(),
+      pullRequest,
+    );
+    if (prompted?.output?.kind !== "interaction") {
+      throw new Error("expected review Interaction");
+    }
 
-    expect(calls).toBe(0);
+    await controller.reconcile(
+      batonSnapshot([{
+        interactionId: "ix_ignore",
+        decisionKey: prompted.output.decisionKey,
+        resource: {
+          resourceKind: PULL_REQUEST_RESOURCE_KIND,
+          resourceId: pullRequest.metadata.resourceId,
+          resourceOwner: "plugin",
+        },
+        outcome: { kind: "answered", values: ["ignore"] },
+      }]),
+      resources.current()!,
+    );
+
+    expect(resources.current()?.status.reviewDecision).toEqual({
+      reviewKey: "review_ignored",
+      choice: "ignore",
+    });
+    expect(
+      await controller.reconcile(
+        batonSnapshot(),
+        resources.current()!,
+      ),
+    ).toBeUndefined();
   });
 
   test("discovers missing PullRequest Resources from its cron Source", async () => {

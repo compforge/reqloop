@@ -64,6 +64,7 @@ Requirement
     ├── deployments
     ├── verdicts          review / e2e / eval / perf
     ├── harnessResults
+    ├── linkedPullRequests 关联 PR 的 Board 汇总
     ├── conditions
     └── observedGeneration
 ```
@@ -79,7 +80,7 @@ Requirement，但只有用户认可后才更新 `spec`。
 PR/MR 不写入 Requirement `spec`：它们是否出现、关联到哪个 Requirement、当前是否终止，
 都是执行过程中形成的事实。关联决定保存在 PullRequest status，Requirement 侧按 ResourceRef
 派生汇总，避免双写。`completionPolicy` 只表达期望，
-例如“没有关联 PR/MR，或所有已关联 PR/MR 均已 merged / closed”。这个条件只说明 PR/MR
+例如“没有关联 PR/MR，或所有已关联 PR/MR 均已 merged”。这个条件只说明 PR/MR
 不再阻塞收尾；初始状态同样没有 PR/MR，因此仍须与开发结果、验收等条件组合，不能单独让新建
 Requirement 立即进入可关闭状态。
 
@@ -101,6 +102,7 @@ PullRequest
     ├── requirementAssociation
     │   └── prompted / linked(requirement ref) / standalone
     ├── review            devloop review key / status / sha / counts
+    ├── reviewDecision    review key + accept / ignore
     └── observedAt
 ```
 
@@ -121,8 +123,8 @@ Interaction 被取消，持久的 `prompted` 也阻止系统在每次 reconcile 
 
 Board 展示活跃 Requirement，也单独展示孤立的活跃 PullRequest。PullRequest 关联 Requirement
 后仍保持独立 Resource 和生命周期，但 Board 以 Requirement 为主，不再重复生成 PR 卡片；
-关联 PR 只作为完成建议的辅助证据。已 merged 的 PullRequest 从 Board 消失且不再轮询 Forge；closed
-但未 merged 的对象可以继续低成本观察，以识别 reopen。
+Requirement status 汇总关联 PR 的 lifecycle、merge conflict 和 unresolved review thread。
+已 merged 的 PullRequest 从 Board 消失且不再轮询 Forge；closed PullRequest 不再发现或轮询。
 
 ### 状态、事件、决定与动作
 
@@ -160,7 +162,7 @@ Interaction 询问一次，回答写回 `requirementAssociation`。系统事实�
 | 动作 | 例子 | 默认审批边界 |
 |---|---|---|
 | Observe | 查询 Forge、需求或部署状态并更新 status | 只读，可自动执行 |
-| Recommend | 建议 Harness 检查 review finding | 生成 proposed-input，由用户确认或编辑 |
+| Recommend | 用户 accept review 后建议 Harness 判断并修复 finding | 生成 proposed-input，由用户确认或编辑 |
 | Decide | 选择 PR 归属、确认是否关闭 Requirement | durable Interaction，一次决定持久复用 |
 | Mutate | 合并 PR、关闭外部需求、部署到环境 | 需要明确授权；以后只能在限定 Resource、环境、Connector 和有效期的策略内自动化 |
 
@@ -168,9 +170,11 @@ Interaction 询问一次，回答写回 `requirementAssociation`。系统事实�
 保留意图、结果和最新外部观测；副作用不确定时先重新观察，不能盲目重试。
 
 PullRequestController 的 cron Source 负责发现：每次到期先通过 `ForgeConnector.list()` 列出
-当前仓库的 PullRequest，并为新 identity 创建缺失 Resource；Baton 随后把全部当前
+当前仓库的 open / merged PullRequest，并为新 identity 创建缺失 Resource；Baton 随后把全部当前
 PullRequest Resource 放入同一 reconcile queue，由逐 Resource 的 `ForgeConnector.get()` 刷新
-状态。发现不是独立 EventSource，也不需要 Candidate 或 Discovery Resource；未来其它发现手段
+状态。merged 保留为 Requirement 收尾证据，但 merged 和 closed 都是终止状态，不再继续轮询；
+closed 也不会被发现。发现不是独立 EventSource，也不需要
+Candidate 或 Discovery Resource；未来其它发现手段
 仍应落成同一种 PullRequest，再复用同一 reconcile 路径。
 
 ### RequirementController
@@ -345,8 +349,9 @@ review 完成提醒是首个渐进落地的例外适配：devloop 仍在 Harness
 映射为带完整 `source + repository + number` identity 的 PullRequest review observation，
 PullRequestController 通过固定 cron Source 定时重读，并把 review key/status/sha/counts
 持久化到同一个 PullRequest Resource；有 findings、文件失败或 review error 时，先返回
-`interaction` 询问用户是否查看。用户确认后，同一 PullRequest 的下一次 reconcile 才返回
-`proposed-input`，提醒当前 Harness 对照代码检查 comments；选择暂不查看则不驱动 Harness。
+`interaction` 让用户选择 accept 或 ignore。决定按 review key 写入 PullRequest status，两种
+选择都只提醒一次；accept 返回 `proposed-input`，让当前 Harness 判断并修复真实问题，ignore
+不驱动 Harness。
 devloop 的 channel/waiter
 不再是 Baton 内提醒成立的前提；Connector 只消费 `review sha == 当前 checkout HEAD` 的记录，
 且忽略没有开放 PR/MR identity 的本地 review，避免 repo 级 ledger 中其他 worktree 的结果串到
@@ -379,8 +384,8 @@ Harness Work 类型；Harness 的路由、成本、并发、取消和可靠投�
 5. PullRequestController 观察 review thread、merge conflict 与 open / merged / closed；
    当前由 devloop 触发的 review 完成后，`DevloopReviewConnector + cron Source` 也可观察其终态；
    后续由 reqloop 自己发起的远端 review 仍可由 VerdictConnector 配合 `requeueAfter` 查询。
-6. review 要求修改时，Controller 返回包含 review 意见的修复 `proposed-input` Output；用户审核后再次
-   驱动 Harness。
+6. review 要求修改时，Controller 让用户 accept 或 ignore；两种选择都写入 PullRequest status
+   且只提醒一次。accept 返回包含 review 意见的修复 `proposed-input`，用户审核后再次驱动 Harness。
 7. 首期 Completion Policy 在至少存在一个关联 PR、所有关联 PR 已 merged 且 review thread
    状态均为 none 或 resolved 时，吐出一次去重 toast，提醒用户前往需求平台关闭 Requirement。外部关闭由
    Connector 重新观察成功后，不再向 Board 展示该 Requirement；当前阶段不执行外部写操作。

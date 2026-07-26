@@ -56,8 +56,29 @@ function linkedPullRequests(
       status.requirementAssociation.requirement.resourceKind ===
         REQUIREMENT_RESOURCE_KIND &&
       status.requirementAssociation.requirement.resourceId ===
-        requirementResourceId
+        requirementResourceId &&
+      status.lifecycle !== "closed"
     );
+}
+
+function summarizePullRequests(
+  pullRequests: readonly Readonly<
+    Resource<PullRequestSpec, PullRequestStatus>
+  >[],
+): NonNullable<RequirementStatus["linkedPullRequests"]> {
+  return {
+    total: pullRequests.length,
+    open: pullRequests.filter(({ status }) => status.lifecycle === "open")
+      .length,
+    merged: pullRequests.filter(({ status }) => status.lifecycle === "merged")
+      .length,
+    conflicted: pullRequests.filter(({ status }) =>
+      status.mergeability === "conflicted"
+    ).length,
+    unresolvedReviewThreads: pullRequests.filter(({ status }) =>
+      status.reviewThreads === "unresolved"
+    ).length,
+  };
 }
 
 function closeReminderKey(
@@ -132,9 +153,14 @@ export function createRequirementController(
       }
       if (isTerminal(current.status)) return;
 
-      const reminderKey = closeReminderKey(
-        linkedPullRequests(resources, current.metadata.resourceId),
+      const pullRequests = linkedPullRequests(
+        resources,
+        current.metadata.resourceId,
       );
+      current = resources.patchStatus(current, {
+        linkedPullRequests: summarizePullRequests(pullRequests),
+      });
+      const reminderKey = closeReminderKey(pullRequests);
       if (
         !reminderKey ||
         current.status.closeReminderKey === reminderKey ||
@@ -156,13 +182,41 @@ export function createRequirementController(
     present(resource) {
       const state = resource.status.externalState;
       if (state === "completed" || state === "closed") return undefined;
+      const pullRequests = resource.status.linkedPullRequests;
+      const pullRequestStatus = pullRequests && pullRequests.total > 0
+        ? [
+          ...(pullRequests.open > 0
+            ? [`${pullRequests.open} PR open`]
+            : []),
+          ...(pullRequests.merged > 0
+            ? [`${pullRequests.merged} PR merged`]
+            : []),
+          ...(pullRequests.open === 0 && pullRequests.merged === 0
+            ? [`${pullRequests.total} PR linked`]
+            : []),
+          ...(pullRequests.conflicted > 0
+            ? [`${pullRequests.conflicted} merge conflict`]
+            : []),
+          ...(pullRequests.unresolvedReviewThreads > 0
+            ? [
+              `${pullRequests.unresolvedReviewThreads} unresolved review`,
+            ]
+            : []),
+        ]
+        : [];
       return {
         title: resource.spec.title,
-        status: state ?? "Not observed",
+        status: [state ?? "Not observed", ...pullRequestStatus].join(" · "),
         ...(resource.spec.description
           ? { detail: resource.spec.description }
           : {}),
-        tone: state === "unknown" ? "muted" : "default",
+        tone: pullRequests?.conflicted
+          ? "error"
+          : pullRequests?.unresolvedReviewThreads
+          ? "warning"
+          : state === "unknown"
+          ? "muted"
+          : "default",
       };
     },
   };
