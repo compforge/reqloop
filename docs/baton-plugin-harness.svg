@@ -123,18 +123,26 @@
   <text x="530" y="593" class="section-title">Baton Plugin · 长期 Loop</text>
   <text x="1385" y="593" text-anchor="end" class="small">reqloop / future Plugins</text>
 
-  <rect x="790" y="640" width="355" height="185" rx="16" fill="#e6dcff" class="box"/>
-  <text x="967" y="682" text-anchor="middle" class="label">领域 Plugin</text>
-  <text x="967" y="719" text-anchor="middle" class="small">观察长期状态，判断何时继续</text>
-  <text x="967" y="750" text-anchor="middle" class="small">整理下一步工作、范围与上下文</text>
-  <text x="967" y="781" text-anchor="middle" class="small">声明需要的审批或授权策略</text>
-  <text x="967" y="808" text-anchor="middle" class="tiny">内部 Resource / Controller 细节在此省略</text>
+  <rect x="790" y="625" width="355" height="215" rx="16" fill="#ffffff" class="box"/>
+  <text x="967" y="661" text-anchor="middle" class="label">领域 Plugin</text>
+
+  <rect x="815" y="680" width="305" height="48" rx="10" fill="#e9e1ff" class="soft-box"/>
+  <text x="836" y="710" class="label">spec</text>
+  <text x="900" y="710" class="small">用户认可的目标与策略</text>
+
+  <rect x="815" y="742" width="305" height="48" rx="10" fill="#e7f7ee" class="soft-box"/>
+  <text x="836" y="772" class="label">status</text>
+  <text x="916" y="772" class="small">外部事实与持久决定</text>
+
+  <text x="967" y="818" text-anchor="middle" class="small">
+    Reconcile → 下一步工作 · Context · 审批
+  </text>
 
   <rect x="545" y="665" width="185" height="100" rx="14" fill="#fce8c3" class="box"/>
   <text x="637" y="704" text-anchor="middle" class="label">Proposal</text>
   <text x="637" y="733" text-anchor="middle" class="small">建议下一条 Input</text>
   <text x="637" y="754" text-anchor="middle" class="tiny">当前默认路径</text>
-  <path d="M790 715 H745" class="plugin-flow"/>
+  <path d="M790 810 C765 810 755 755 745 730" class="plugin-flow"/>
   <path d="M545 715 H485 V404 H410" class="plugin-flow"/>
   <text x="473" y="560" text-anchor="middle" class="tiny" transform="rotate(-90 473 560)">
     先交给用户确认，不直接调用 Harness
@@ -143,7 +151,7 @@
   <rect x="545" y="805" width="185" height="70" rx="13" fill="#ffffff" class="future-box"/>
   <text x="637" y="834" text-anchor="middle" class="small">Scoped work request</text>
   <text x="637" y="858" text-anchor="middle" class="tiny">未来：在明确策略下提交给 Baton</text>
-  <path d="M790 775 C760 790 750 820 745 838" class="future-flow"/>
+  <path d="M790 818 C770 825 755 834 745 838" class="future-flow"/>
   <path d="M637 805 V535 H655 V365" class="future-flow"/>
 
   <rect x="1190" y="665" width="180" height="100" rx="14" fill="#e7f7ee" class="box"/>
@@ -152,7 +160,7 @@
   <text x="1280" y="754" text-anchor="middle" class="tiny">需求、代码、部署等系统</text>
   <line x1="1190" y1="715" x2="1160" y2="715" class="event-flow"/>
 
-  <path d="M940 485 V535 H967 V625" class="event-flow"/>
+  <path d="M940 485 V535 H967 V610" class="event-flow"/>
   <text x="982" y="548" class="tiny">Harness / 外部结果</text>
 
   <path d="M790 805 H760 V845 H445 V698 H410" class="flow"/>
