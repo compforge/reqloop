@@ -11,6 +11,9 @@ import {
 } from "./connectors/devloop-review.ts";
 import type { RequirementConnector } from "./requirements/protocol.ts";
 import { createRequirementsCommand } from "./requirements/command.ts";
+import {
+  createMeegoRequirementConnectors,
+} from "./requirements/connectors/meego.ts";
 
 export const REQLOOP_PLUGIN_ID = "qiankunli/reqloop";
 export const REQLOOP_PACKAGE_VERSION = "0.1.2";
@@ -50,13 +53,19 @@ function existingWatch(
 export function createReqloopPackage(options: {
   connector?: DevloopReviewConnector;
   requirementConnector?: RequirementConnector;
+  requirementConnectors?: readonly RequirementConnector[];
 } = {}): PluginPackage {
   return Object.freeze({
     pluginId: REQLOOP_PLUGIN_ID,
     version: REQLOOP_PACKAGE_VERSION,
     async activate(context: PluginActivationContext) {
+      const requirementConnectors =
+        options.requirementConnectors ??
+        (options.requirementConnector
+          ? [options.requirementConnector]
+          : createMeegoRequirementConnectors());
       context.registerCommand(
-        createRequirementsCommand(options.requirementConnector),
+        createRequirementsCommand(requirementConnectors),
       );
       const repo = currentRepo(context);
       const connector = options.connector ?? new DevloopReviewConnector(repo);
@@ -122,4 +131,5 @@ const reqloop = createReqloopPackage();
 
 export default reqloop;
 export * from "./connectors/devloop-review.ts";
+export * from "./requirements/connectors/meego.ts";
 export * from "./requirements/protocol.ts";
