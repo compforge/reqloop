@@ -8,7 +8,7 @@
     "test": "bun test"
   },
   "peerDependencies": {
-    "@qiankun01/baton-plugin": ">=0.1.5"
+    "@qiankun01/baton-plugin": ">=0.1.6"
   },
   "license": "MIT"
 }

@@ -54,7 +54,7 @@ export interface PullRequestStatus {
   readonly review?: PullRequestReviewStatus;
 }
 
-export interface PullRequestObservation {
+export interface PullRequest {
   readonly identity: PullRequestIdentity;
   readonly lifecycle: PullRequestLifecycle;
   readonly reviewThreads: PullRequestReviewThreads;
@@ -108,5 +108,5 @@ export interface ForgeConnector {
     repository: string,
     limit?: number,
   ): Promise<readonly PullRequestIdentity[]>;
-  get(identity: PullRequestIdentity): Promise<PullRequestObservation>;
+  get(identity: PullRequestIdentity): Promise<PullRequest>;
 }

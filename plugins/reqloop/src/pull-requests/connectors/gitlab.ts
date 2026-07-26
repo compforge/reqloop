@@ -3,7 +3,7 @@ import type {
   PullRequestIdentity,
   PullRequestLifecycle,
   PullRequestMergeability,
-  PullRequestObservation,
+  PullRequest,
   PullRequestReviewThreads,
 } from "../protocol.ts";
 import type { ForgeConfig } from "./config.ts";
@@ -109,7 +109,7 @@ export class GitLabForgeConnector implements ForgeConnector {
     );
   }
 
-  async get(identity: PullRequestIdentity): Promise<PullRequestObservation> {
+  async get(identity: PullRequestIdentity): Promise<PullRequest> {
     this.#assertSource(identity);
     const { data } = await this.#http.request(
       "GET",
