@@ -27,6 +27,7 @@ import reqloop, {
   DevloopReviewConnector,
   loadMeegoRequirementConfigs,
   MeegleCliRequirementConnector,
+  PULL_REQUEST_RESOURCE_KIND,
   REQLOOP_REVIEW_WATCH_KIND,
   type RequirementConnector,
 } from "../src/index.ts";
@@ -143,10 +144,14 @@ describe("ReqLoop PluginPackage", () => {
       },
     };
     let command: Command | undefined;
+    const resourceKinds: string[] = [];
     const context = {
       session: { batonSessionId: "bs_test", cwd: root },
       registerCommand(contribution: Command) {
         command = contribution;
+      },
+      registerController(controller: { resourceKind: string }) {
+        resourceKinds.push(controller.resourceKind);
       },
     } as unknown as PluginActivationContext;
 
@@ -155,6 +160,7 @@ describe("ReqLoop PluginPackage", () => {
       commandId: "requirements",
       name: "requirements",
     });
+    expect(resourceKinds).toEqual([PULL_REQUEST_RESOURCE_KIND]);
     expect(await command!.execute({ argument: "intake" })).toEqual({
       kind: "picker",
       title: "Requirements · meego",
@@ -382,6 +388,7 @@ describe("ReqLoop PluginPackage", () => {
       registerCommand(contribution: Command) {
         command = contribution;
       },
+      registerController() {},
     } as unknown as PluginActivationContext;
 
     await createReqloopPackage({

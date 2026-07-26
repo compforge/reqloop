@@ -14,9 +14,12 @@ import { createRequirementsCommand } from "./requirements/command.ts";
 import {
   createMeegoRequirementConnectors,
 } from "./requirements/connectors/meego.ts";
+import {
+  createPullRequestController,
+} from "./pull-requests/controller.ts";
 
 export const REQLOOP_PLUGIN_ID = "qiankunli/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.1.3";
+export const REQLOOP_PACKAGE_VERSION = "0.1.4";
 export const REQLOOP_REVIEW_WATCH_KIND = "reqloop.review-watch";
 export const REQLOOP_REVIEW_WATCH_ID = "current-repo";
 const REVIEW_POLL_CRON = "*/2 * * * * *";
@@ -67,6 +70,7 @@ export function createReqloopPackage(options: {
       context.registerCommand(
         createRequirementsCommand(requirementConnectors),
       );
+      context.registerController(createPullRequestController());
       const repo = currentRepo(context);
       const connector = options.connector ?? new DevloopReviewConnector(repo);
       if (!connector.historyPath) return;
@@ -134,5 +138,8 @@ const reqloop = createReqloopPackage();
 
 export default reqloop;
 export * from "./connectors/devloop-review.ts";
+export * from "./pull-requests/controller.ts";
+export * from "./pull-requests/protocol.ts";
+export * from "./pull-requests/resource.ts";
 export * from "./requirements/connectors/meego.ts";
 export * from "./requirements/protocol.ts";
