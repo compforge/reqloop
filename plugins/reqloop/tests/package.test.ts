@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import type {
+  BatonSnapshot,
   Command,
   Controller,
   PluginActivationContext,
@@ -51,6 +52,25 @@ function appendReview(
 ): void {
   mkdirSync(dirname(path), { recursive: true });
   appendFileSync(path, `${JSON.stringify(record)}\n`);
+}
+
+function batonSnapshot(
+  pluginInteractions: BatonSnapshot["pluginInteractions"] = [],
+): BatonSnapshot {
+  return {
+    session: {
+      batonSessionId: "bs_test",
+      cwd: "/repo",
+      runState: "idle",
+      revision: 0,
+    },
+    activeTurns: [],
+    inputs: [],
+    harnessTargets: [],
+    pendingInteractions: [],
+    pluginInteractions,
+    turns: [],
+  };
 }
 
 afterEach(() => {
@@ -555,31 +575,64 @@ describe("ReqLoop PluginPackage", () => {
       },
       findings: [{ path: "src/app.ts", msg: "missing cancellation" }],
     });
-    const result = await controller!.reconcile(
-      {
-        session: {
-          batonSessionId: "bs_test",
-          cwd: root,
-          runState: "idle",
-          revision: 0,
-        },
-        activeTurns: [],
-        inputs: [],
-        harnessTargets: [],
-        pendingInteractions: [],
-        turns: [],
-      },
-      resource!,
-    );
+    const result = await controller!.reconcile(batonSnapshot(), resource!);
 
     expect(resource?.status.review?.sha).toBe("new-review");
-    expect(result?.output?.text).toContain(
+    expect(result?.output).toMatchObject({
+      kind: "interaction",
+      title: "Review completed",
+      options: [
+        { optionId: "inspect", label: "Inspect review" },
+        { optionId: "skip", label: "Not now", role: "reject" },
+      ],
+    });
+    if (result?.output?.kind !== "interaction") {
+      throw new Error("expected review Interaction");
+    }
+    const decisionKey = result.output.decisionKey;
+    const skipped = await controller!.reconcile(
+      batonSnapshot([
+        {
+          interactionId: "ix_skip",
+          decisionKey,
+          resource: {
+            resourceKind: PULL_REQUEST_RESOURCE_KIND,
+            resourceId: resource!.metadata.resourceId,
+            resourceOwner: "plugin",
+          },
+          outcome: { kind: "answered", values: ["skip"] },
+        },
+      ]),
+      resource!,
+    );
+    expect(skipped).toBeUndefined();
+
+    const accepted = await controller!.reconcile(
+      batonSnapshot([
+        {
+          interactionId: "ix_inspect",
+          decisionKey,
+          resource: {
+            resourceKind: PULL_REQUEST_RESOURCE_KIND,
+            resourceId: resource!.metadata.resourceId,
+            resourceOwner: "plugin",
+          },
+          outcome: { kind: "answered", values: ["inspect"] },
+        },
+      ]),
+      resource!,
+    );
+    expect(accepted?.output?.kind).toBe("proposed-input");
+    if (accepted?.output?.kind !== "proposed-input") {
+      throw new Error("expected review follow-up");
+    }
+    expect(accepted.output.text).toContain(
       "devloop review completed for owner/repo PR/MR 7",
     );
-    expect(result?.output?.text).toContain("Inspect the review comments");
-    expect(result?.output?.text).toContain(
+    expect(accepted.output.text).toContain("Inspect the review comments");
+    expect(accepted.output.text).toContain(
       "src/app.ts — missing cancellation",
     );
-    expect(result?.requeueAfterMs).toBeUndefined();
+    expect(accepted.requeueAfterMs).toBeUndefined();
   });
 });
