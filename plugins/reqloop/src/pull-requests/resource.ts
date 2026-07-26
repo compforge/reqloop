@@ -8,6 +8,7 @@ import type {
 import type {
   PullRequestIdentity,
   PullRequestObservation,
+  PullRequestReviewObservation,
   PullRequestSpec,
   PullRequestStatus,
 } from "./protocol.ts";
@@ -64,7 +65,23 @@ export function upsertPullRequestObservation(
   resources: ResourceClient,
   observation: PullRequestObservation,
 ): Readonly<Resource<PullRequestSpec, PullRequestStatus>> {
-  const identity = normalizedIdentity(observation.identity);
+  const resource = ensurePullRequestResource(
+    resources,
+    observation.identity,
+  );
+  return resources.patchStatus(resource, {
+    lifecycle: observation.lifecycle,
+    reviewThreads: observation.reviewThreads,
+    mergeability: observation.mergeability,
+    observedAt: observation.observedAt,
+  });
+}
+
+export function ensurePullRequestResource(
+  resources: ResourceClient,
+  requestedIdentity: PullRequestIdentity,
+): Readonly<Resource<PullRequestSpec, PullRequestStatus>> {
+  const identity = normalizedIdentity(requestedIdentity);
   const resourceId = pullRequestResourceId(identity);
   let resource = resources
     .list<PullRequestSpec, PullRequestStatus>(PULL_REQUEST_RESOURCE_KIND)
@@ -83,11 +100,27 @@ export function upsertPullRequestObservation(
       `PullRequest Resource identity mismatch: ${resourceId}`,
     );
   }
+  return resource;
+}
 
+export function upsertPullRequestReview(
+  resources: ResourceClient,
+  observation: PullRequestReviewObservation,
+): Readonly<Resource<PullRequestSpec, PullRequestStatus>> {
+  const resource = ensurePullRequestResource(
+    resources,
+    observation.identity,
+  );
   return resources.patchStatus(resource, {
-    lifecycle: observation.lifecycle,
-    reviewThreads: observation.reviewThreads,
-    mergeability: observation.mergeability,
-    observedAt: observation.observedAt,
+    review: {
+      key: observation.key,
+      status: observation.status,
+      sha: observation.sha,
+      findingCount: observation.count,
+      failedFileCount: observation.failed,
+      ...(observation.completedAt !== undefined
+        ? { completedAt: observation.completedAt }
+        : {}),
+    },
   });
 }

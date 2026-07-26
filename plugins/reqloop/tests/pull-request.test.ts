@@ -11,6 +11,7 @@ import type {
 
 import {
   createPullRequestController,
+  type ForgeConnector,
   PULL_REQUEST_RESOURCE_KIND,
   pullRequestResourceId,
   type PullRequestObservation,
@@ -116,43 +117,52 @@ describe("PullRequest Resource", () => {
     expect(resources.current()).toEqual(repeated);
   });
 
-  test("projects lifecycle and blockers onto the Board", () => {
+  test("keeps PullRequest as a supporting Resource outside the Board", () => {
+    const controller = createPullRequestController();
+
+    expect(controller.resourceKind).toBe(PULL_REQUEST_RESOURCE_KIND);
+    expect(controller.present).toBeUndefined();
+  });
+
+  test("refreshes a PullRequest through its configured Forge", async () => {
     const resources = resourceClient();
     const pullRequest = upsertPullRequestObservation(
       resources.client,
       observation,
     );
-    const controller = createPullRequestController();
-
-    expect(controller.resourceKind).toBe(PULL_REQUEST_RESOURCE_KIND);
-    expect(controller.present?.(pullRequest)).toEqual({
-      title: "qiankunli/reqloop #17",
-      status: "open",
-      detail: "unresolved review threads",
-      tone: "warning",
-    });
-
-    expect(controller.present?.({
-      ...pullRequest,
-      status: {
-        ...pullRequest.status,
-        reviewThreads: "resolved",
-        mergeability: "conflicted",
+    const forge: ForgeConnector = {
+      source: "github-primary",
+      provider: "github",
+      async list() {
+        return [];
       },
-    })).toMatchObject({
-      detail: "merge conflict",
-      tone: "error",
-    });
-
-    expect(controller.present?.({
-      ...pullRequest,
-      status: {
-        ...pullRequest.status,
-        lifecycle: "merged",
+      async get(identity) {
+        return {
+          identity,
+          lifecycle: "merged",
+          reviewThreads: "resolved",
+          mergeability: "ready",
+          observedAt: "2026-07-26T10:00:00.000Z",
+        };
       },
-    })).toMatchObject({
-      status: "merged",
-      tone: "success",
+    };
+    const controller = createPullRequestController(
+      resources.client,
+      [forge],
+    );
+
+    expect(controller.sources).toEqual([{
+      type: "cron",
+      sourceId: "pull-request-poll",
+      cron: "*/30 * * * * *",
+      timeZone: "UTC",
+    }]);
+    await controller.reconcile({} as never, pullRequest);
+    expect(resources.current()?.status).toEqual({
+      lifecycle: "merged",
+      reviewThreads: "resolved",
+      mergeability: "ready",
+      observedAt: "2026-07-26T10:00:00.000Z",
     });
   });
 });

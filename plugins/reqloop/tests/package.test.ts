@@ -28,7 +28,8 @@ import reqloop, {
   loadMeegoRequirementConfigs,
   MeegleCliRequirementConnector,
   PULL_REQUEST_RESOURCE_KIND,
-  REQLOOP_REVIEW_WATCH_KIND,
+  type PullRequestSpec,
+  type PullRequestStatus,
   type RequirementConnector,
 } from "../src/index.ts";
 
@@ -85,6 +86,11 @@ describe("ReqLoop PluginPackage", () => {
       sha: "current-head",
       count: 1,
       failed: 0,
+      pull_request: {
+        source: "github.com",
+        repository: "owner/repo",
+        number: 7,
+      },
       findings: [{ path: "src/app.ts", msg: "missing cancellation" }],
     });
     appendReview(path, {
@@ -94,6 +100,18 @@ describe("ReqLoop PluginPackage", () => {
       branch: "feature",
       count: 2,
       failed: 0,
+      pull_request: {
+        source: "github.com",
+        repository: "owner/repo",
+        number: 8,
+      },
+    });
+    appendReview(path, {
+      ts: 3,
+      status: "success",
+      sha: "current-head",
+      count: 9,
+      failed: 0,
     });
     const connector = new DevloopReviewConnector(root, {
       historyPath: path,
@@ -101,6 +119,11 @@ describe("ReqLoop PluginPackage", () => {
     });
 
     expect(connector.latest()).toMatchObject({
+      identity: {
+        source: "github.com",
+        repository: "owner/repo",
+        number: 7,
+      },
       sha: "current-head",
       count: 1,
       findings: [
@@ -425,6 +448,11 @@ describe("ReqLoop PluginPackage", () => {
       sha: "baseline",
       count: 1,
       failed: 0,
+      pull_request: {
+        source: "github.com",
+        repository: "owner/repo",
+        number: 7,
+      },
     });
     let headSha = "baseline";
     const connector = new DevloopReviewConnector(root, {
@@ -432,24 +460,10 @@ describe("ReqLoop PluginPackage", () => {
       checkout: () => ({ headSha }),
     });
     let resource:
-      | Resource<
-          { repo: string },
-          {
-            observedReviewKey?: string;
-            observedSha?: string;
-            observedStatus?: string;
-          }
-        >
+      | Resource<PullRequestSpec, PullRequestStatus>
       | undefined;
     let controller:
-      | Controller<
-          { repo: string },
-          {
-            observedReviewKey?: string;
-            observedSha?: string;
-            observedStatus?: string;
-          }
-        >
+      | Controller<PullRequestSpec, PullRequestStatus>
       | undefined;
 
     const resources = {
@@ -458,7 +472,7 @@ describe("ReqLoop PluginPackage", () => {
       },
       create(
         kind: string,
-        input: { resourceId: string; spec: { repo: string } },
+        input: { resourceId: string; spec: PullRequestSpec },
       ) {
         resource = {
           kind,
@@ -478,7 +492,7 @@ describe("ReqLoop PluginPackage", () => {
       },
       patchStatus(
         current: NonNullable<typeof resource>,
-        status: NonNullable<typeof resource>["status"],
+        patch: Partial<PullRequestStatus>,
       ) {
         resource = {
           ...current,
@@ -486,7 +500,7 @@ describe("ReqLoop PluginPackage", () => {
             ...current.metadata,
             resourceVersion: current.metadata.resourceVersion + 1,
           },
-          status,
+          status: { ...current.status, ...patch },
         };
         return resource;
       },
@@ -511,20 +525,19 @@ describe("ReqLoop PluginPackage", () => {
       onClose() {},
     } as unknown as PluginActivationContext;
     const plugin = createReqloopPackage({
-      connector,
+      reviewConnector: connector,
       requirementConnectors: [],
+      forgeConnectors: [],
     });
 
     await plugin.activate(context);
-    expect(resource?.status.observedSha).toBe("baseline");
-    expect(controller?.resourceKind).toBe(
-      REQLOOP_REVIEW_WATCH_KIND,
-    );
+    expect(resource?.status.review?.sha).toBe("baseline");
+    expect(controller?.resourceKind).toBe(PULL_REQUEST_RESOURCE_KIND);
     expect(controller?.sources).toEqual([
       {
         type: "cron",
-        sourceId: "review-poll",
-        cron: "*/2 * * * * *",
+        sourceId: "pull-request-poll",
+        cron: "*/30 * * * * *",
         timeZone: "UTC",
       },
     ]);
@@ -535,7 +548,11 @@ describe("ReqLoop PluginPackage", () => {
       sha: "new-review",
       count: 1,
       failed: 0,
-      pr_number: 7,
+      pull_request: {
+        source: "github.com",
+        repository: "owner/repo",
+        number: 7,
+      },
       findings: [{ path: "src/app.ts", msg: "missing cancellation" }],
     });
     const result = await controller!.reconcile(
@@ -555,9 +572,9 @@ describe("ReqLoop PluginPackage", () => {
       resource!,
     );
 
-    expect(resource?.status.observedSha).toBe("new-review");
+    expect(resource?.status.review?.sha).toBe("new-review");
     expect(result?.output?.text).toContain(
-      "devloop review completed for PR/MR 7",
+      "devloop review completed for owner/repo PR/MR 7",
     );
     expect(result?.output?.text).toContain("Inspect the review comments");
     expect(result?.output?.text).toContain(

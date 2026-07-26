@@ -2,25 +2,12 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
-export interface DevloopReviewFinding {
-  readonly path: string;
-  readonly message: string;
-  readonly status?: string;
-}
-
-export interface DevloopReviewObservation {
-  readonly key: string;
-  readonly status: string;
-  readonly sha: string;
-  readonly count: number;
-  readonly failed: number;
-  readonly findings: readonly DevloopReviewFinding[];
-  readonly prNumber?: string | number;
-  readonly reviewedRange?: string;
-  readonly posted?: string;
-  readonly completedAt?: number;
-  readonly branch?: string;
-}
+import type {
+  PullRequestIdentity,
+  PullRequestReviewFinding,
+  PullRequestReviewConnector,
+  PullRequestReviewObservation,
+} from "../protocol.ts";
 
 interface ReviewHistoryRecord {
   readonly status?: unknown;
@@ -28,7 +15,7 @@ interface ReviewHistoryRecord {
   readonly count?: unknown;
   readonly failed?: unknown;
   readonly findings?: unknown;
-  readonly pr_number?: unknown;
+  readonly pull_request?: unknown;
   readonly range?: unknown;
   readonly posted?: unknown;
   readonly ts?: unknown;
@@ -50,7 +37,9 @@ function nonNegativeInteger(value: unknown): number {
     : 0;
 }
 
-function reviewFinding(value: unknown): DevloopReviewFinding | undefined {
+function reviewFinding(
+  value: unknown,
+): PullRequestReviewFinding | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return;
   const finding = value as Record<string, unknown>;
   const path = typeof finding.path === "string" ? finding.path : "";
@@ -65,9 +54,31 @@ function reviewFinding(value: unknown): DevloopReviewFinding | undefined {
   });
 }
 
+function pullRequestIdentity(
+  value: unknown,
+): PullRequestIdentity | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+  const identity = value as Record<string, unknown>;
+  if (
+    typeof identity.source !== "string" ||
+    !identity.source.trim() ||
+    typeof identity.repository !== "string" ||
+    !identity.repository.trim() ||
+    !Number.isSafeInteger(identity.number) ||
+    (identity.number as number) < 1
+  ) {
+    return;
+  }
+  return Object.freeze({
+    source: identity.source.trim(),
+    repository: identity.repository.trim(),
+    number: identity.number as number,
+  });
+}
+
 function parseHistoryLine(
   line: string,
-): DevloopReviewObservation | undefined {
+): PullRequestReviewObservation | undefined {
   let value: unknown;
   try {
     value = JSON.parse(line) as unknown;
@@ -79,6 +90,8 @@ function parseHistoryLine(
   if (typeof record.status !== "string" || typeof record.sha !== "string") {
     return;
   }
+  const identity = pullRequestIdentity(record.pull_request);
+  if (!identity) return;
   const findings = Array.isArray(record.findings)
     ? record.findings.flatMap((item) => {
         const finding = reviewFinding(item);
@@ -86,16 +99,13 @@ function parseHistoryLine(
       })
     : [];
   return Object.freeze({
+    identity,
     key: sha256(line),
     status: record.status,
     sha: record.sha,
     count: nonNegativeInteger(record.count),
     failed: nonNegativeInteger(record.failed),
     findings: Object.freeze(findings),
-    ...(typeof record.pr_number === "string" ||
-    typeof record.pr_number === "number"
-      ? { prNumber: record.pr_number }
-      : {}),
     ...(typeof record.range === "string"
       ? { reviewedRange: record.range }
       : {}),
@@ -141,10 +151,10 @@ function gitCheckout(cwd: string): CheckoutIdentity | undefined {
 }
 
 /**
- * devloop 是 review 事实的 producer；reqloop 只读取其 append-only ledger，并在本域内
- * 映射成 Verdict observation。
+ * devloop 是 review 事实的 producer；reqloop 只读取其 append-only ledger，并映射为
+ * 已绑定 PullRequest 的 review observation。
  */
-export class DevloopReviewConnector {
+export class DevloopReviewConnector implements PullRequestReviewConnector {
   readonly historyPath?: string;
   private readonly checkout: () => CheckoutIdentity | undefined;
 
@@ -165,7 +175,7 @@ export class DevloopReviewConnector {
     this.checkout = options.checkout ?? (() => gitCheckout(cwd));
   }
 
-  latest(): DevloopReviewObservation | undefined {
+  latest(): PullRequestReviewObservation | undefined {
     if (!this.historyPath || !existsSync(this.historyPath)) return;
     let lines: string[];
     try {
@@ -190,43 +200,4 @@ export class DevloopReviewConnector {
       return observation;
     }
   }
-}
-
-export function actionableReview(
-  observation: DevloopReviewObservation,
-): boolean {
-  return (
-    observation.count > 0 ||
-    observation.failed > 0 ||
-    observation.status === "error"
-  );
-}
-
-export function reviewFollowUpText(
-  observation: DevloopReviewObservation,
-): string {
-  const subject = observation.prNumber
-    ? `PR/MR ${observation.prNumber}`
-    : `commit ${observation.sha.slice(0, 9)}`;
-  const outcomes = [
-    observation.count
-      ? `${observation.count} review finding(s)`
-      : undefined,
-    observation.failed
-      ? `${observation.failed} file(s) failed review`
-      : undefined,
-    observation.status === "error" ? "the review errored" : undefined,
-  ].filter((item): item is string => Boolean(item));
-  const lines = [
-    `devloop review completed for ${subject}: ${outcomes.join(", ")}.`,
-    "Inspect the review comments against the current code now. Briefly report the real High/Medium findings and explain false positives; do not modify code unless the user asks.",
-  ];
-  for (const finding of observation.findings.slice(0, 30)) {
-    const detail = finding.message.replace(/\s+/g, " ").slice(0, 300);
-    lines.push(`- ${finding.path}${detail ? ` — ${detail}` : ""}`);
-  }
-  if (observation.findings.length > 30) {
-    lines.push(`- … ${observation.findings.length - 30} more finding(s)`);
-  }
-  return lines.join("\n");
 }

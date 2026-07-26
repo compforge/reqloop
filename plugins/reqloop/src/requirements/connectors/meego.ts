@@ -1,8 +1,10 @@
 import { execFile } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 
+import {
+  jsonObject,
+  loadReqloopConfig,
+  REQLOOP_CONFIG_PATH,
+} from "../../config.ts";
 import type {
   Requirement,
   RequirementConnector,
@@ -11,13 +13,6 @@ import type {
   RequirementState,
   RequirementSummary,
 } from "../protocol.ts";
-
-export const REQLOOP_CONFIG_PATH = join(
-  homedir(),
-  ".baton",
-  "plugins",
-  "reqloop.json",
-);
 
 const DEFAULT_CATEGORIES = Object.freeze(["story", "issue"]);
 const MEEGLE_TIMEOUT_MS = 20_000;
@@ -39,10 +34,7 @@ function object(
   name: string,
   value: unknown,
 ): Readonly<Record<string, unknown>> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${name} must be a JSON object`);
-  }
-  return value as Readonly<Record<string, unknown>>;
+  return jsonObject(name, value);
 }
 
 function optionalObject(
@@ -90,12 +82,6 @@ function commandIdentifier(name: string, value: string): string {
   return value;
 }
 
-function isMissingFile(error: unknown): boolean {
-  return error instanceof Error &&
-    "code" in error &&
-    error.code === "ENOENT";
-}
-
 /**
  * Reads the temporary standalone reqloop config. Meegle owns OAuth tokens in
  * its keychain-backed profile; reqloop stores only connector routing fields.
@@ -103,22 +89,11 @@ function isMissingFile(error: unknown): boolean {
 export function loadMeegoRequirementConfigs(
   path: string = REQLOOP_CONFIG_PATH,
 ): readonly MeegoRequirementConfig[] {
-  let root: unknown;
-  try {
-    root = JSON.parse(readFileSync(path, "utf8")) as unknown;
-  } catch (error) {
-    if (isMissingFile(error)) return [];
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`could not read reqloop config ${path}: ${detail}`);
-  }
-  const config = object("reqloop config", root);
-  if (config.version !== 1) {
-    throw new Error("reqloop config version must be 1");
-  }
-  const requirements = object(
-    "reqloop config requirements",
-    config.requirements,
-  );
+  const config = loadReqloopConfig(path);
+  if (!config) return [];
+  const requirements = config.requirements === undefined
+    ? {}
+    : object("reqloop config requirements", config.requirements);
 
   const result: MeegoRequirementConfig[] = [];
   for (const [rawSource, rawRequirement] of Object.entries(requirements)) {

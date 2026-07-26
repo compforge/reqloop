@@ -97,6 +97,7 @@ PullRequest
     ├── lifecycle         open / merged / closed
     ├── reviewThreads     unresolved / resolved / unknown
     ├── mergeability      ready / conflicted / unknown
+    ├── review            devloop review key / status / sha / counts
     └── observedAt
 ```
 
@@ -112,6 +113,11 @@ PR/MR 的小闭环；reqloop 用独立 Resource 观察需求级收尾条件。�
 Requirement 到 PullRequest 的关联只以 `Requirement.status.pullRequests` 为事实源，
 PullRequest 不反向维护 Requirement 列表。需要反查时由 reqloop 扫描或建立派生索引，避免双向
 关系在更新失败后产生两份真相。
+
+PullRequest 是 Requirement 的支撑 Resource，不直接生成 Board presentation。Board 只渲染
+Requirement 这一层入口，并由 Requirement 汇总关联 PR/MR 的生命周期、review thread、merge
+conflict 和 review finding；这样保留独立观察与持久化能力，同时避免一个需求及其多个 PR/MR
+在 Board 上重复平铺。
 
 ### RequirementController
 
@@ -191,7 +197,11 @@ Baton 只看到 reqloop PluginInstance，不看到 Connector identity。
 
 Forge 的设计沿用 devloop 已验证的边界：PR/MR 等领域对象保持 provider-neutral，provider 是
 repository/Connector 级事实；不同平台 adapter 平级实现同一 port，平台词汇和 DTO 只存在于
-adapter。reqloop 复用这套模型原则，但不导入 devloop 的实现或读取其私有状态。
+adapter。reqloop 复用这套模型原则，但不导入 devloop 的实现或读取其私有状态。首版
+`GitHubForgeConnector` 使用 REST 观察生命周期和 merge conflict、使用 GraphQL
+`reviewThreads` 观察 review thread；`GitLabForgeConnector` 使用 Merge Request 与
+Discussions API，并只把 `resolvable` discussion 当作 review thread。相关 API 不可用时状态
+保持 `unknown`，普通 conversation comment 不参与完成条件。
 
 ### 配置与多实例
 
@@ -201,7 +211,11 @@ adapter。reqloop 复用这套模型原则，但不导入 devloop 的实现或�
 
 首版用户级连接配置临时独立存放在 `~/.baton/plugins/reqloop.json`，以 source 为 key
 同时启用多个 Connector；Meego source 只保存 `projectKey`、可选 CLI profile 和 category
-列表，OAuth token 由 Meegle CLI 管理。它不与其它 Plugin 混入同一个配置文件。待 Baton
+列表，OAuth token 由 Meegle CLI 管理。`forges` 沿用 devloop 的 host-keyed registry：
+map key 同时是 PullRequest `source`，显式 `type` 优先；`github.com` / `github.*` 默认识别为
+GitHub，其余默认 GitLab；`api_host` 可将 SSH alias 或 mirror 指向真实 API host。GitHub token
+按 `GITHUB_TOKEN`、`GH_TOKEN`、配置 `token` 的顺序读取，GitLab 按 `GITLAB_TOKEN`、配置
+`token` 的顺序读取。它不与其它 Plugin 混入同一个配置文件。待 Baton
 提供正式的 Plugin config/data 路径契约后再迁移，reqloop 的运行时状态仍不能进入配置文件。
 Requirement 始终是 BatonSession-scoped Resource。
 
@@ -269,11 +283,13 @@ reqloop 只消费 Baton 归一后的 `harness.delivery.ready`、`harness.develop
 
 review 完成提醒是首个渐进落地的例外适配：devloop 仍在 Harness 内触发 review，并把终态追加到
 自己的 `review-history.jsonl`；reqloop 内部的 `DevloopReviewConnector` 将这份外部 ledger
-映射为 Verdict observation，review-watch Controller 通过固定 cron Source 定时重读。Controller
-持久记录已观察 identity；有 findings、文件失败或 review error 时，返回
+映射为带完整 `source + repository + number` identity 的 PullRequest review observation，
+PullRequestController 通过固定 cron Source 定时重读，并把 review key/status/sha/counts
+持久化到同一个 PullRequest Resource；有 findings、文件失败或 review error 时，返回
 `proposed-input`，提醒用户让当前 Harness 对照代码检查 comments。devloop 的 channel/waiter
 不再是 Baton 内提醒成立的前提；Connector 只消费 `review sha == 当前 checkout HEAD` 的记录，
-避免 repo 级 ledger 中其他 worktree 的结果串到当前会话。Baton core 不解析 `.devloop` 格式。
+且忽略没有开放 PR/MR identity 的本地 review，避免 repo 级 ledger 中其他 worktree 的结果串到
+当前会话。Baton core 不解析 `.devloop` 格式。
 
 首期 reqloop 需要修改代码或诊断失败时，返回 `PluginOutput(kind: "proposed-input")`。Baton
 将它展示到 InteractionDock；用户采用后进入 composer，可原样提交、编辑后提交，也可直接
@@ -313,9 +329,9 @@ Harness turn 停止、Board 更新或 Context 可用都不自动代表下一步�
 对 reqloop 而言，Board 是与 Baton、其他 Plugin 和多个 Harness 共享的协作状态，而不只是一个
 面向用户的进度面板：
 
-> 类比刑侦团队的案件板：Requirement、MR、部署、review、阻塞和待核实问题像不同探员贴上去的
-> 线索与进展。reqloop、Harness 和用户都能从同一块板上形成当前认知；devloop 等 Harness
-> Plugin 产生的信息经 Harness adapter 进入这块板，但各领域事实仍由自己的 owner 负责。
+> 类比刑侦团队的案件板：每个 Requirement 是一张案件卡；MR、部署、review、阻塞和待核实问题
+> 是卡片汇总的线索与进展，不各自占一张顶级卡。reqloop、Harness 和用户都能从同一块板上形成
+> 当前认知，但各领域事实仍由自己的 Resource 或外部系统负责。
 
 - 用户通过 BoardView 观察 Requirement Loop 的目标、进度、结果、blocker 和待处理请求；
 - ContextComposer 从 Requirement 与 Board snapshot 选择和当前 Harness、session、turn 有关的信息；
@@ -409,8 +425,8 @@ Baton 作为通用产品需要一个清晰的默认故事。reqloop 随 Baton �
 8. reqloop 通过独立 Marketplace Package 交付、可禁用、可升级；Baton core 在没有 reqloop 时
    仍完整工作。
 9. Plugin 声明能力不等于获得权限；敏感 desired state 在写入 spec 前完成授权。
-10. reqloop 只能修改自己的 Resource status；Board presentation 只能从 Resource 派生，其他
-    owner 的产出只能作为 observation 读取。
+10. reqloop 只能修改自己的 Resource status；Board presentation 只由 Requirement 派生，
+    PullRequest 等支撑 Resource 通过关联状态汇总，其他 owner 的产出只能作为 observation 读取。
 11. 固定周期观察使用 Controller cron Source；`requeueAfter` 只服务一次性动态复查，并持久化为
     `nextReconcileAt`。
 12. Resource、Input、Harness 结果、cron 和 timer 只触发重新检查；Controller 不把触发当成必须逐条
