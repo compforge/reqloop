@@ -1,7 +1,7 @@
 import type {
   PluginActivationContext,
   PluginPackage,
-} from "@qiankun01/baton";
+} from "@qiankun01/baton-plugin";
 
 interface TurnCoachSpec {
   enabled: boolean;
@@ -105,7 +105,7 @@ const turnCoach: PluginPackage = Object.freeze({
           return {
             output: {
               kind: "proposed-input",
-              text: proposedInput(turn.data.userText),
+              text: proposedInput(turn.data.userText ?? ""),
             },
           };
         },

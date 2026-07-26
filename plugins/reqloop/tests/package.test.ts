@@ -150,10 +150,10 @@ describe("ReqLoop PluginPackage", () => {
         input: { resourceId: string; spec: { repo: string } },
       ) {
         resource = {
+          kind,
           metadata: {
             batonSessionId: "bs_test",
             pluginInstanceId: "pi_reqloop",
-            kind,
             resourceId: input.resourceId,
             generation: 1,
             resourceVersion: 1,

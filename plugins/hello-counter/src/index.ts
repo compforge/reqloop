@@ -1,7 +1,7 @@
 import type {
   PluginPackage,
   PluginActivationContext,
-} from "@baton/plugin";
+} from "@qiankun01/baton-plugin";
 
 interface CounterSpec {
   enabled: boolean;

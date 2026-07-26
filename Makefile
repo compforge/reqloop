@@ -1,7 +1,7 @@
 .PHONY: check bump-version
 
 check:
-	bun test
+	bun run check
 
 bump-version:
 	@test -n "$(PLUGIN)" || (echo "Usage: make bump-version PLUGIN=<plugin-name> VERSION=<version>" && exit 1)
