@@ -58,6 +58,13 @@ ReqLoop also observes devloop's append-only review ledger and proposes a
 follow-up input when the current checkout's review completes with findings,
 file failures, or an error.
 
+ReqLoop owns a provider-neutral `reqloop.pull-request` Resource for GitHub PRs
+and GitLab MRs. Its immutable spec identifies `source + repository + number`;
+status records lifecycle, review-thread state, mergeability, and observation
+time. Repeated Forge observations refresh the same deterministic Resource, and
+its Controller projects terminal state and blockers onto the Board. A concrete
+ForgeConnector is the next integration layer.
+
 ```text
 devloop review-history.jsonl
   → DevloopReviewConnector
@@ -73,7 +80,7 @@ are ignored.
 
 ```text
 pluginId: qiankunli/reqloop
-version:  0.1.3
+version:  0.1.4
 ```
 
 Install this Marketplace in Baton, install `qiankunli/reqloop`, then enable it
@@ -83,8 +90,9 @@ for the BatonSession that owns the repository.
 
 ReqLoop 在 Baton core 之外拥有需求级闭环。`/requirements` 通过
 `RequirementConnector` 展示平台无关的需求列表，选中后读取归一化详情；首个具体平台将接
-Meego。代码平台后续按同样边界接 `ForgeConnector`，参考 devloop 的 provider-neutral
-Forge 模型，但不导入其实现。
+Meego。代码平台按同样边界接 `ForgeConnector`，参考 devloop 的 provider-neutral Forge 模型，
+但不导入其实现。当前 `reqloop.pull-request` 已定义稳定 identity、观察状态和 Board 投影，
+后续 Connector 只负责发现 PR/MR 并刷新该 Resource。
 
 `requirements` 是以 source 为 key 的具名 Connector 集合，存在即生效，允许同时配置多个需求
 平台或同一平台的多个实例。Meego 的 `story`、`issue` 等分类由 Connector 填入 `category`。
