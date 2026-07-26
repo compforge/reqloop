@@ -293,12 +293,18 @@ Requirement 始终是 BatonSession-scoped Resource。
 ```text
 reqloop
 ├── slash command    /requirements
+├── context provider requirement
 └── controller       Requirement
     ├── spec/status schema
     ├── reconcile    按 Requirement key 收敛状态
-    ├── present      Requirement、进展、证据和待处理事项
-    └── context?     单次 Harness turn 的 Resource Context source
+    └── present      Requirement、进展、证据和待处理事项
 ```
+
+ContextProvider 注册本地 kind `requirement`，Baton 将 Plugin kind 限定为
+`reqloop@requirement`。候选搜索只读取当前 BatonSession 已物化且仍活跃的 Requirement
+Resource，不在用户输入 `@` 时调用 RequirementConnector；选中后按 Baton 给出的字符预算，将
+需求详情和已知交付状态注入单次 Harness turn。外部平台仍由 Controller 定时刷新，避免交互式
+搜索的延迟、失败或凭据状态污染输入体验。
 
 reqloop 的 Connector 是 Controller 的内部依赖，不提升为 Baton 顶层能力。Controller 可以在
 manifest 已声明、当前 `spec` 已授权的范围内直接调用 Connector：

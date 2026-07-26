@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "pluginId": "qiankunli/reqloop",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "entry": "./src/index.ts",
   "displayName": "ReqLoop",
   "description": "Requirement-loop coordination with provider-neutral requirements and PullRequest resources."

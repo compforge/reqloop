@@ -10,6 +10,9 @@ import {
 import type { RequirementConnector } from "./requirements/protocol.ts";
 import { createRequirementsCommand } from "./requirements/command.ts";
 import {
+  createRequirementContextProvider,
+} from "./requirements/context.ts";
+import {
   createRequirementController,
 } from "./requirements/controller.ts";
 import {
@@ -29,7 +32,7 @@ import type {
 import { upsertPullRequestReview } from "./pull-requests/resource.ts";
 
 export const REQLOOP_PLUGIN_ID = "qiankunli/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.1.8";
+export const REQLOOP_PACKAGE_VERSION = "0.1.9";
 
 function currentRepo(context: PluginActivationContext): string {
   const cwd = context.session.cwd;
@@ -100,6 +103,9 @@ export function createReqloopPackage(options: {
       context.registerCommand(
         createRequirementsCommand(requirementConnectors, context.resources),
       );
+      context.registerContextProvider(
+        createRequirementContextProvider(context.resources),
+      );
       context.registerController(
         createRequirementController(
           context.resources,
@@ -154,6 +160,7 @@ export * from "./pull-requests/protocol.ts";
 export * from "./pull-requests/review.ts";
 export * from "./pull-requests/resource.ts";
 export * from "./requirements/connectors/meego.ts";
+export * from "./requirements/context.ts";
 export * from "./requirements/controller.ts";
 export * from "./requirements/protocol.ts";
 export * from "./requirements/resource.ts";
