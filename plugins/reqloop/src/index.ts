@@ -100,7 +100,13 @@ export function createReqloopPackage(options: {
       context.registerCommand(
         createRequirementsCommand(requirementConnectors, context.resources),
       );
-      context.registerController(createRequirementController());
+      context.registerController(
+        createRequirementController(
+          context.resources,
+          requirementConnectors,
+          context.toast,
+        ),
+      );
       const forgeConnectors =
         options.forgeConnectors ?? createForgeConnectors();
       const pullRequestRepositories =

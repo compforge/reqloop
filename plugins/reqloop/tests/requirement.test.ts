@@ -7,10 +7,15 @@ import {
 import type {
   Resource,
   ResourceClient,
+  ToastMessage,
 } from "@qiankun01/baton-plugin";
 
 import {
   createRequirementController,
+  PULL_REQUEST_RESOURCE_KIND,
+  type PullRequestSpec,
+  type PullRequestStatus,
+  type RequirementConnector,
   REQUIREMENT_RESOURCE_KIND,
   type RequirementSpec,
   type RequirementStatus,
@@ -26,15 +31,27 @@ function resourceClient(): {
   let resource:
     | Readonly<Resource<RequirementSpec, RequirementStatus>>
     | undefined;
+  let pullRequest:
+    | Readonly<Resource<PullRequestSpec, PullRequestStatus>>
+    | undefined;
   const client = {
     list(kind?: string) {
-      return kind === REQUIREMENT_RESOURCE_KIND && resource ? [resource] : [];
+      if (kind === REQUIREMENT_RESOURCE_KIND) {
+        return resource ? [resource] : [];
+      }
+      if (kind === PULL_REQUEST_RESOURCE_KIND) {
+        return pullRequest ? [pullRequest] : [];
+      }
+      return [resource, pullRequest].filter(Boolean);
     },
     create(
       kind: string,
-      input: { resourceId: string; spec: RequirementSpec },
+      input: {
+        resourceId: string;
+        spec: RequirementSpec | PullRequestSpec;
+      },
     ) {
-      resource = {
+      const created = {
         kind,
         metadata: {
           resourceId: input.resourceId,
@@ -46,19 +63,45 @@ function resourceClient(): {
           updatedAt: "2026-07-26T00:00:00.000Z",
         },
         spec: input.spec,
-        status: {} as RequirementStatus,
+        status: {},
       };
-      return resource;
+      if (kind === REQUIREMENT_RESOURCE_KIND) {
+        resource = created as Resource<
+          RequirementSpec,
+          RequirementStatus
+        >;
+        return resource;
+      }
+      pullRequest = created as Resource<
+        PullRequestSpec,
+        PullRequestStatus
+      >;
+      return pullRequest;
     },
     patchStatus(
-      current: Readonly<Resource<RequirementSpec, RequirementStatus>>,
-      patch: Partial<RequirementStatus>,
+      current: Readonly<Resource>,
+      patch: Record<string, unknown>,
     ) {
-      resource = {
+      const updated = {
         ...current,
+        metadata: {
+          ...current.metadata,
+          resourceVersion: current.metadata.resourceVersion + 1,
+        },
         status: { ...current.status, ...patch },
       };
-      return resource;
+      if (current.kind === REQUIREMENT_RESOURCE_KIND) {
+        resource = updated as unknown as Resource<
+          RequirementSpec,
+          RequirementStatus
+        >;
+        return resource;
+      }
+      pullRequest = updated as unknown as Resource<
+        PullRequestSpec,
+        PullRequestStatus
+      >;
+      return pullRequest;
     },
   } as unknown as ResourceClient;
   return { client, current: () => resource };
@@ -101,5 +144,95 @@ describe("Requirement Resource", () => {
     expect(
       createRequirementController().present?.(requirement),
     ).toBeUndefined();
+  });
+
+  test("refreshes external state and reminds once when linked PRs are done", async () => {
+    const resources = resourceClient();
+    const requirement = upsertRequirement(resources.client, {
+      source: "meego",
+      category: "story",
+      id: "REQ-9",
+      title: "Close completed requirement",
+      state: "in_progress",
+      url: "https://meego.example/story/REQ-9",
+    });
+    const pullRequest = resources.client.create<
+      PullRequestSpec,
+      PullRequestStatus
+    >(PULL_REQUEST_RESOURCE_KIND, {
+      resourceId: "pr_merged",
+      spec: {
+        identity: {
+          source: "github.com",
+          repository: "owner/repo",
+          number: 9,
+        },
+      },
+    });
+    const linkedPullRequest = resources.client.patchStatus(pullRequest, {
+      lifecycle: "merged",
+      reviewThreads: "unresolved",
+      requirementAssociation: {
+        state: "linked",
+        requirement: {
+          resourceKind: REQUIREMENT_RESOURCE_KIND,
+          resourceId: requirement.metadata.resourceId,
+          resourceOwner: "plugin",
+        },
+      },
+    });
+    const connector: RequirementConnector = {
+      source: "meego",
+      provider: "meego",
+      async list() {
+        return [];
+      },
+      async get(identity) {
+        return {
+          ...identity,
+          title: "Close completed requirement",
+          state: "in_progress",
+          url: "https://meego.example/story/REQ-9",
+          updatedAt: "2026-07-26T12:00:00.000Z",
+        };
+      },
+    };
+    const toasts: ToastMessage[] = [];
+    const controller = createRequirementController(
+      resources.client,
+      [connector],
+      { show: (message) => toasts.push(message) },
+    );
+
+    expect(controller.sources).toEqual([{
+      type: "cron",
+      sourceId: "requirement-poll",
+      cron: "0 * * * * *",
+      timeZone: "UTC",
+    }]);
+    await controller.reconcile({} as never, requirement);
+    expect(resources.current()?.status).toMatchObject({
+      externalState: "in_progress",
+      updatedAt: "2026-07-26T12:00:00.000Z",
+    });
+    expect(resources.current()?.status.closeReminderKey).toBeUndefined();
+    expect(toasts).toHaveLength(0);
+
+    resources.client.patchStatus(linkedPullRequest, {
+      reviewThreads: "resolved",
+    });
+    await controller.reconcile({} as never, resources.current()!);
+    expect(
+      typeof resources.current()?.status.closeReminderKey,
+    ).toBe("string");
+    expect(toasts).toEqual([{
+      text:
+        "Requirement \"Close completed requirement\" looks ready to close. " +
+        "Please close it at https://meego.example/story/REQ-9.",
+      tone: "info",
+    }]);
+
+    await controller.reconcile({} as never, resources.current()!);
+    expect(toasts).toHaveLength(1);
   });
 });

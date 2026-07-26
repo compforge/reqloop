@@ -45,6 +45,8 @@ export interface RequirementStatus {
   readonly assignee?: string;
   readonly updatedAt?: string;
   readonly url?: string;
+  /** Deduplicates the non-durable reminder for one ready set of linked PRs. */
+  readonly closeReminderKey?: string;
 }
 
 export interface RequirementListQuery {
