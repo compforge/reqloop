@@ -36,8 +36,9 @@ Requirement
 reqloop 作为独立 Package 通过 reqloop Marketplace 发布，不是 Baton core：
 
 - 可以禁用、替换和独立升级；
-- 未配置时 `/requirement` 提供引导，不要求 Baton core 理解需求字段；
-- reqloop 的 Connector cursor、缓存和 credential 进入自己的 PluginInstance data/config；
+- 未配置时 `/requirements` 提供引导，不要求 Baton core 理解需求字段；
+- reqloop 的连接参数进入 PluginInstance config；Connector cursor、缓存等私有状态进入 Baton
+  注入的 reqloop data 目录，不写不可变 Package，也不冒充 ReqLoopRun；
 - Baton 不导入 reqloop 类型，不根据 Requirement 状态写分支。
 
 ## 2. 核心概念
@@ -118,18 +119,19 @@ Baton runtime 中的独立组件。
 │ ReqLoopRun / Reducer / Reconciler / Policy / Commands │
 │                    │                                  │
 │          internal Connector ports                     │
-│       ┌────────────┼─────────────┐                    │
-│       ▼            ▼             ▼                    │
-│ Requirement    Deployment      Verdict                │
-│ Connector      Connector       Connector               │
-└───────┬────────────┬─────────────┬─────────────────────┘
-        ▼            ▼             ▼
-   Meego/TB      BITS/K8s/...   Review/Eval/...
+│       ┌────────────┼─────────────┬─────────────┐       │
+│       ▼            ▼             ▼             ▼       │
+│ Requirement      Forge       Deployment      Verdict   │
+│ Connector      Connector     Connector       Connector  │
+└───────┬────────────┬─────────────┬─────────────┬───────┘
+        ▼            ▼             ▼             ▼
+   Meego/TB    GitHub/GitLab   BITS/K8s/...   Review/Eval/...
 ```
 
 首批内部 port 可以按领域拆分：
 
 - **RequirementConnector**：查询、读取、更新和关闭 Requirement，观察需求变化；
+- **ForgeConnector**：查询 repository、分支与 PR/MR 等交付事实，必要时创建或更新代码平台对象；
 - **DeploymentConnector**：创建部署、读取状态、取消或重试，观察部署结果；
 - **VerdictConnector**：发起或读取 review/eval，观察 verdict 变化。
 
@@ -143,14 +145,24 @@ Connector 不负责 Baton session 路由、Board 渲染、Harness 选择、完�
 这些职责分别属于 Baton 和 reqloop domain。
 
 实现可以叫 `MeegoRequirementConnector`、`TeambitionRequirementConnector`、
-`BitsDeploymentConnector`。它们由 reqloop 内部 registry 根据 PluginInstance 配置选择；
+`GitHubForgeConnector`、`GitLabForgeConnector`、`BitsDeploymentConnector`。它们由 reqloop
+内部 registry 根据 PluginInstance 配置选择；
 Baton 只看到 reqloop PluginInstance，不看到 Connector identity。
+
+Forge 的设计沿用 devloop 已验证的边界：PR/MR 等领域对象保持 provider-neutral，provider 是
+repository/Connector 级事实；不同平台 adapter 平级实现同一 port，平台词汇和 DTO 只存在于
+adapter。reqloop 复用这套模型原则，但不导入 devloop 的实现或读取其私有状态。
 
 ### 配置与多实例
 
 一个 reqloop PluginInstance 可以配置多个具名 Connector，例如一个需求源、dev/test/prod
 部署目标和多个 verdict source。Credential 仍由 Baton 按 reqloop 声明的 capability 注入，
 但配置 schema 和使用方式由 reqloop 定义。
+
+用户级连接配置与私有持久状态分开：配置由 Baton 的 Plugin 配置承载；cursor、缓存和平台侧
+opaque identity 由 Baton 提供的 host-owned data 目录承载。该目录会位于 `~/.baton` 下，但在
+Baton 明确 `PluginActivationContext.dataDir` 及迁移契约前，reqloop 不硬编码具体路径。
+ReqLoopRun 仍是 BatonSession-scoped PluginResource，不能搬进这个私有目录。
 
 首版 Connector 随 reqloop package 交付，不急于开放第三方 Connector SDK。等出现独立发布、
 版本兼容和多团队贡献的真实需求后，再设计 reqloop 自己的扩展机制，避免提前在 Baton 中恢复
@@ -162,7 +174,7 @@ Baton 只看到 reqloop PluginInstance，不看到 Connector identity。
 
 ```text
 reqloop
-├── slash command    /requirement
+├── slash command    /requirements
 └── resource         ReqLoopRun
     ├── spec/status schema
     ├── reconciler   按 ReqLoopRun key 收敛状态
@@ -234,7 +246,7 @@ Harness Work 类型；Harness 的路由、成本、并发、取消和可靠投�
 ## 6. 用户主流程
 
 1. 用户首次运行 Baton 时看到 Requirement Loop quickstart；配置 reqloop 的需求与部署平台。
-2. 用户通过 `/requirement` 选择需求，或直接粘贴、输入一项需求；reqloop 创建或恢复
+2. 用户通过 `/requirements` 选择需求，或直接粘贴、输入一项需求；reqloop 创建或恢复
    ReqLoopRun，将目标和验收条件写入 `spec`，并投影到 Board。
 3. ReqLoopReconciler 返回“根据需求完成开发并提交 PR”的 `proposed-input` Output，Board 展示这段
    文本。用户原样提交或编辑后提交，Baton 组装 context 并交给目标 Harness；这仍是
@@ -330,7 +342,7 @@ Baton 作为通用产品需要一个清晰的默认故事。reqloop 随 Baton �
 `/help` 和 Plugin 列表中：
 
 - 未配置：展示可接入的平台和最小配置路径；
-- 已配置：`/requirement` 直接进入需求选择；
+- 已配置：`/requirements` 直接进入需求选择；
 - 不需要：用户可以禁用 reqloop，只使用 Baton 的 Harness 接力或安装其他 loop Plugin。
 
 “随 Baton 交付”不等于“写进 Baton core”。Baton 的默认 UX 可以优先展示 reqloop，但 UI 仍
@@ -347,7 +359,8 @@ Baton 作为通用产品需要一个清晰的默认故事。reqloop 随 Baton �
    Reconciler 调用 devloop 的 Harness 私有能力。
 5. 首期 Reconciler 只返回 `proposed-input` Output，用户提交后才形成普通 Input。
 6. 未来即使开放主动 Harness 调用，reqloop 也不直接持有 Harness runtime 或原生 session。
-7. ReqLoopRun 是持久 Resource；Board、Connector cursor 和私有 snapshot 都不是独立真相源。
+7. ReqLoopRun 是 session 级持久 Resource；Connector cursor 和私有 snapshot 只进入
+   host-owned reqloop data 目录，Board 与二者都不是独立真相源。
 8. reqloop 通过独立 Marketplace Package 交付、可禁用、可升级；Baton core 在没有 reqloop 时
    仍完整工作。
 9. Plugin 声明能力不等于获得权限；敏感 desired state 在写入 spec 前完成授权。
