@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1120" viewBox="0 0 1800 1120">
   <title>reqloop Requirement Loop workflow</title>
   <desc>
-    reqloop connects requirement, forge, review, CI and deployment systems,
-    models their state as resources, reconciles observed status toward the
-    user-approved spec, and turns the gap into observable, reviewable or
-    authorized actions that can drive a Harness through Baton.
+    reqloop connects requirement, code, deployment and evaluation platforms,
+    maps their domain objects into Requirement, PullRequest, Deployment and
+    Evaluation resources, and turns the aggregate loop state into observable,
+    reviewable or authorized actions that can drive a Harness through Baton.
   </desc>
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
@@ -116,46 +116,20 @@
   <!-- reqloop -->
   <rect x="505" y="430" width="940" height="565" rx="14" fill="#f4f0ff" class="soft-box"/>
   <text x="530" y="468" class="section-title">reqloop · Baton Plugin</text>
-  <text x="1415" y="468" text-anchor="end" class="small">Resource(spec + status) + Reconcile</text>
+  <text x="1415" y="468" text-anchor="end" class="small">Requirement aggregate + Reconcile</text>
 
   <!-- Wake signal -->
-  <rect x="565" y="500" width="285" height="58" rx="29" fill="#fff0bf" class="box"/>
-  <text x="707" y="536" text-anchor="middle" class="small">Signal · webhook · schedule</text>
-  <text x="707" y="580" text-anchor="middle" class="tiny">只负责唤醒，不直接充当事实</text>
-
-  <!-- Connector -->
-  <rect x="1110" y="500" width="280" height="98" rx="13" fill="#e7f7ee" class="box"/>
-  <text x="1250" y="539" text-anchor="middle" class="label">Connector</text>
-  <text x="1250" y="568" text-anchor="middle" class="small">重新读取权威外部状态</text>
-  <line x1="850" y1="529" x2="1095" y2="529" class="event-flow"/>
-
-  <!-- Resource -->
-  <rect x="955" y="640" width="390" height="255" rx="14" fill="#ffffff" class="box"/>
-  <text x="1150" y="675" text-anchor="middle" class="label">Requirement Aggregate</text>
-  <text x="1150" y="699" text-anchor="middle" class="tiny">PR/MR · Review · Deployment · Verdict</text>
-
-  <rect x="980" y="724" width="340" height="64" rx="10" fill="#e9e1ff" class="soft-box"/>
-  <text x="1005" y="752" class="label">spec</text>
-  <text x="1065" y="752" class="small">用户认可的目标与策略</text>
-  <text x="1005" y="776" class="tiny">goal · acceptance · completion policy</text>
-
-  <rect x="980" y="807" width="340" height="64" rx="10" fill="#e7f7ee" class="soft-box"/>
-  <text x="1005" y="835" class="label">status</text>
-  <text x="1085" y="835" class="small">外部事实与持久决定</text>
-  <text x="1005" y="859" class="tiny">observation · association · conditions</text>
-
-  <path d="M1250 598 V625 H1150 V628" class="event-flow"/>
-  <text x="1204" y="620" text-anchor="middle" class="tiny">observe</text>
+  <rect x="550" y="505" width="300" height="58" rx="29" fill="#fff0bf" class="box"/>
+  <text x="700" y="541" text-anchor="middle" class="small">Signal · webhook · schedule</text>
+  <text x="700" y="585" text-anchor="middle" class="tiny">只负责唤醒，Connector 再读取权威事实</text>
 
   <!-- Reconcile -->
-  <circle cx="795" cy="767" r="102" fill="#e6dcff" class="box"/>
-  <text x="795" y="745" text-anchor="middle" class="label">Reconcile</text>
-  <text x="795" y="775" text-anchor="middle" class="small">比较 spec / status</text>
-  <text x="795" y="802" text-anchor="middle" class="small">计算下一步动作</text>
-  <path d="M955 740 C915 705 892 705 885 723" class="plugin-flow"/>
-  <text x="920" y="687" text-anchor="middle" class="tiny">读取目标与事实</text>
-  <path d="M885 820 C910 855 930 856 955 842" class="plugin-flow"/>
-  <text x="914" y="884" text-anchor="middle" class="tiny">更新状态</text>
+  <circle cx="800" cy="775" r="102" fill="#e6dcff" class="box"/>
+  <text x="800" y="753" text-anchor="middle" class="label">Reconcile</text>
+  <text x="800" y="783" text-anchor="middle" class="small">汇总 Requirement Loop</text>
+  <text x="800" y="810" text-anchor="middle" class="small">计算下一步动作</text>
+  <path d="M700 563 V620 H800 V658" class="event-flow"/>
+  <text x="750" y="612" text-anchor="middle" class="tiny">wake</text>
 
   <!-- Action and approval boundary -->
   <rect x="540" y="645" width="155" height="246" rx="13" fill="#ffffff" class="box"/>
@@ -173,7 +147,31 @@
   <rect x="557" y="843" width="121" height="37" rx="18" fill="#fff0bf" class="soft-box"/>
   <text x="617" y="867" text-anchor="middle" class="small">Mutate</text>
 
-  <line x1="693" y1="767" x2="680" y2="767" class="plugin-flow"/>
+  <line x1="698" y1="775" x2="680" y2="775" class="plugin-flow"/>
+
+  <!-- Domain resources -->
+  <rect x="955" y="500" width="430" height="425" rx="14" fill="#ffffff" class="soft-box"/>
+  <text x="1170" y="532" text-anchor="middle" class="label">reqloop Resources</text>
+  <text x="1170" y="555" text-anchor="middle" class="tiny">
+    Requirement 关联并聚合其它交付 Resource
+  </text>
+
+  <rect x="995" y="610" width="350" height="58" rx="13" fill="#e9e1ff" class="box"/>
+  <text x="1170" y="646" text-anchor="middle" class="label">Requirement</text>
+
+  <rect x="995" y="690" width="350" height="58" rx="13" fill="#eef3fb" class="box"/>
+  <text x="1170" y="726" text-anchor="middle" class="label">PullRequest</text>
+
+  <rect x="995" y="770" width="350" height="58" rx="13" fill="#e7f7ee" class="box"/>
+  <text x="1170" y="806" text-anchor="middle" class="label">Deployment</text>
+
+  <rect x="995" y="850" width="350" height="58" rx="13" fill="#fff0bf" class="box"/>
+  <text x="1170" y="886" text-anchor="middle" class="label">Evaluation</text>
+
+  <path d="M955 714 C940 714 925 724 902 744" class="event-flow"/>
+  <text x="925" y="696" text-anchor="middle" class="tiny">读取聚合状态</text>
+  <path d="M902 820 C925 840 940 850 955 850" class="plugin-flow"/>
+  <text x="928" y="880" text-anchor="middle" class="tiny">更新 / 关联</text>
 
   <!-- Current human-in-the-loop path -->
   <path d="M557 766 H500 V407 H445" class="plugin-flow"/>
@@ -187,7 +185,7 @@
   <path d="M617 891 V910" class="future-flow"/>
 
   <!-- reqloop status to Board -->
-  <path d="M955 895 V930 H455 V711 H410" class="flow"/>
+  <path d="M1170 925 V980 H455 V711 H410" class="flow"/>
 
   <!-- Harnesses -->
   <text x="1645" y="112" text-anchor="middle" class="title">能力提供方</text>
@@ -202,23 +200,30 @@
   <text x="1645" y="574" text-anchor="middle" class="small">lint · test · commit</text>
   <path d="M1645 459 V490" class="flow"/>
 
-  <!-- External systems -->
-  <text x="1645" y="675" text-anchor="middle" class="section-title">外部系统</text>
-  <rect x="1535" y="705" width="220" height="198" rx="14" fill="#e7f7ee" class="box"/>
-  <text x="1645" y="744" text-anchor="middle" class="label">Observed world</text>
-  <text x="1645" y="781" text-anchor="middle" class="small">Requirement</text>
-  <text x="1645" y="812" text-anchor="middle" class="small">Forge / Review / CI</text>
-  <text x="1645" y="843" text-anchor="middle" class="small">Deployment / Eval</text>
-  <text x="1645" y="877" text-anchor="middle" class="tiny">人、Harness 和系统都可能改变它</text>
+  <!-- External systems and explicit Resource mappings -->
+  <rect x="1535" y="610" width="220" height="58" rx="13" fill="#e9e1ff" class="box"/>
+  <text x="1645" y="646" text-anchor="middle" class="label">需求管理平台</text>
+  <path d="M1520 639 H1360" class="event-flow"/>
+  <text x="1440" y="625" text-anchor="middle" class="tiny">RequirementConnector</text>
 
-  <path d="M1645 605 V690" class="event-flow"/>
-  <text x="1662" y="656" class="tiny">PR/MR 等变化</text>
-  <path d="M1535 805 H1495 V549 H1405" class="event-flow"/>
-  <text x="1481" y="675" text-anchor="middle" class="tiny" transform="rotate(-90 1481 675)">
-    observation
-  </text>
-  <path d="M1390 566 H1475 V930 H1535" class="plugin-flow"/>
-  <text x="1492" y="930" text-anchor="end" class="tiny">已授权的外部动作</text>
+  <rect x="1535" y="690" width="220" height="58" rx="13" fill="#eef3fb" class="box"/>
+  <text x="1645" y="726" text-anchor="middle" class="label">代码平台</text>
+  <path d="M1520 719 H1360" class="event-flow"/>
+  <text x="1440" y="705" text-anchor="middle" class="tiny">ForgeConnector</text>
+
+  <rect x="1535" y="770" width="220" height="58" rx="13" fill="#e7f7ee" class="box"/>
+  <text x="1645" y="806" text-anchor="middle" class="label">部署平台</text>
+  <path d="M1520 799 H1360" class="event-flow"/>
+  <text x="1440" y="785" text-anchor="middle" class="tiny">DeploymentConnector</text>
+
+  <rect x="1535" y="850" width="220" height="58" rx="13" fill="#fff0bf" class="box"/>
+  <text x="1645" y="886" text-anchor="middle" class="label">评测平台</text>
+  <path d="M1520 879 H1360" class="event-flow"/>
+  <text x="1440" y="865" text-anchor="middle" class="tiny">EvaluationConnector</text>
+
+  <path d="M1750 555 H1770 V719 H1765" class="event-flow"/>
+  <text x="1778" y="646" text-anchor="middle" class="tiny"
+        transform="rotate(-90 1778 646)">PR/MR 等变化</text>
 
   <!-- Automation progression -->
   <text x="900" y="1075" text-anchor="middle" class="small">
