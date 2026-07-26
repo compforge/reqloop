@@ -74,8 +74,8 @@ Proposal contracts.
 - [Turn Coach](./plugins/turn-coach/README.md) — an end-to-end canary for
   Baton-owned Resource replay, persistent state, and proposed input.
 - [ReqLoop](./plugins/reqloop/README.md) — requirement-level coordination;
-  `0.1.6` asks for durable confirmation before handing actionable devloop
-  review results to the current Harness.
+  `0.1.7` materializes Requirement resources, tracks Forge review activity,
+  and asks once whether each PullRequest should join a Requirement.
 
 See the [Requirement Loop design](./docs/reqloop.md) for the domain model,
 Connector boundary, and Harness collaboration model.

@@ -60,7 +60,6 @@ Requirement
 │   └── completionPolicy  完成条件，例如不存在活跃 PR/MR
 └── status
     ├── externalState     外部需求系统的当前观测
-    ├── pullRequests      已关联 PullRequest Resource 的引用
     ├── deliveries        artifact 等其它实际交付
     ├── deployments
     ├── verdicts          review / e2e / eval / perf
@@ -77,8 +76,9 @@ Requirement，但只有用户认可后才更新 `spec`。
 重开、重试或多环境验收先表达为同一 Requirement 的状态演进。只有真实出现“一项 Requirement
 必须同时拥有多个独立执行实例”的需求时，才引入 Run / Attempt 概念。
 
-PR/MR 不写入 `spec`：它们是否出现、关联到哪个 Requirement、当前是否终止，都是执行过程中形成的事实，
-由 `status.pullRequests` 保存关联决定与 PullRequest ResourceRef。`completionPolicy` 只表达期望，
+PR/MR 不写入 Requirement `spec`：它们是否出现、关联到哪个 Requirement、当前是否终止，
+都是执行过程中形成的事实。关联决定保存在 PullRequest status，Requirement 侧按 ResourceRef
+派生汇总，避免双写。`completionPolicy` 只表达期望，
 例如“没有关联 PR/MR，或所有已关联 PR/MR 均已 merged / closed”。这个条件只说明 PR/MR
 不再阻塞收尾；初始状态同样没有 PR/MR，因此仍须与开发结果、验收等条件组合，不能单独让新建
 Requirement 立即进入可关闭状态。
@@ -95,8 +95,11 @@ PullRequest
 │   └── identity          Forge source + repository + number
 └── status
     ├── lifecycle         open / merged / closed
-    ├── reviewThreads     unresolved / resolved / unknown
+    ├── reviewThreads     none / unresolved / resolved / unknown
+    ├── reviewActivityKey review thread/comment 集合的外部活动指纹
     ├── mergeability      ready / conflicted / unknown
+    ├── requirementAssociation
+    │   └── prompted / linked(requirement ref) / standalone
     ├── review            devloop review key / status / sha / counts
     └── observedAt
 ```
@@ -110,14 +113,59 @@ reqloop 关心的是 Requirement Loop 是否仍被 PR/MR 上的未解决 review 
 PR/MR 的小闭环；reqloop 用独立 Resource 观察需求级收尾条件。两者可以对齐
 `repository + number + lifecycle` 等外部身份语义，但不共享运行态或互相导入领域类型。
 
-Requirement 到 PullRequest 的关联只以 `Requirement.status.pullRequests` 为事实源，
-PullRequest 不反向维护 Requirement 列表。需要反查时由 reqloop 扫描或建立派生索引，避免双向
-关系在更新失败后产生两份真相。
+一份 PullRequest 最多关联一个 Requirement，也可以保持独立。关联只以
+`PullRequest.status.requirementAssociation` 为事实源；Requirement 不反向保存列表，需要汇总时
+由 reqloop 扫描或建立派生索引。关联问题只询问一次：字段缺失表示尚未询问，`prompted` 表示已经
+询问，`linked` 保存 Requirement ResourceRef，`standalone` 表示用户明确选择独立跟踪。即使
+Interaction 被取消，持久的 `prompted` 也阻止系统在每次 reconcile 时重复打扰用户。
 
-PullRequest 是 Requirement 的支撑 Resource，不直接生成 Board presentation。Board 只渲染
-Requirement 这一层入口，并由 Requirement 汇总关联 PR/MR 的生命周期、review thread、merge
-conflict 和 review finding；这样保留独立观察与持久化能力，同时避免一个需求及其多个 PR/MR
-在 Board 上重复平铺。
+Board 展示活跃 Requirement，也展示尚未关联的活跃 PullRequest。PullRequest 一旦关联，就由
+所属 Requirement 汇总其生命周期、review thread、merge conflict 和 review finding，不再
+重复生成卡片。已 merged 的 PullRequest 生命周期结束，从 Board 消失且不再轮询 Forge；closed
+但未 merged 的对象可以继续低成本观察，以识别 reopen。
+
+### 状态、事件、决定与动作
+
+reqloop 的第一阶段不是追求无人值守，而是先把自动化所需的数据基础建稳：明确有哪些领域概念，
+哪些字段表达外部事实或人的决定，世界中的变化如何引起状态转换，以及下一步动作需要什么授权。
+只有这些边界稳定后，反复发生的人工流程才能安全地下沉为 reconcile 规则或权限策略。
+
+```text
+外部变化 / 人的操作 / Harness 结果
+              │
+              ▼
+       Signal 只负责唤醒
+              │
+              ▼
+ Connector 重新读取外部事实
+              │
+              ▼
+ Resource status（事实 + 持久决定）
+              │
+              ▼
+ Reconcile 计算差距并选择动作
+```
+
+Signal、cron 和事件不直接表示事实。例如“收到 review webhook”只说明 PR 可能变化；
+Controller 仍须读取 Forge，更新 `reviewThreads` 和 `reviewActivityKey`。后者是外部 review
+thread/comment 集合的稳定指纹：即使状态一直是 `unresolved`，新评论或解决状态变化仍会产生
+新的活动 key，让后续自动化能够区分一次新的外部事件。
+
+人的领域决定也属于可恢复状态，而不是 UI 回调。PR 是否挂到 Requirement 通过 durable
+Interaction 询问一次，回答写回 `requirementAssociation`。系统事实和人的决定放在不同字段，
+因此 merge conflict、review activity 等外部变化不会覆盖归属选择，也不会让系统重新提问。
+
+动作按副作用与判断来源分层：
+
+| 动作 | 例子 | 默认审批边界 |
+|---|---|---|
+| Observe | 查询 Forge、需求或部署状态并更新 status | 只读，可自动执行 |
+| Recommend | 建议 Harness 检查 review finding | 生成 proposed-input，由用户确认或编辑 |
+| Decide | 选择 PR 归属、确认是否关闭 Requirement | durable Interaction，一次决定持久复用 |
+| Mutate | 合并 PR、关闭外部需求、部署到环境 | 需要明确授权；以后只能在限定 Resource、环境、Connector 和有效期的策略内自动化 |
+
+自动化提升的是某一类动作在明确范围内的信任等级，不是绕过状态模型的一键开关。每次执行仍要
+保留意图、结果和最新外部观测；副作用不确定时先重新观察，不能盲目重试。
 
 ### RequirementController
 
@@ -315,8 +363,9 @@ Harness Work 类型；Harness 的路由、成本、并发、取消和可靠投�
    user-driven turn。
 4. Harness 内部的 devloop 约束 agent 完成开发小闭环；Harness 边界报告 DevelopmentOutcome，
    或 reqloop 的 ForgeConnector 观察到新的 PR/MR，reqloop 创建或刷新 PullRequest Resource。
-   能唯一匹配时自动写入 `Requirement.status.pullRequests`，否则询问用户关联已有 Requirement、
-   新建 Requirement 或忽略。
+   若存在活跃 Requirement 且尚未询问归属，reqloop 发起一次 durable Interaction；用户可关联
+   一项 Requirement，也可让 PullRequest 独立存在。决定写入
+   `PullRequest.status.requirementAssociation`，不根据匹配猜测自动关联，也不重复询问。
 5. PullRequestController 观察 review thread、merge conflict 与 open / merged / closed；
    当前由 devloop 触发的 review 完成后，`DevloopReviewConnector + cron Source` 也可观察其终态；
    后续由 reqloop 自己发起的远端 review 仍可由 VerdictConnector 配合 `requeueAfter` 查询。
@@ -348,8 +397,8 @@ Harness turn 停止、Board 更新或 Context 可用都不自动代表下一步�
 “可行动事项”和“状态事实”只是 UI 可使用的默认 facet，不是封闭数据类型或固定页面布局。
 reqloop 读取带 revision 的结构化 BoardSnapshot，不解析面向人的渲染文本。
 
-reqloop 只能更新自己的 Requirement status；Board presentation 只能从 Resource 派生，不能覆盖 Baton 或 Harness 的
-事实；它通过 resourceRef、领域 ID 和 provenance 关联不同 owner 的信息。并行 observation 由
+reqloop 只能更新自己的 Resource status；Board presentation 只能从 Resource 派生，不能覆盖
+Baton 或 Harness 的事实；它通过 resourceRef、领域 ID 和 provenance 关联不同 owner 的信息。并行 observation 由
 Controller 汇入新的 Resource revision，各 Plugin 和 ContextComposer 总是基于明确版本读取。
 
 Board 也不是 reqloop 唯一的信息通道。领域事件仍走 Baton Event Ledger，Connector 原始状态
@@ -432,14 +481,17 @@ Baton 作为通用产品需要一个清晰的默认故事。reqloop 随 Baton �
 8. reqloop 通过独立 Marketplace Package 交付、可禁用、可升级；Baton core 在没有 reqloop 时
    仍完整工作。
 9. Plugin 声明能力不等于获得权限；敏感 desired state 在写入 spec 前完成授权。
-10. reqloop 只能修改自己的 Resource status；Board presentation 只由 Requirement 派生，
-    PullRequest 等支撑 Resource 通过关联状态汇总，其他 owner 的产出只能作为 observation 读取。
+10. reqloop 只能修改自己的 Resource status；Board presentation 展示活跃 Requirement 与未关联
+    的活跃 PullRequest，已关联 PullRequest 只通过 Requirement 汇总，其他 owner 的产出只能
+    作为 observation 读取。
 11. 固定周期观察使用 Controller cron Source；`requeueAfter` 只服务一次性动态复查，并持久化为
     `nextReconcileAt`。
 12. Resource、Input、Harness 结果、cron 和 timer 只触发重新检查；Controller 不把触发当成必须逐条
     执行的命令。
-13. PR/MR 作为 PullRequest Resource 独立观察；Requirement 只在 status 单向保存关联，不在
-    spec 中枚举实际 PR/MR，也不让 PullRequest 反向维护 Requirement 列表。
+13. PR/MR 作为 PullRequest Resource 独立观察；归属决定只写入 PullRequest status，最多指向一份
+    Requirement。Requirement 不在 spec/status 双写实际 PR/MR 列表。
+14. Event、webhook、cron 和 timer 只表示“事实可能变化”；状态转换必须以重新观察后的 Resource
+    status 为依据。人的 durable decision 与外部 observation 分字段持久化。
 
 ## 11. 待继续讨论
 

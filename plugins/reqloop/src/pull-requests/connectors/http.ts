@@ -114,3 +114,13 @@ export function positiveLimit(limit: number | undefined): number {
   }
   return Math.min(limit, 100);
 }
+
+export function reviewActivityKey(
+  provider: "github" | "gitlab",
+  tokens: readonly string[],
+): string {
+  return createHash("sha256")
+    .update(JSON.stringify([provider, [...tokens].sort()]))
+    .digest("hex");
+}
+import { createHash } from "node:crypto";

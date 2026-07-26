@@ -12,6 +12,7 @@ import {
   positiveLimit,
   record,
   records,
+  reviewActivityKey,
   type Fetch,
 } from "./http.ts";
 
@@ -112,8 +113,11 @@ export class GitHubForgeConnector implements ForgeConnector {
     );
     const pullRequest = record("GitHub PullRequest", data);
     let reviewThreads: PullRequestReviewThreads = "unknown";
+    let reviewActivity: string | undefined;
     try {
-      reviewThreads = await this.#reviewThreads(identity);
+      const observation = await this.#reviewThreads(identity);
+      reviewThreads = observation.state;
+      reviewActivity = observation.activityKey;
     } catch {
       // Review thread support varies across GitHub Enterprise versions. A
       // partial observation is safer than treating ordinary comments as gates.
@@ -122,6 +126,7 @@ export class GitHubForgeConnector implements ForgeConnector {
       identity,
       lifecycle: lifecycle(pullRequest),
       reviewThreads,
+      ...(reviewActivity ? { reviewActivityKey: reviewActivity } : {}),
       mergeability: mergeability(pullRequest),
       observedAt: this.#now().toISOString(),
     };
@@ -146,9 +151,14 @@ export class GitHubForgeConnector implements ForgeConnector {
 
   async #reviewThreads(
     identity: PullRequestIdentity,
-  ): Promise<PullRequestReviewThreads> {
+  ): Promise<{
+    readonly state: PullRequestReviewThreads;
+    readonly activityKey?: string;
+  }> {
     const [owner, name] = identity.repository.split("/");
     let cursor: string | undefined;
+    const activityTokens: string[] = [];
+    let unresolved = false;
     for (let page = 0; page < MAX_REVIEW_THREAD_PAGES; page += 1) {
       const { data } = await this.#http.request(
         "POST",
@@ -160,7 +170,11 @@ export class GitHubForgeConnector implements ForgeConnector {
               repository(owner:$owner,name:$name){
                 pullRequest(number:$number){
                   reviewThreads(first:100,after:$after){
-                    nodes{isResolved}
+                    nodes{
+                      id
+                      isResolved
+                      comments(last:1){nodes{id updatedAt}}
+                    }
                     pageInfo{hasNextPage endCursor}
                   }
                 }
@@ -193,17 +207,53 @@ export class GitHubForgeConnector implements ForgeConnector {
         "GitHub GraphQL reviewThreads.nodes",
         reviewThreads.nodes,
       );
-      if (nodes.some((thread) => thread.isResolved === false)) {
-        return "unresolved";
-      }
-      if (nodes.some((thread) => thread.isResolved !== true)) {
-        throw new Error("GitHub review thread has no resolution state");
+      for (const thread of nodes) {
+        if (typeof thread.id !== "string" || !thread.id) {
+          throw new Error("GitHub review thread has no id");
+        }
+        if (typeof thread.isResolved !== "boolean") {
+          throw new Error("GitHub review thread has no resolution state");
+        }
+        const comments = record(
+          "GitHub GraphQL reviewThread.comments",
+          thread.comments,
+        );
+        const commentNodes = records(
+          "GitHub GraphQL reviewThread.comments.nodes",
+          comments.nodes,
+        );
+        const latest = commentNodes.at(-1);
+        const commentId = latest?.id;
+        const updatedAt = latest?.updatedAt;
+        if (latest && (typeof commentId !== "string" || !commentId)) {
+          throw new Error("GitHub review comment has no id");
+        }
+        if (
+          latest &&
+          updatedAt !== undefined &&
+          typeof updatedAt !== "string"
+        ) {
+          throw new Error("GitHub review comment updatedAt is invalid");
+        }
+        unresolved ||= thread.isResolved === false;
+        activityTokens.push(JSON.stringify([
+          thread.id,
+          thread.isResolved,
+          commentId ?? null,
+          updatedAt ?? null,
+        ]));
       }
       const pageInfo = record(
         "GitHub GraphQL reviewThreads.pageInfo",
         reviewThreads.pageInfo,
       );
-      if (pageInfo.hasNextPage !== true) return "resolved";
+      if (pageInfo.hasNextPage !== true) {
+        if (activityTokens.length === 0) return { state: "none" };
+        return {
+          state: unresolved ? "unresolved" : "resolved",
+          activityKey: reviewActivityKey("github", activityTokens),
+        };
+      }
       if (typeof pageInfo.endCursor !== "string" || !pageInfo.endCursor) {
         throw new Error("GitHub review thread cursor missing");
       }

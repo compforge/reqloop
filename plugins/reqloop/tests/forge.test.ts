@@ -115,7 +115,28 @@ describe("GitHubForgeConnector", () => {
             repository: {
               pullRequest: {
                 reviewThreads: {
-                  nodes: [{ isResolved: true }, { isResolved: false }],
+                  nodes: [
+                    {
+                      id: "PRRT_1",
+                      isResolved: true,
+                      comments: {
+                        nodes: [{
+                          id: "PRRC_1",
+                          updatedAt: "2026-07-26T07:00:00Z",
+                        }],
+                      },
+                    },
+                    {
+                      id: "PRRT_2",
+                      isResolved: false,
+                      comments: {
+                        nodes: [{
+                          id: "PRRC_2",
+                          updatedAt: "2026-07-26T07:30:00Z",
+                        }],
+                      },
+                    },
+                  ],
                   pageInfo: { hasNextPage: false, endCursor: null },
                 },
               },
@@ -150,6 +171,7 @@ describe("GitHubForgeConnector", () => {
       },
       lifecycle: "open",
       reviewThreads: "unresolved",
+      reviewActivityKey: expect.any(String),
       mergeability: "conflicted",
       observedAt: "2026-07-26T08:00:00.000Z",
     });
@@ -200,6 +222,59 @@ describe("GitHubForgeConnector", () => {
       mergeability: "unknown",
     });
   });
+
+  test("changes the activity key when a review comment changes", async () => {
+    let commentId = "PRRC_1";
+    const fetch: Fetch = async (input) => {
+      const url = String(input);
+      if (url.endsWith("/pulls/5")) {
+        return json({ number: 5, state: "open", mergeable: true });
+      }
+      if (url.endsWith("/graphql")) {
+        return json({
+          data: {
+            repository: {
+              pullRequest: {
+                reviewThreads: {
+                  nodes: [{
+                    id: "PRRT_1",
+                    isResolved: false,
+                    comments: {
+                      nodes: [{
+                        id: commentId,
+                        updatedAt: "2026-07-26T08:00:00Z",
+                      }],
+                    },
+                  }],
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                },
+              },
+            },
+          },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    };
+    const connector = new GitHubForgeConnector({
+      source: "github.com",
+      provider: "github",
+      host: "github.com",
+      token: "secret",
+    }, { fetch });
+    const identity = {
+      source: "github.com",
+      repository: "owner/repo",
+      number: 5,
+    };
+
+    const first = await connector.get(identity);
+    commentId = "PRRC_2";
+    const second = await connector.get(identity);
+
+    expect(first.reviewActivityKey).toEqual(expect.any(String));
+    expect(second.reviewActivityKey).toEqual(expect.any(String));
+    expect(second.reviewActivityKey).not.toBe(first.reviewActivityKey);
+  });
 });
 
 describe("GitLabForgeConnector", () => {
@@ -219,13 +294,18 @@ describe("GitLabForgeConnector", () => {
       if (url.includes("/discussions?")) {
         return json([
           {
+            id: "conversation",
             notes: [{
+              id: 1,
               resolvable: false,
               resolved: false,
             }],
           },
           {
+            id: "review",
             notes: [{
+              id: 2,
+              updated_at: "2026-07-26T08:30:00Z",
               resolvable: true,
               resolved: false,
             }],
@@ -259,6 +339,7 @@ describe("GitLabForgeConnector", () => {
       },
       lifecycle: "open",
       reviewThreads: "unresolved",
+      reviewActivityKey: expect.any(String),
       mergeability: "ready",
       observedAt: "2026-07-26T09:00:00.000Z",
     });
@@ -285,7 +366,9 @@ describe("GitLabForgeConnector", () => {
       }
       if (url.includes("/discussions?")) {
         return json([{
+          id: "conversation",
           notes: [{
+            id: 1,
             resolvable: false,
             resolved: false,
           }],
@@ -306,7 +389,7 @@ describe("GitLabForgeConnector", () => {
       number: 4,
     })).resolves.toMatchObject({
       lifecycle: "closed",
-      reviewThreads: "resolved",
+      reviewThreads: "none",
       mergeability: "unknown",
     });
   });

@@ -12,6 +12,7 @@ import {
   positiveLimit,
   record,
   records,
+  reviewActivityKey,
   type Fetch,
 } from "./http.ts";
 
@@ -118,8 +119,11 @@ export class GitLabForgeConnector implements ForgeConnector {
     );
     const mergeRequest = record("GitLab MergeRequest", data);
     let reviewThreads: PullRequestReviewThreads = "unknown";
+    let reviewActivity: string | undefined;
     try {
-      reviewThreads = await this.#reviewThreads(identity);
+      const observation = await this.#reviewThreads(identity);
+      reviewThreads = observation.state;
+      reviewActivity = observation.activityKey;
     } catch {
       // Older or restricted GitLab instances may not expose discussions.
     }
@@ -127,6 +131,7 @@ export class GitLabForgeConnector implements ForgeConnector {
       identity,
       lifecycle: lifecycle(mergeRequest),
       reviewThreads,
+      ...(reviewActivity ? { reviewActivityKey: reviewActivity } : {}),
       mergeability: mergeability(mergeRequest),
       observedAt: this.#now().toISOString(),
     };
@@ -153,8 +158,13 @@ export class GitLabForgeConnector implements ForgeConnector {
 
   async #reviewThreads(
     identity: PullRequestIdentity,
-  ): Promise<PullRequestReviewThreads> {
+  ): Promise<{
+    readonly state: PullRequestReviewThreads;
+    readonly activityKey?: string;
+  }> {
     let page = 1;
+    const activityTokens: string[] = [];
+    let unresolved = false;
     for (let count = 0; count < MAX_DISCUSSION_PAGES; count += 1) {
       const { data, headers } = await this.#http.request(
         "GET",
@@ -167,19 +177,45 @@ export class GitLabForgeConnector implements ForgeConnector {
         const notes = records("GitLab discussion notes", discussion.notes);
         // Only GitLab's resolvable review discussions are merge gates. Plain
         // conversation notes must not become unresolved review threads.
-        if (
-          notes.some(
-            (note) =>
-              note.resolvable === true &&
-              note.resolved !== true,
-          )
-        ) {
-          return "unresolved";
+        const resolvable = notes.filter((note) => note.resolvable === true);
+        if (resolvable.length === 0) continue;
+        if (typeof discussion.id !== "string" || !discussion.id) {
+          throw new Error("GitLab review discussion has no id");
         }
+        unresolved ||= resolvable.some((note) => note.resolved !== true);
+        const noteTokens = notes.map((note) => {
+          if (
+            (typeof note.id !== "number" && typeof note.id !== "string") ||
+            note.id === ""
+          ) {
+            throw new Error("GitLab review discussion note has no id");
+          }
+          if (
+            note.updated_at !== undefined &&
+            typeof note.updated_at !== "string"
+          ) {
+            throw new Error(
+              "GitLab review discussion note updated_at is invalid",
+            );
+          }
+          return [
+            String(note.id),
+            note.updated_at ?? null,
+            note.resolvable === true,
+            note.resolved === true,
+          ];
+        });
+        activityTokens.push(JSON.stringify([discussion.id, noteTokens]));
       }
 
       const nextPage = headers.get("x-next-page");
-      if (!nextPage) return "resolved";
+      if (!nextPage) {
+        if (activityTokens.length === 0) return { state: "none" };
+        return {
+          state: unresolved ? "unresolved" : "resolved",
+          activityKey: reviewActivityKey("gitlab", activityTokens),
+        };
+      }
       const parsed = Number(nextPage);
       if (!Number.isSafeInteger(parsed) || parsed <= page) {
         throw new Error("GitLab discussion pagination is invalid");
