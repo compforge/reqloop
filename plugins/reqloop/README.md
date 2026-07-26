@@ -6,7 +6,8 @@ one reads its normalized detail. The first concrete provider is Meego.
 
 ```text
 /requirements
-  → RequirementConnector.list()
+  → search field
+  → RequirementConnector.list({ text, limit })
   → Baton picker
   → RequirementConnector.get(selected source + category + id)
   → requirement detail
@@ -16,6 +17,11 @@ Provider categories such as `story` and `issue` are display metadata to
 ReqLoop. `source` identifies one configured Connector; the selected
 `source + category + id` identity routes detail reads without interpreting
 provider categories.
+
+The picker keeps its search field open even when no requirement matches.
+Baton debounces query changes and discards stale responses; ReqLoop forwards
+the latest text to every configured `RequirementConnector`. The current command
+uses a bounded result set and does not paginate.
 
 The first Meego Connector uses the public
 [`@lark-project/meegle`](https://www.npmjs.com/package/@lark-project/meegle)
@@ -116,7 +122,7 @@ review without an open PR/MR are ignored.
 
 ```text
 pluginId: qiankunli/reqloop
-version:  0.1.7
+version:  0.1.8
 ```
 
 Install this Marketplace in Baton, install `qiankunli/reqloop`, then enable it
@@ -137,6 +143,10 @@ Requirement 后仍保留独立 Resource，但 Board 以 Requirement 为主展示
 RequirementController 会通过配置的 Connector 定时刷新活跃需求。若至少存在一个关联 PR、所有
 关联 PR 都已 merged，且 review thread 状态均为 none 或 resolved，它会去重吐出 toast，提醒用户前往
 需求平台关闭需求；当前阶段不会代用户修改外部需求状态。
+
+`/requirements` Picker 带搜索框；Baton 对输入做防抖并丢弃过期响应，reqloop 将最新查询词
+交给每个 RequirementConnector。当前使用有界结果集，不做分页；零结果仍保持
+Picker 打开，方便继续修改查询。
 
 `requirements` 是以 source 为 key 的具名 Connector 集合，存在即生效，允许同时配置多个需求
 平台或同一平台的多个实例。Meego 的 `story`、`issue` 等分类由 Connector 填入 `category`。

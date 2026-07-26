@@ -29,7 +29,7 @@ import type {
 import { upsertPullRequestReview } from "./pull-requests/resource.ts";
 
 export const REQLOOP_PLUGIN_ID = "qiankunli/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.1.7";
+export const REQLOOP_PACKAGE_VERSION = "0.1.8";
 
 function currentRepo(context: PluginActivationContext): string {
   const cwd = context.session.cwd;
