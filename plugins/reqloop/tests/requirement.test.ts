@@ -214,6 +214,17 @@ describe("Requirement Resource", () => {
     expect(resources.current()?.status).toMatchObject({
       externalState: "in_progress",
       updatedAt: "2026-07-26T12:00:00.000Z",
+      linkedPullRequests: {
+        total: 1,
+        open: 0,
+        merged: 1,
+        conflicted: 0,
+        unresolvedReviewThreads: 1,
+      },
+    });
+    expect(controller.present?.(resources.current()!)).toMatchObject({
+      status: "in_progress · 1 PR merged · 1 unresolved review",
+      tone: "warning",
     });
     expect(resources.current()?.status.closeReminderKey).toBeUndefined();
     expect(toasts).toHaveLength(0);
@@ -222,6 +233,10 @@ describe("Requirement Resource", () => {
       reviewThreads: "resolved",
     });
     await controller.reconcile({} as never, resources.current()!);
+    expect(controller.present?.(resources.current()!)).toMatchObject({
+      status: "in_progress · 1 PR merged",
+      tone: "default",
+    });
     expect(
       typeof resources.current()?.status.closeReminderKey,
     ).toBe("string");
@@ -234,5 +249,62 @@ describe("Requirement Resource", () => {
 
     await controller.reconcile({} as never, resources.current()!);
     expect(toasts).toHaveLength(1);
+  });
+
+  test("ignores linked closed PullRequests in the Requirement projection", async () => {
+    const resources = resourceClient();
+    const requirement = upsertRequirement(resources.client, {
+      source: "meego",
+      category: "story",
+      id: "REQ-10",
+      title: "Ignore abandoned delivery",
+      state: "in_progress",
+    });
+    const pullRequest = resources.client.create<
+      PullRequestSpec,
+      PullRequestStatus
+    >(PULL_REQUEST_RESOURCE_KIND, {
+      resourceId: "pr_closed",
+      spec: {
+        identity: {
+          source: "github.com",
+          repository: "owner/repo",
+          number: 10,
+        },
+      },
+    });
+    resources.client.patchStatus(pullRequest, {
+      lifecycle: "closed",
+      reviewThreads: "resolved",
+      requirementAssociation: {
+        state: "linked",
+        requirement: {
+          resourceKind: REQUIREMENT_RESOURCE_KIND,
+          resourceId: requirement.metadata.resourceId,
+          resourceOwner: "plugin",
+        },
+      },
+    });
+    const toasts: ToastMessage[] = [];
+    const controller = createRequirementController(
+      resources.client,
+      [],
+      { show: (message) => toasts.push(message) },
+    );
+
+    await controller.reconcile({} as never, requirement);
+
+    expect(resources.current()?.status.linkedPullRequests).toEqual({
+      total: 0,
+      open: 0,
+      merged: 0,
+      conflicted: 0,
+      unresolvedReviewThreads: 0,
+    });
+    expect(controller.present?.(resources.current()!)).toMatchObject({
+      status: "in_progress",
+      tone: "default",
+    });
+    expect(toasts).toHaveLength(0);
   });
 });

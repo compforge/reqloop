@@ -622,48 +622,44 @@ describe("ReqLoop PluginPackage", () => {
     expect(resource?.status.review?.sha).toBe("new-review");
     expect(result?.output).toMatchObject({
       kind: "interaction",
-      title: "Review completed",
+      title: "Review comments found",
       options: [
-        { optionId: "inspect", label: "Inspect review" },
-        { optionId: "skip", label: "Not now", role: "reject" },
+        {
+          optionId: "accept",
+          label: "Accept",
+        },
+        {
+          optionId: "ignore",
+          label: "Ignore",
+          role: "reject",
+        },
       ],
     });
     if (result?.output?.kind !== "interaction") {
       throw new Error("expected review Interaction");
     }
     const decisionKey = result.output.decisionKey;
-    const skipped = await controller!.reconcile(
-      batonSnapshot([
-        {
-          interactionId: "ix_skip",
-          decisionKey,
-          resource: {
-            resourceKind: PULL_REQUEST_RESOURCE_KIND,
-            resourceId: resource!.metadata.resourceId,
-            resourceOwner: "plugin",
-          },
-          outcome: { kind: "answered", values: ["skip"] },
-        },
-      ]),
-      resource!,
-    );
-    expect(skipped).toBeUndefined();
-
+    const reviewKey = resource?.status.review?.key;
+    if (!reviewKey) throw new Error("expected persisted review");
     const accepted = await controller!.reconcile(
       batonSnapshot([
         {
-          interactionId: "ix_inspect",
+          interactionId: "ix_accept",
           decisionKey,
           resource: {
             resourceKind: PULL_REQUEST_RESOURCE_KIND,
             resourceId: resource!.metadata.resourceId,
             resourceOwner: "plugin",
           },
-          outcome: { kind: "answered", values: ["inspect"] },
+          outcome: { kind: "answered", values: ["accept"] },
         },
       ]),
       resource!,
     );
+    expect(resource?.status.reviewDecision).toEqual({
+      reviewKey,
+      choice: "accept",
+    });
     expect(accepted?.output?.kind).toBe("proposed-input");
     if (accepted?.output?.kind !== "proposed-input") {
       throw new Error("expected review follow-up");
@@ -671,10 +667,13 @@ describe("ReqLoop PluginPackage", () => {
     expect(accepted.output.text).toContain(
       "devloop review completed for owner/repo PR/MR 7",
     );
-    expect(accepted.output.text).toContain("Inspect the review comments");
+    expect(accepted.output.text).toContain("Fix the real findings");
     expect(accepted.output.text).toContain(
       "src/app.ts — missing cancellation",
     );
     expect(accepted.requeueAfterMs).toBeUndefined();
+    expect(
+      await controller!.reconcile(batonSnapshot(), resource!),
+    ).toBeUndefined();
   });
 });

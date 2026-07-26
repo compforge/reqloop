@@ -145,7 +145,15 @@ describe("GitHubForgeConnector", () => {
         });
       }
       if (url.includes("/pulls?")) {
-        return json([{ number: 17 }, { number: 16 }]);
+        return json([
+          { number: 17, state: "open", merged_at: null },
+          {
+            number: 16,
+            state: "closed",
+            merged_at: "2026-07-25T08:00:00Z",
+          },
+          { number: 15, state: "closed", merged_at: null },
+        ]);
       }
       return new Response("not found", { status: 404 });
     };
@@ -191,6 +199,9 @@ describe("GitHubForgeConnector", () => {
     expect(calls.map((call) => call.url)).toContain(
       "https://api.github.com/graphql",
     );
+    expect(calls.some((call) =>
+      call.url.includes("/pulls?state=all")
+    )).toBe(true);
   });
 
   test("keeps the observation when review thread API is unavailable", async () => {
@@ -313,7 +324,11 @@ describe("GitLabForgeConnector", () => {
         ]);
       }
       if (url.includes("/merge_requests?")) {
-        return json([{ iid: 9 }]);
+        return json([
+          { iid: 9, state: "opened" },
+          { iid: 8, state: "merged" },
+          { iid: 7, state: "closed" },
+        ]);
       }
       return new Response("not found", { status: 404 });
     };
@@ -344,13 +359,27 @@ describe("GitLabForgeConnector", () => {
       observedAt: "2026-07-26T09:00:00.000Z",
     });
     await expect(
-      connector.list("group/subgroup/repo", 1),
-    ).resolves.toHaveLength(1);
+      connector.list("group/subgroup/repo", 3),
+    ).resolves.toEqual([
+      {
+        source: "gitlab.example.com",
+        repository: "group/subgroup/repo",
+        number: 9,
+      },
+      {
+        source: "gitlab.example.com",
+        repository: "group/subgroup/repo",
+        number: 8,
+      },
+    ]);
     expect(calls[0]?.headers.get("private-token")).toBe("secret");
     expect(calls.map((call) => call.url)).toContain(
       "https://gitlab.example.com/api/v4/projects/" +
         "group%2Fsubgroup%2Frepo/merge_requests/9",
     );
+    expect(calls.some((call) =>
+      call.url.includes("/merge_requests?state=all")
+    )).toBe(true);
   });
 
   test("does not treat ordinary conversation notes as review threads", async () => {

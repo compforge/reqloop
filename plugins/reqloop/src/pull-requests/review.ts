@@ -26,7 +26,7 @@ export function reviewFollowUpText(
   ].filter((item): item is string => Boolean(item));
   const lines = [
     `devloop review completed for ${subject}: ${outcomes.join(", ")}.`,
-    "Inspect the review comments against the current code now. Briefly report the real High/Medium findings and explain false positives; do not modify code unless the user asks.",
+    "Evaluate the review comments against the current code. Fix the real findings, explain any false positives, and run the relevant lint and tests.",
   ];
   for (const finding of observation.findings.slice(0, 30)) {
     const detail = finding.message.replace(/\s+/g, " ").slice(0, 300);

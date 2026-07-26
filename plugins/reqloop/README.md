@@ -79,8 +79,9 @@ GitLab; a per-forge `token` field is the fallback.
 
 ReqLoop also observes devloop's append-only review ledger. When the current
 checkout's review completes with findings, file failures, or an error, it first
-asks whether the user wants to inspect the result. Only an affirmative answer
-produces the Harness follow-up input.
+asks the user to accept or ignore the result. The choice is persisted once per
+review observation; only `accept` produces a Harness follow-up that evaluates
+and fixes real findings.
 
 ReqLoop owns a provider-neutral `reqloop.pull-request` Resource for GitHub PRs
 and GitLab MRs. Its immutable spec identifies `source + repository + number`;
@@ -94,7 +95,9 @@ materializes a stable `reqloop.requirement` Resource. An open PullRequest is
 shown on the Board while standalone. Linking it to a Requirement keeps the
 PullRequest Resource independent but presents the Requirement as the primary
 Board item. Merged PullRequests leave the Board and
-stop polling. Review-thread lookup degrades to `unknown` when an instance or
+stop polling; closed PullRequests are neither discovered nor polled.
+Requirement cards summarize linked PR lifecycle, conflicts, and unresolved
+review threads. Review-thread lookup degrades to `unknown` when an instance or
 token does not expose that API, and ordinary conversation comments are never
 treated as unresolved review threads.
 
@@ -109,9 +112,9 @@ devloop review-history.jsonl
   → DevloopReviewConnector
   → matching reqloop.pull-request status + Controller
   → durable Interaction
-  → user confirms
+  → user chooses accept or ignore once
   → proposed-input
-  → user asks the current Harness to inspect review comments
+  → current Harness evaluates and fixes real review comments
 ```
 
 The Controller periodically rereads the authoritative ledger through its
@@ -138,7 +141,9 @@ Meego。代码平台按同样边界接 `ForgeConnector`，参考 devloop 的 pro
 thread、merge conflict 和 review activity fingerprint。`/requirements` 选中的需求会物化为
 稳定的 `reqloop.requirement` Resource。孤立且活跃的 PullRequest 会单独显示在 Board；关联
 Requirement 后仍保留独立 Resource，但 Board 以 Requirement 为主展示。merged 后生命周期
-结束并停止轮询。devloop review 也通过完整 PullRequest identity 汇入同一个 Resource。
+结束并停止轮询；closed PullRequest 不再发现或轮询。Requirement 卡片会汇总关联 PR 的生命周期、
+merge conflict 和 unresolved review thread。devloop review 也通过完整 PullRequest identity
+汇入同一个 Resource。
 
 RequirementController 会通过配置的 Connector 定时刷新活跃需求。若至少存在一个关联 PR、所有
 关联 PR 都已 merged，且 review thread 状态均为 none 或 resolved，它会去重吐出 toast，提醒用户前往
@@ -159,8 +164,9 @@ GitLab 优先读取 `GITLAB_TOKEN`，配置内 `token` 仅作为 fallback。
 
 现有 review 能力会观察 devloop 的追加式 review ledger；
 当前 checkout 的 review 出现 finding、文件失败或 error 时，它先发起持久
-`interaction` 询问用户是否查看；只有用户确认后才生成 `proposed-input`，提醒当前 Harness
-检查 review comments。选择“暂不查看”不会驱动 Harness。
+`interaction` 让用户选择 accept 或 ignore；选择按 review identity 写入 PullRequest status，
+无论哪种选择都不再重复提醒。只有 accept 才生成 `proposed-input`，让当前 Harness 判断并修复
+真实问题。
 
 Controller 由 cron Source 定时唤醒，并通过 Connector 重读权威 ledger；Resource status 持久记录已观察 review
 identity，因此重启后仍能去重；其他 worktree 或旧 commit 的结果不会串入当前会话。

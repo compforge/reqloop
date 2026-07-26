@@ -52,6 +52,11 @@ export interface PullRequestStatus {
    */
   readonly requirementAssociation?: PullRequestRequirementAssociation;
   readonly review?: PullRequestReviewStatus;
+  /** One user decision per devloop review observation; either choice is final. */
+  readonly reviewDecision?: {
+    readonly reviewKey: string;
+    readonly choice: "accept" | "ignore";
+  };
 }
 
 export interface PullRequest {

@@ -29,8 +29,8 @@ import {
 } from "./review.ts";
 
 const PULL_REQUEST_POLL_CRON = "*/30 * * * * *";
-const REVIEW_ACTION_INSPECT = "inspect";
-const REVIEW_ACTION_SKIP = "skip";
+const REVIEW_ACTION_ACCEPT = "accept";
+const REVIEW_ACTION_IGNORE = "ignore";
 const ASSOCIATION_STANDALONE = "standalone";
 const ASSOCIATION_REQUIREMENT_PREFIX = "requirement:";
 
@@ -67,6 +67,12 @@ function activeRequirements(
 
 function requirementOptionId(resourceId: string): string {
   return `${ASSOCIATION_REQUIREMENT_PREFIX}${resourceId}`;
+}
+
+function terminalLifecycle(
+  lifecycle: PullRequestStatus["lifecycle"],
+): boolean {
+  return lifecycle === "merged" || lifecycle === "closed";
 }
 
 export function createPullRequestController(
@@ -128,9 +134,9 @@ export function createPullRequestController(
       : {}),
     async reconcile(baton, resource) {
       if (!resources) return;
-      // A merged PR/MR is terminal for reqloop. Keeping the persisted Resource
-      // preserves history without continuing external polling.
-      if (resource.status.lifecycle === "merged") return;
+      // Terminal PRs remain persisted for history and Requirement aggregation,
+      // but reqloop no longer polls or acts on them.
+      if (terminalLifecycle(resource.status.lifecycle)) return;
       const { identity } = resource.spec;
       const connector = connectorsBySource.get(identity.source);
       let current = resource;
@@ -141,7 +147,7 @@ export function createPullRequestController(
         }
         current = upsertPullRequest(resources, observation);
       }
-      if (current.status.lifecycle === "merged") return;
+      if (terminalLifecycle(current.status.lifecycle)) return;
 
       const association = current.status.requirementAssociation;
       if (!association) {
@@ -223,34 +229,47 @@ export function createPullRequestController(
         current = upsertPullRequestReview(resources, review);
       }
       if (!actionableReview(review)) return;
+      if (current.status.reviewDecision?.reviewKey === review.key) return;
 
-      const decisionKey = `inspect-review:${review.key}`;
+      const decisionKey = `handle-review:${review.key}`;
       const decision = interactionDecision(baton, decisionKey);
       if (!decision) {
         return {
           output: {
             kind: "interaction",
             decisionKey,
-            title: "Review completed",
-            prompt: `devloop found actionable results for ${identity.repository} PR/MR ${identity.number}. Inspect them with the current Harness now?`,
+            title: "Review comments found",
+            prompt: `Ask the current Harness to evaluate and fix the review comments for ${identity.repository} PR/MR ${identity.number}?`,
             options: [
               {
-                optionId: REVIEW_ACTION_INSPECT,
-                label: "Inspect review",
+                optionId: REVIEW_ACTION_ACCEPT,
+                label: "Accept",
+                description: "Ask the current Harness to evaluate and fix them.",
               },
               {
-                optionId: REVIEW_ACTION_SKIP,
-                label: "Not now",
+                optionId: REVIEW_ACTION_IGNORE,
+                label: "Ignore",
                 role: "reject",
               },
             ],
           },
         };
       }
+      if (decision.outcome?.kind !== "answered") return;
+      const choice = decision.outcome.values[0];
       if (
-        decision.outcome?.kind === "answered" &&
-        decision.outcome.values.includes(REVIEW_ACTION_INSPECT)
+        choice !== REVIEW_ACTION_ACCEPT &&
+        choice !== REVIEW_ACTION_IGNORE
       ) {
+        return;
+      }
+      resources.patchStatus(current, {
+        reviewDecision: {
+          reviewKey: review.key,
+          choice,
+        },
+      });
+      if (choice === REVIEW_ACTION_ACCEPT) {
         return {
           output: {
             kind: "proposed-input",
