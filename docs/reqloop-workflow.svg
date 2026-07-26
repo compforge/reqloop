@@ -1,0 +1,227 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1120" viewBox="0 0 1800 1120">
+  <title>reqloop Requirement Loop workflow</title>
+  <desc>
+    reqloop connects requirement, forge, review, CI and deployment systems,
+    models their state as resources, reconciles observed status toward the
+    user-approved spec, and turns the gap into observable, reviewable or
+    authorized actions that can drive a Harness through Baton.
+  </desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10" fill="none" stroke="#111827" stroke-width="1.8"/>
+    </marker>
+    <marker id="plugin-arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10" fill="none" stroke="#6d4cc5" stroke-width="1.8"/>
+    </marker>
+    <marker id="event-arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10" fill="none" stroke="#a76b00" stroke-width="1.8"/>
+    </marker>
+    <style>
+      text {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", Arial, sans-serif;
+        fill: #111827;
+      }
+      .title { font-size: 27px; font-weight: 650; }
+      .section-title { font-size: 22px; font-weight: 650; }
+      .label { font-size: 19px; font-weight: 600; }
+      .small { font-size: 16px; }
+      .tiny { font-size: 13px; }
+      .box { stroke: #111827; stroke-width: 2.6; }
+      .soft-box { stroke: #8a94a6; stroke-width: 1.8; }
+      .future-box { stroke: #7c8799; stroke-width: 2; stroke-dasharray: 8 7; }
+      .flow { fill: none; stroke: #111827; stroke-width: 2.8; marker-end: url(#arrow); }
+      .plugin-flow {
+        fill: none;
+        stroke: #6d4cc5;
+        stroke-width: 2.8;
+        marker-end: url(#plugin-arrow);
+      }
+      .event-flow {
+        fill: none;
+        stroke: #a76b00;
+        stroke-width: 2.8;
+        marker-end: url(#event-arrow);
+      }
+      .future-flow {
+        fill: none;
+        stroke: #7c8799;
+        stroke-width: 2.2;
+        stroke-dasharray: 8 7;
+        marker-end: url(#arrow);
+      }
+    </style>
+  </defs>
+
+  <rect width="1800" height="1120" fill="#ffffff"/>
+  <text x="900" y="48" text-anchor="middle" class="title">reqloop：让 Requirement Loop 持续收敛</text>
+  <text x="900" y="78" text-anchor="middle" class="small">
+    一站式接入 → 数据化 → 识别动作与审批边界 → 渐进自动化
+  </text>
+
+  <!-- User -->
+  <text x="42" y="305" class="title">用户</text>
+  <line x1="96" y1="300" x2="170" y2="300" class="flow"/>
+  <text x="132" y="264" text-anchor="middle" class="tiny">指令 / 目标</text>
+  <text x="132" y="284" text-anchor="middle" class="tiny">确认 / 决定</text>
+
+  <!-- One window -->
+  <text x="300" y="112" text-anchor="middle" class="title">一个窗口</text>
+  <rect x="170" y="135" width="260" height="790" rx="14" fill="#eee8ff" class="box"/>
+
+  <rect x="205" y="205" width="190" height="78" rx="39" fill="#e1d8ff" class="box"/>
+  <text x="300" y="252" text-anchor="middle" class="label">Input</text>
+
+  <rect x="205" y="355" width="190" height="105" rx="14" fill="#f2edff" class="box"/>
+  <text x="300" y="394" text-anchor="middle" class="label">Interaction</text>
+  <text x="300" y="423" text-anchor="middle" class="small">确认 · 编辑 · 拒绝</text>
+  <line x1="300" y1="345" x2="300" y2="296" class="plugin-flow"/>
+  <text x="320" y="326" class="tiny">resolve</text>
+
+  <rect x="205" y="665" width="190" height="92" rx="14" fill="#f2edff" class="box"/>
+  <text x="300" y="703" text-anchor="middle" class="label">Board</text>
+  <text x="300" y="731" text-anchor="middle" class="small">状态 · blocker · 下一步</text>
+
+  <rect x="205" y="805" width="190" height="74" rx="37" fill="#e1d8ff" class="box"/>
+  <text x="300" y="850" text-anchor="middle" class="label">Transcript</text>
+
+  <line x1="170" y1="842" x2="96" y2="842" class="flow"/>
+  <text x="130" y="819" text-anchor="middle" class="tiny">进展与结果</text>
+
+  <!-- Baton boundary -->
+  <text x="495" y="112" class="title">Baton · BatonSession</text>
+  <rect x="470" y="135" width="1010" height="900" rx="14" fill="#f9fbff" class="box"/>
+
+  <!-- Baton stable control plane -->
+  <rect x="505" y="170" width="940" height="225" rx="14" fill="#eef3fb" class="soft-box"/>
+  <text x="530" y="207" class="section-title">Baton 控制面</text>
+  <text x="1415" y="207" text-anchor="end" class="tiny">统一输入、上下文、权限与可靠工作投递</text>
+
+  <rect x="540" y="245" width="240" height="92" rx="13" fill="#e7edf8" class="box"/>
+  <text x="660" y="281" text-anchor="middle" class="label">Input / Interaction</text>
+  <text x="660" y="309" text-anchor="middle" class="small">用户拥有最终控制权</text>
+  <line x1="430" y1="244" x2="525" y2="244" class="flow"/>
+  <line x1="430" y1="407" x2="525" y2="407" class="plugin-flow"/>
+
+  <rect x="860" y="245" width="230" height="92" rx="13" fill="#e7edf8" class="box"/>
+  <text x="975" y="281" text-anchor="middle" class="label">Context / Event</text>
+  <text x="975" y="309" text-anchor="middle" class="small">持久状态与上下文交付</text>
+  <line x1="780" y1="291" x2="845" y2="291" class="flow"/>
+
+  <rect x="1170" y="230" width="235" height="122" rx="13" fill="#f7f8fc" class="box"/>
+  <text x="1287" y="268" text-anchor="middle" class="label">Harness routing</text>
+  <text x="1287" y="298" text-anchor="middle" class="small">Codex / Claude / …</text>
+  <text x="1287" y="326" text-anchor="middle" class="tiny">devloop 约束开发小闭环</text>
+  <line x1="1090" y1="291" x2="1155" y2="291" class="flow"/>
+
+  <!-- reqloop -->
+  <rect x="505" y="430" width="940" height="565" rx="14" fill="#f4f0ff" class="soft-box"/>
+  <text x="530" y="468" class="section-title">reqloop · Baton Plugin</text>
+  <text x="1415" y="468" text-anchor="end" class="small">Resource(spec + status) + Reconcile</text>
+
+  <!-- Wake signal -->
+  <rect x="565" y="500" width="285" height="58" rx="29" fill="#fff0bf" class="box"/>
+  <text x="707" y="536" text-anchor="middle" class="small">Signal · webhook · schedule</text>
+  <text x="707" y="580" text-anchor="middle" class="tiny">只负责唤醒，不直接充当事实</text>
+
+  <!-- Connector -->
+  <rect x="1110" y="500" width="280" height="98" rx="13" fill="#e7f7ee" class="box"/>
+  <text x="1250" y="539" text-anchor="middle" class="label">Connector</text>
+  <text x="1250" y="568" text-anchor="middle" class="small">重新读取权威外部状态</text>
+  <line x1="850" y1="529" x2="1095" y2="529" class="event-flow"/>
+
+  <!-- Resource -->
+  <rect x="955" y="640" width="390" height="255" rx="14" fill="#ffffff" class="box"/>
+  <text x="1150" y="675" text-anchor="middle" class="label">Requirement Aggregate</text>
+  <text x="1150" y="699" text-anchor="middle" class="tiny">PR/MR · Review · Deployment · Verdict</text>
+
+  <rect x="980" y="724" width="340" height="64" rx="10" fill="#e9e1ff" class="soft-box"/>
+  <text x="1005" y="752" class="label">spec</text>
+  <text x="1065" y="752" class="small">用户认可的目标与策略</text>
+  <text x="1005" y="776" class="tiny">goal · acceptance · completion policy</text>
+
+  <rect x="980" y="807" width="340" height="64" rx="10" fill="#e7f7ee" class="soft-box"/>
+  <text x="1005" y="835" class="label">status</text>
+  <text x="1085" y="835" class="small">外部事实与持久决定</text>
+  <text x="1005" y="859" class="tiny">observation · association · conditions</text>
+
+  <path d="M1250 598 V625 H1150 V628" class="event-flow"/>
+  <text x="1204" y="620" text-anchor="middle" class="tiny">observe</text>
+
+  <!-- Reconcile -->
+  <circle cx="795" cy="767" r="102" fill="#e6dcff" class="box"/>
+  <text x="795" y="745" text-anchor="middle" class="label">Reconcile</text>
+  <text x="795" y="775" text-anchor="middle" class="small">比较 spec / status</text>
+  <text x="795" y="802" text-anchor="middle" class="small">计算下一步动作</text>
+  <path d="M955 740 C915 705 892 705 885 723" class="plugin-flow"/>
+  <text x="920" y="687" text-anchor="middle" class="tiny">读取目标与事实</text>
+  <path d="M885 820 C910 855 930 856 955 842" class="plugin-flow"/>
+  <text x="914" y="884" text-anchor="middle" class="tiny">更新状态</text>
+
+  <!-- Action and approval boundary -->
+  <rect x="540" y="645" width="155" height="246" rx="13" fill="#ffffff" class="box"/>
+  <text x="617" y="677" text-anchor="middle" class="label">Action</text>
+
+  <rect x="557" y="699" width="121" height="37" rx="18" fill="#e7f7ee" class="soft-box"/>
+  <text x="617" y="723" text-anchor="middle" class="small">Observe</text>
+
+  <rect x="557" y="747" width="121" height="37" rx="18" fill="#fce8c3" class="soft-box"/>
+  <text x="617" y="771" text-anchor="middle" class="small">Recommend</text>
+
+  <rect x="557" y="795" width="121" height="37" rx="18" fill="#f2edff" class="soft-box"/>
+  <text x="617" y="819" text-anchor="middle" class="small">Decide</text>
+
+  <rect x="557" y="843" width="121" height="37" rx="18" fill="#fff0bf" class="soft-box"/>
+  <text x="617" y="867" text-anchor="middle" class="small">Mutate</text>
+
+  <line x1="693" y1="767" x2="680" y2="767" class="plugin-flow"/>
+
+  <!-- Current human-in-the-loop path -->
+  <path d="M557 766 H500 V407 H445" class="plugin-flow"/>
+  <text x="486" y="610" text-anchor="middle" class="tiny" transform="rotate(-90 486 610)">
+    当前：建议 / 关键决定先交给用户
+  </text>
+
+  <!-- Scoped automation -->
+  <rect x="560" y="925" width="340" height="45" rx="22" fill="#ffffff" class="future-box"/>
+  <text x="730" y="953" text-anchor="middle" class="small">未来：明确策略下的 Scoped automation</text>
+  <path d="M617 891 V910" class="future-flow"/>
+
+  <!-- reqloop status to Board -->
+  <path d="M955 895 V930 H455 V711 H410" class="flow"/>
+
+  <!-- Harnesses -->
+  <text x="1645" y="112" text-anchor="middle" class="title">能力提供方</text>
+  <circle cx="1645" cy="240" r="64" fill="#e7ddff" class="box"/>
+  <text x="1645" y="248" text-anchor="middle" class="label">Codex</text>
+  <circle cx="1645" cy="395" r="64" fill="#e7ddff" class="box"/>
+  <text x="1645" y="403" text-anchor="middle" class="label">Claude</text>
+  <line x1="1405" y1="291" x2="1570" y2="291" class="flow"/>
+
+  <rect x="1540" y="505" width="210" height="100" rx="14" fill="#eef3fb" class="box"/>
+  <text x="1645" y="545" text-anchor="middle" class="label">代码与工作区</text>
+  <text x="1645" y="574" text-anchor="middle" class="small">lint · test · commit</text>
+  <path d="M1645 459 V490" class="flow"/>
+
+  <!-- External systems -->
+  <text x="1645" y="675" text-anchor="middle" class="section-title">外部系统</text>
+  <rect x="1535" y="705" width="220" height="198" rx="14" fill="#e7f7ee" class="box"/>
+  <text x="1645" y="744" text-anchor="middle" class="label">Observed world</text>
+  <text x="1645" y="781" text-anchor="middle" class="small">Requirement</text>
+  <text x="1645" y="812" text-anchor="middle" class="small">Forge / Review / CI</text>
+  <text x="1645" y="843" text-anchor="middle" class="small">Deployment / Eval</text>
+  <text x="1645" y="877" text-anchor="middle" class="tiny">人、Harness 和系统都可能改变它</text>
+
+  <path d="M1645 605 V690" class="event-flow"/>
+  <text x="1662" y="656" class="tiny">PR/MR 等变化</text>
+  <path d="M1535 805 H1495 V549 H1405" class="event-flow"/>
+  <text x="1481" y="675" text-anchor="middle" class="tiny" transform="rotate(-90 1481 675)">
+    observation
+  </text>
+  <path d="M1390 566 H1475 V930 H1535" class="plugin-flow"/>
+  <text x="1492" y="930" text-anchor="end" class="tiny">已授权的外部动作</text>
+
+  <!-- Automation progression -->
+  <text x="900" y="1075" text-anchor="middle" class="small">
+    Observe → Recommend → Manual approval → Scoped automation
+  </text>
+</svg>

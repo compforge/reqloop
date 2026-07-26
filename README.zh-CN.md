@@ -6,6 +6,19 @@ reqloop 是面向 Requirement Loop 的官方 [Baton](https://github.com/qiankunl
 Marketplace。它是一个多 Plugin 仓库：`plugins/` 下每个 Plugin 目录都是可独立版本化的
 Baton PluginPackage，仓库根只负责 Marketplace 发现和公共开发约定。
 
+## 架构概览
+
+Baton Plugin 负责协调长期领域 Loop，但不直接调用 Harness。它通过 Baton 的常规输入、上下文、
+权限和路由路径提出建议或提交范围明确的工作；Harness 作为智能执行能力提供方，devloop 等
+Harness Plugin 则约束 Harness 内部的开发小闭环。
+
+![Baton、Plugin 与 Harness](./docs/baton-plugin-harness.svg)
+
+ReqLoop 将需求、代码、review、CI 和部署系统接入同一条 Loop，把外部状态和用户的持久决定
+整理为 Resource，并从观察、建议和人工确认逐步走向范围明确的自动化。
+
+![ReqLoop 工作框图](./docs/reqloop-workflow.svg)
+
 目标开发使用流程是：
 
 ```text
@@ -52,6 +65,8 @@ Session 仓库中的 devloop review 终态，在 comments 需要检查时提供�
 .baton-plugin/marketplace.json  Marketplace 索引
 plugins/<plugin-name>/          一份独立版本的 Baton Plugin
 docs/reqloop.md                 Requirement Loop 领域模型与 Connector 设计
+docs/baton-plugin-harness.*     Baton Plugin 与 Harness 关系图
+docs/reqloop-workflow.*         ReqLoop 工作框图（SVG 与 PNG）
 CONTRIBUTING.md                 新 Plugin 接入规则
 AGENTS.md                       架构与维护约束
 ```
