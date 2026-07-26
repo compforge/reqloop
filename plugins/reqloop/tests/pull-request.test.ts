@@ -15,13 +15,13 @@ import {
   type ForgeConnector,
   PULL_REQUEST_RESOURCE_KIND,
   pullRequestResourceId,
-  type PullRequestObservation,
+  type PullRequest,
   type PullRequestSpec,
   type PullRequestStatus,
   REQUIREMENT_RESOURCE_KIND,
   type RequirementSpec,
   type RequirementStatus,
-  upsertPullRequestObservation,
+  upsertPullRequest,
 } from "../src/index.ts";
 
 function resourceClient(): {
@@ -133,7 +133,7 @@ function batonSnapshot(
   };
 }
 
-const observation: PullRequestObservation = {
+const observation: PullRequest = {
   identity: {
     source: "github-primary",
     repository: "qiankunli/reqloop",
@@ -149,11 +149,11 @@ describe("PullRequest Resource", () => {
   test("uses one stable Resource for repeated external observations", () => {
     const resources = resourceClient();
 
-    const created = upsertPullRequestObservation(
+    const created = upsertPullRequest(
       resources.client,
       observation,
     );
-    const repeated = upsertPullRequestObservation(
+    const repeated = upsertPullRequest(
       resources.client,
       observation,
     );
@@ -179,7 +179,7 @@ describe("PullRequest Resource", () => {
   test("shows only standalone open PullRequests on the Board", () => {
     const controller = createPullRequestController();
     const resources = resourceClient();
-    const pullRequest = upsertPullRequestObservation(
+    const pullRequest = upsertPullRequest(
       resources.client,
       observation,
     );
@@ -213,7 +213,7 @@ describe("PullRequest Resource", () => {
 
   test("refreshes a PullRequest through its configured Forge", async () => {
     const resources = resourceClient();
-    const pullRequest = upsertPullRequestObservation(
+    const pullRequest = upsertPullRequest(
       resources.client,
       observation,
     );
@@ -257,7 +257,7 @@ describe("PullRequest Resource", () => {
   test("asks once whether a PullRequest joins a Requirement", async () => {
     const resources = resourceClient();
     resources.addRequirement();
-    const pullRequest = upsertPullRequestObservation(
+    const pullRequest = upsertPullRequest(
       resources.client,
       observation,
     );
@@ -320,7 +320,7 @@ describe("PullRequest Resource", () => {
 
   test("does not poll a merged PullRequest again", async () => {
     const resources = resourceClient();
-    const merged = upsertPullRequestObservation(resources.client, {
+    const merged = upsertPullRequest(resources.client, {
       ...observation,
       lifecycle: "merged",
     });
@@ -343,5 +343,60 @@ describe("PullRequest Resource", () => {
     ).reconcile(batonSnapshot(), merged);
 
     expect(calls).toBe(0);
+  });
+
+  test("discovers missing PullRequest Resources from its cron Source", async () => {
+    const resources = resourceClient();
+    const forge: ForgeConnector = {
+      source: "github-primary",
+      provider: "github",
+      async list(repository) {
+        return [{
+          source: "github-primary",
+          repository,
+          number: 18,
+        }];
+      },
+      async get(identity) {
+        return {
+          identity,
+          lifecycle: "open",
+          reviewThreads: "unknown",
+          mergeability: "unknown",
+          observedAt: "2026-07-26T11:00:00.000Z",
+        };
+      },
+    };
+    const controller = createPullRequestController(
+      resources.client,
+      [forge],
+      undefined,
+      [{
+        source: "github-primary",
+        repository: "qiankunli/reqloop",
+      }],
+    );
+    const source = controller.sources?.[0] as
+      | { discover?: () => Promise<void> | void }
+      | undefined;
+
+    await source?.discover?.();
+
+    expect(resources.current()?.spec.identity).toEqual({
+      source: "github-primary",
+      repository: "qiankunli/reqloop",
+      number: 18,
+    });
+    await controller.reconcile(
+      {} as never,
+      resources.current()!,
+    );
+    expect(resources.current()?.status).toEqual({
+      lifecycle: "open",
+      reviewThreads: "unknown",
+      reviewActivityKey: null,
+      mergeability: "unknown",
+      observedAt: "2026-07-26T11:00:00.000Z",
+    });
   });
 });

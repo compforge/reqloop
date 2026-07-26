@@ -7,7 +7,7 @@ import type {
 
 import type {
   PullRequestIdentity,
-  PullRequestObservation,
+  PullRequest,
   PullRequestReviewObservation,
   PullRequestSpec,
   PullRequestStatus,
@@ -61,9 +61,9 @@ export function pullRequestResourceId(
  * Materializes the latest Forge observation without making Connector state a
  * second source of truth. Re-observing the same PR/MR targets the same Resource.
  */
-export function upsertPullRequestObservation(
+export function upsertPullRequest(
   resources: ResourceClient,
-  observation: PullRequestObservation,
+  observation: PullRequest,
 ): Readonly<Resource<PullRequestSpec, PullRequestStatus>> {
   const resource = ensurePullRequestResource(
     resources,

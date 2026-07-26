@@ -167,6 +167,12 @@ Interaction 询问一次，回答写回 `requirementAssociation`。系统事实�
 自动化提升的是某一类动作在明确范围内的信任等级，不是绕过状态模型的一键开关。每次执行仍要
 保留意图、结果和最新外部观测；副作用不确定时先重新观察，不能盲目重试。
 
+PullRequestController 的 cron Source 负责发现：每次到期先通过 `ForgeConnector.list()` 列出
+当前仓库的 PullRequest，并为新 identity 创建缺失 Resource；Baton 随后把全部当前
+PullRequest Resource 放入同一 reconcile queue，由逐 Resource 的 `ForgeConnector.get()` 刷新
+状态。发现不是独立 EventSource，也不需要 Candidate 或 Discovery Resource；未来其它发现手段
+仍应落成同一种 PullRequest，再复用同一 reconcile 路径。
+
 ### RequirementController
 
 `RequirementController` 管理 Requirement Resource。Resource 变化、Harness 结果、启动恢复、
@@ -220,7 +226,7 @@ Baton runtime 中的独立组件。
 首批内部 port 可以按领域拆分：
 
 - **RequirementConnector**：查询、读取、更新和关闭 Requirement，观察需求变化；
-- **ForgeConnector**：发现和读取 PR/MR，观察生命周期、review thread 与 merge conflict；
+- **ForgeConnector**：列出和读取 PR/MR，观察生命周期、review thread 与 merge conflict；
 - **DeploymentConnector**：创建部署、读取状态、取消或重试，观察部署结果；
 - **VerdictConnector**：发起或读取 review/eval，观察 verdict 变化。
 

@@ -2,6 +2,7 @@ import type {
   PluginActivationContext,
   PluginPackage,
 } from "@qiankun01/baton-plugin";
+import { spawnSync } from "node:child_process";
 
 import {
   DevloopReviewConnector,
@@ -22,6 +23,7 @@ import {
 } from "./pull-requests/connectors/config.ts";
 import type {
   ForgeConnector,
+  PullRequestIdentity,
   PullRequestReviewConnector,
 } from "./pull-requests/protocol.ts";
 import { upsertPullRequestReview } from "./pull-requests/resource.ts";
@@ -37,11 +39,54 @@ function currentRepo(context: PluginActivationContext): string {
   return cwd;
 }
 
+function currentPullRequestRepository(
+  cwd: string,
+): Pick<PullRequestIdentity, "source" | "repository"> | undefined {
+  const result = spawnSync(
+    "git",
+    ["remote", "get-url", "origin"],
+    {
+      cwd,
+      encoding: "utf8",
+      timeout: 5_000,
+      stdio: ["ignore", "pipe", "ignore"],
+    },
+  );
+  if (result.error || result.status !== 0) return;
+  const remote = result.stdout?.toString().trim();
+  if (!remote) return;
+
+  let source: string;
+  let repository: string;
+  if (!remote.includes("://")) {
+    const match = remote.match(/^(?:[^@]+@)?([^:]+):(.+)$/);
+    if (!match) return;
+    source = match[1]!;
+    repository = match[2]!;
+  } else {
+    let url: URL;
+    try {
+      url = new URL(remote);
+    } catch {
+      return;
+    }
+    source = url.hostname;
+    repository = url.pathname.replace(/^\/+/, "");
+  }
+  repository = repository.replace(/\.git$/, "");
+  if (!source || !repository) return;
+  return Object.freeze({ source, repository });
+}
+
 export function createReqloopPackage(options: {
   reviewConnector?: PullRequestReviewConnector;
   requirementConnector?: RequirementConnector;
   requirementConnectors?: readonly RequirementConnector[];
   forgeConnectors?: readonly ForgeConnector[];
+  pullRequestRepositories?: readonly Pick<
+    PullRequestIdentity,
+    "source" | "repository"
+  >[];
 } = {}): PluginPackage {
   return Object.freeze({
     pluginId: REQLOOP_PLUGIN_ID,
@@ -58,6 +103,18 @@ export function createReqloopPackage(options: {
       context.registerController(createRequirementController());
       const forgeConnectors =
         options.forgeConnectors ?? createForgeConnectors();
+      const pullRequestRepositories =
+        options.pullRequestRepositories ??
+        [
+          currentPullRequestRepository(currentRepo(context)),
+        ].filter(
+          (
+            repository,
+          ): repository is Pick<
+            PullRequestIdentity,
+            "source" | "repository"
+          > => repository !== undefined,
+        );
       const reviewConnector =
         options.reviewConnector ??
         new DevloopReviewConnector(currentRepo(context));
@@ -70,6 +127,7 @@ export function createReqloopPackage(options: {
           context.resources,
           forgeConnectors,
           reviewConnector,
+          pullRequestRepositories,
         ),
       );
     },

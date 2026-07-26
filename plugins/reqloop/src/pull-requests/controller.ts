@@ -18,8 +18,9 @@ import type {
   PullRequestStatus,
 } from "./protocol.ts";
 import {
+  ensurePullRequestResource,
   PULL_REQUEST_RESOURCE_KIND,
-  upsertPullRequestObservation,
+  upsertPullRequest,
   upsertPullRequestReview,
 } from "./resource.ts";
 import {
@@ -72,6 +73,10 @@ export function createPullRequestController(
   resources?: ResourceClient,
   connectors: readonly ForgeConnector[] = [],
   reviewConnector?: PullRequestReviewConnector,
+  repositories: readonly Pick<
+    PullRequestIdentity,
+    "source" | "repository"
+  >[] = [],
 ): Controller<
   PullRequestSpec,
   PullRequestStatus
@@ -83,17 +88,42 @@ export function createPullRequestController(
     }
     connectorsBySource.set(connector.source, connector);
   }
+  const source = {
+    type: "cron" as const,
+    sourceId: "pull-request-poll",
+    cron: PULL_REQUEST_POLL_CRON,
+    timeZone: "UTC",
+    ...(resources && repositories.length > 0
+      ? {
+        async discover() {
+          for (const repository of repositories) {
+            const connector = connectorsBySource.get(repository.source);
+            if (!connector) continue;
+            const pullRequests = await connector.list(
+              repository.repository,
+            );
+            for (const identity of pullRequests) {
+              if (
+                identity.source !== repository.source ||
+                identity.repository !== repository.repository
+              ) {
+                throw new Error(
+                  "ForgeConnector discovered a PullRequest outside its repository",
+                );
+              }
+              ensurePullRequestResource(resources, identity);
+            }
+          }
+        },
+      }
+      : {}),
+  };
 
   return {
     resourceKind: PULL_REQUEST_RESOURCE_KIND,
     ...(resources && (connectors.length > 0 || reviewConnector)
       ? {
-        sources: [{
-          type: "cron" as const,
-          sourceId: "pull-request-poll",
-          cron: PULL_REQUEST_POLL_CRON,
-          timeZone: "UTC",
-        }],
+        sources: [source],
       }
       : {}),
     async reconcile(baton, resource) {
@@ -109,7 +139,7 @@ export function createPullRequestController(
         if (!sameIdentity(observation.identity, identity)) {
           throw new Error("ForgeConnector returned a different PullRequest");
         }
-        current = upsertPullRequestObservation(resources, observation);
+        current = upsertPullRequest(resources, observation);
       }
       if (current.status.lifecycle === "merged") return;
 
