@@ -127,6 +127,7 @@ Controller cron Source 和 `requeueAfter` 到期都只负责让某个 Requiremen
 
 - 更新 `status`，并通过 `present(resource)` 生成 Board presentation；
 - 调用 reqloop 自己的 Connector，使外部状态靠近 `spec`；
+- 返回一份 `kind: "interaction"` 的 Plugin Output，请用户作出由当前 Resource 消费的决定；
 - 返回一份 `kind: "proposed-input"` 的 Plugin Output，建议用户审核后交给 Harness；
 - 没有下一步时等待新事实，或用 `requeueAfter` 安排下一次检查。
 
@@ -285,13 +286,17 @@ review 完成提醒是首个渐进落地的例外适配：devloop 仍在 Harness
 自己的 `review-history.jsonl`；reqloop 内部的 `DevloopReviewConnector` 将这份外部 ledger
 映射为带完整 `source + repository + number` identity 的 PullRequest review observation，
 PullRequestController 通过固定 cron Source 定时重读，并把 review key/status/sha/counts
-持久化到同一个 PullRequest Resource；有 findings、文件失败或 review error 时，返回
-`proposed-input`，提醒用户让当前 Harness 对照代码检查 comments。devloop 的 channel/waiter
+持久化到同一个 PullRequest Resource；有 findings、文件失败或 review error 时，先返回
+`interaction` 询问用户是否查看。用户确认后，同一 PullRequest 的下一次 reconcile 才返回
+`proposed-input`，提醒当前 Harness 对照代码检查 comments；选择暂不查看则不驱动 Harness。
+devloop 的 channel/waiter
 不再是 Baton 内提醒成立的前提；Connector 只消费 `review sha == 当前 checkout HEAD` 的记录，
 且忽略没有开放 PR/MR identity 的本地 review，避免 repo 级 ledger 中其他 worktree 的结果串到
 当前会话。Baton core 不解析 `.devloop` 格式。
 
-首期 reqloop 需要修改代码或诊断失败时，返回 `PluginOutput(kind: "proposed-input")`。Baton
+首期 reqloop 需要用户作出领域决定时返回 `PluginOutput(kind: "interaction")`，Baton 先持久化
+回答再重新 reconcile 原 Resource；需要修改代码或诊断失败时返回
+`PluginOutput(kind: "proposed-input")`。Baton
 将它展示到 InteractionDock；用户采用后进入 composer，可原样提交、编辑后提交，也可直接
 丢弃。只有提交后才成为普通 Input，继续走现有 Input → Attempt → Harness 路径。reqloop
 不直接调用 Codex/Claude Code，也不持有其原生 session。
@@ -361,6 +366,7 @@ reqloop manifest 声明 Connector 可能访问和修改的外部资源范围，�
 ```text
 Observe    Controller 只更新 Resource / Board，由人判断和执行
 Recommend  Controller 给出 proposed-input Output
+Confirm    Controller 用持久 interaction 取得 Resource 决议
 Approve    人审核、编辑后提交为普通 Input
 Automate   已授权 spec 下的 Connector 操作自动收敛
 Autonomous 真实工作区证明需要无人续跑后，再开放受控 Harness 调用
@@ -384,7 +390,7 @@ Input / Harness Event / external observation / cron or timer due
              RequirementController
                   ├── patch status
                   ├── Board presentation / Resource Context source
-                  ├── PluginOutput(proposed-input)
+                  ├── PluginOutput(interaction / proposed-input)
                   └── requeueAfter（仅动态复查）
 ```
 
@@ -418,7 +424,8 @@ Baton 作为通用产品需要一个清晰的默认故事。reqloop 随 Baton �
 4. reqloop 只通过 Baton 的 Input、Event 和 Resource reference 与 Harness 协作；对 devloop
    review ledger 的兼容只存在于 reqloop 内部 Connector，不进入 Baton core，也不允许
    Controller 调用 devloop 的 Harness 私有能力。
-5. 首期 Controller 只返回 `proposed-input` Output，用户提交后才形成普通 Input。
+5. Controller 用 `interaction` 取得由原 Resource 消费的持久决定，用 `proposed-input` 建议
+   Harness 输入；只有用户提交 proposed input 后才形成普通 Input。
 6. 未来即使开放主动 Harness 调用，reqloop 也不直接持有 Harness runtime 或原生 session。
 7. Requirement 是 session 级持久 Resource；Connector cursor 和私有 snapshot 只进入
    host-owned reqloop data 目录，Board 与二者都不是独立真相源。

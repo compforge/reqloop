@@ -71,9 +71,10 @@ default to GitLab. `api_host` points an origin alias at the real API host.
 Tokens use `GITHUB_TOKEN`, then `GH_TOKEN`, for GitHub and `GITLAB_TOKEN` for
 GitLab; a per-forge `token` field is the fallback.
 
-ReqLoop also observes devloop's append-only review ledger and proposes a
-follow-up input when the current checkout's review completes with findings,
-file failures, or an error.
+ReqLoop also observes devloop's append-only review ledger. When the current
+checkout's review completes with findings, file failures, or an error, it first
+asks whether the user wants to inspect the result. Only an affirmative answer
+produces the Harness follow-up input.
 
 ReqLoop owns a provider-neutral `reqloop.pull-request` Resource for GitHub PRs
 and GitLab MRs. Its immutable spec identifies `source + repository + number`;
@@ -89,6 +90,8 @@ conversation comments are never treated as unresolved review threads.
 devloop review-history.jsonl
   → DevloopReviewConnector
   → matching reqloop.pull-request status + Controller
+  → durable Interaction
+  → user confirms
   → proposed-input
   → user asks the current Harness to inspect review comments
 ```
@@ -101,7 +104,7 @@ review without an open PR/MR are ignored.
 
 ```text
 pluginId: qiankunli/reqloop
-version:  0.1.5
+version:  0.1.6
 ```
 
 Install this Marketplace in Baton, install `qiankunli/reqloop`, then enable it
@@ -127,8 +130,9 @@ source 对应的 `projectKey`、可选 profile 和 category 列表。`forges` �
 GitLab 优先读取 `GITLAB_TOKEN`，配置内 `token` 仅作为 fallback。
 
 现有 review 能力会观察 devloop 的追加式 review ledger；
-当前 checkout 的 review 出现 finding、文件失败或 error 时，它生成一条 `proposed-input`，
-提醒用户让当前 Harness 检查 review comments。
+当前 checkout 的 review 出现 finding、文件失败或 error 时，它先发起持久
+`interaction` 询问用户是否查看；只有用户确认后才生成 `proposed-input`，提醒当前 Harness
+检查 review comments。选择“暂不查看”不会驱动 Harness。
 
 Controller 由 cron Source 定时唤醒，并通过 Connector 重读权威 ledger；Resource status 持久记录已观察 review
 identity，因此重启后仍能去重；其他 worktree 或旧 commit 的结果不会串入当前会话。
