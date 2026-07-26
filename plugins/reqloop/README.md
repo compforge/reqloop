@@ -23,6 +23,12 @@ Baton debounces query changes and discards stale responses; ReqLoop forwards
 the latest text to every configured `RequirementConnector`. The current command
 uses a bounded result set and does not paginate.
 
+Selected Requirements are also available from Baton's `@` completion under the
+`reqloop@requirement` group. This search reads only active Requirement Resources
+already materialized in the current BatonSession, so typing does not call Meego
+or another external platform. Selecting one contributes its normalized detail
+to that Harness turn.
+
 The first Meego Connector uses the public
 [`@lark-project/meegle`](https://www.npmjs.com/package/@lark-project/meegle)
 CLI. Install and log in once:
@@ -125,7 +131,7 @@ review without an open PR/MR are ignored.
 
 ```text
 pluginId: qiankunli/reqloop
-version:  0.1.8
+version:  0.1.9
 ```
 
 Install this Marketplace in Baton, install `qiankunli/reqloop`, then enable it
@@ -152,6 +158,10 @@ RequirementController 会通过配置的 Connector 定时刷新活跃需求。�
 `/requirements` Picker 带搜索框；Baton 对输入做防抖并丢弃过期响应，reqloop 将最新查询词
 交给每个 RequirementConnector。当前使用有界结果集，不做分页；零结果仍保持
 Picker 打开，方便继续修改查询。
+
+已选择并物化的活跃 Requirement 也会出现在 Baton 的 `@` 补全中，分组为
+`reqloop@requirement`。搜索只读取当前 BatonSession 的 Requirement Resource，不会随输入调用
+Meego 或其它外部平台；选中后只向本次 Harness turn 注入归一化的需求上下文。
 
 `requirements` 是以 source 为 key 的具名 Connector 集合，存在即生效，允许同时配置多个需求
 平台或同一平台的多个实例。Meego 的 `story`、`issue` 等分类由 Connector 填入 `category`。

@@ -18,6 +18,7 @@ import { dirname, join } from "node:path";
 import type {
   BatonSnapshot,
   Command,
+  ContextProvider,
   Controller,
   PluginActivationContext,
   Resource,
@@ -189,11 +190,15 @@ describe("ReqLoop PluginPackage", () => {
       },
     };
     let command: Command | undefined;
+    let contextProvider: ContextProvider | undefined;
     const resourceKinds: string[] = [];
     const context = {
       session: { batonSessionId: "bs_test", cwd: root },
       registerCommand(contribution: Command) {
         command = contribution;
+      },
+      registerContextProvider(provider: ContextProvider) {
+        contextProvider = provider;
       },
       registerController(controller: { resourceKind: string }) {
         resourceKinds.push(controller.resourceKind);
@@ -209,6 +214,7 @@ describe("ReqLoop PluginPackage", () => {
       REQUIREMENT_RESOURCE_KIND,
       PULL_REQUEST_RESOURCE_KIND,
     ]);
+    expect(contextProvider?.kind).toBe("requirement");
     expect(await command!.execute({ argument: "intake" })).toMatchObject({
       kind: "picker",
       title: "Requirements · meego",
@@ -466,6 +472,7 @@ describe("ReqLoop PluginPackage", () => {
       registerCommand(contribution: Command) {
         command = contribution;
       },
+      registerContextProvider() {},
       registerController() {},
     } as unknown as PluginActivationContext;
 
@@ -581,6 +588,7 @@ describe("ReqLoop PluginPackage", () => {
       session: { batonSessionId: "bs_test", cwd: root },
       resources,
       registerCommand() {},
+      registerContextProvider() {},
       registerController(candidate: typeof controller) {
         controller = candidate;
       },

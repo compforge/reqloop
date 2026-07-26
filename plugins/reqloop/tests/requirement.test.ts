@@ -11,6 +11,7 @@ import type {
 } from "@qiankun01/baton-plugin";
 
 import {
+  createRequirementContextProvider,
   createRequirementController,
   PULL_REQUEST_RESOURCE_KIND,
   type PullRequestSpec,
@@ -131,6 +132,46 @@ describe("Requirement Resource", () => {
     expect(resources.current()).toEqual(requirement);
   });
 
+  test("provides searchable local Requirement context to one Harness turn", async () => {
+    const resources = resourceClient();
+    const requirement = upsertRequirement(resources.client, {
+      source: "meego",
+      category: "story",
+      id: "REQ-7",
+      title: "Requirement intake",
+      state: "in_progress",
+      description: "Create a durable Requirement Resource.",
+      acceptanceCriteria: ["The Requirement appears on the Board"],
+      assignee: "Owner",
+      url: "https://meego.example/story/REQ-7",
+    });
+    const provider = createRequirementContextProvider(resources.client);
+
+    expect(provider.kind).toBe("requirement");
+    expect(provider.search("durable")).toEqual([{
+      id: requirement.metadata.resourceId,
+      label: "Requirement intake",
+      detail: "meego · story · REQ-7 · in_progress",
+    }]);
+    expect(provider.search("issue")).toEqual([]);
+
+    const context = await provider.provide(
+      requirement.metadata.resourceId,
+      { maxChars: 1_000 },
+    );
+    expect(context).toContain("Requirement: Requirement intake");
+    expect(context).toContain("Category: story");
+    expect(context).toContain(
+      "Acceptance criteria:\n- The Requirement appears on the Board",
+    );
+    expect(
+      await provider.provide(
+        requirement.metadata.resourceId,
+        { maxChars: 20 },
+      ),
+    ).toBe(context?.slice(0, 20));
+  });
+
   test("hides completed Requirements from the Board", () => {
     const resources = resourceClient();
     const requirement = upsertRequirement(resources.client, {
@@ -144,6 +185,9 @@ describe("Requirement Resource", () => {
     expect(
       createRequirementController().present?.(requirement),
     ).toBeUndefined();
+    expect(
+      createRequirementContextProvider(resources.client).search(""),
+    ).toEqual([]);
   });
 
   test("refreshes external state and reminds once when linked PRs are done", async () => {
