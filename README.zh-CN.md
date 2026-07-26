@@ -22,7 +22,8 @@ Baton PluginPackage，仓库根只负责 Marketplace 发现和公共贡献约定
 
 本仓库随 Baton 的外部 Plugin runtime 一起演进。Hello 验证最小 Package 生命周期，
 Hello Counter 和 Turn Coach 验证 Resource/Reconcile、Builtin Resource watch 和持久
-Proposal；ReqLoop 是首个 Requirement Loop Package，用于观察外部 devloop review 状态。
+Proposal；ReqLoop 是首个 Requirement Loop Package，提供 `/requirements` 并观察外部
+devloop review 状态。
 
 ## 在 Baton 中安装和使用
 
@@ -66,8 +67,8 @@ Binding、Contribution、Resource/Reconcile 和 Proposal 契约。
   `baton.turn` watch 的组合。
 - [Turn Coach](./plugins/turn-coach/README.md) — 验证 Builtin Resource replay、持久状态和
   proposed input 的端到端 canary。
-- [ReqLoop](./plugins/reqloop/README.md) — 需求级闭环协调；`0.0.1` 首先支持 devloop review
-  完成提醒。
+- [ReqLoop](./plugins/reqloop/README.md) — 需求级闭环协调；`0.1.2` 增加平台无关的需求
+  列表/读取，并保留 devloop review 完成提醒。
 
 领域模型、Connector 边界与 Harness 协作方式见
 [Requirement Loop 设计](./docs/reqloop.md)。

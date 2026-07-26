@@ -16,6 +16,7 @@ import { dirname, join } from "node:path";
 
 import type {
   PluginActivationContext,
+  PluginCommandContribution,
   PluginResource,
   ResourceContribution,
 } from "@qiankun01/baton-plugin";
@@ -24,6 +25,7 @@ import reqloop, {
   createReqloopPackage,
   DevloopReviewConnector,
   REQLOOP_REVIEW_WATCH_KIND,
+  type RequirementConnector,
 } from "../src/index.ts";
 
 const roots: string[] = [];
@@ -104,6 +106,68 @@ describe("ReqLoop PluginPackage", () => {
         },
       ],
     });
+  });
+
+  test("lists provider-neutral requirements and reads the selected requirement", async () => {
+    const root = testRoot();
+    const calls: string[] = [];
+    const requirementConnector: RequirementConnector = {
+      provider: "meego",
+      async list(query) {
+        calls.push(`list:${query?.text ?? ""}:${query?.limit ?? ""}`);
+        return [
+          {
+            id: "REQ-7",
+            title: "Add requirement intake",
+            state: "in_progress",
+          },
+        ];
+      },
+      async get(requirementId) {
+        calls.push(`get:${requirementId}`);
+        return {
+          id: requirementId,
+          title: "Add requirement intake",
+          state: "in_progress",
+          description: "Expose a provider-neutral requirement command.",
+          acceptanceCriteria: ["List requirements", "Read one requirement"],
+        };
+      },
+    };
+    let command: PluginCommandContribution | undefined;
+    const context = {
+      session: { batonSessionId: "bs_test", cwd: root },
+      registerCommand(contribution: PluginCommandContribution) {
+        command = contribution;
+      },
+    } as unknown as PluginActivationContext;
+
+    await createReqloopPackage({ requirementConnector }).activate(context);
+    expect(command).toMatchObject({
+      commandId: "requirements",
+      name: "requirements",
+    });
+    expect(await command!.execute({ argument: "intake" })).toEqual({
+      kind: "picker",
+      title: "Requirements · meego",
+      options: [
+        {
+          name: "Add requirement intake",
+          description: "REQ-7 · in_progress",
+          value: "REQ-7",
+        },
+      ],
+    });
+    expect(
+      await command!.execute({
+        argument: "intake",
+        selectedValue: "REQ-7",
+      }),
+    ).toMatchObject({
+      kind: "message",
+      text: expect.stringContaining("Acceptance criteria:\n- List requirements"),
+    });
+    expect(calls).toEqual(["list:intake:50", "get:REQ-7"]);
   });
 
   test("persists the activation baseline and proposes actionable follow-up", async () => {
@@ -193,6 +257,7 @@ describe("ReqLoop PluginPackage", () => {
       },
       session: { batonSessionId: "bs_test", cwd: root },
       resources,
+      registerCommand() {},
       registerResource(contribution: typeof resourceContribution) {
         resourceContribution = contribution;
       },

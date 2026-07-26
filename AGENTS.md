@@ -22,6 +22,7 @@ reqloop/
 │       ├── .baton-plugin/
 │       │   └── plugin.json
 │       ├── src/
+│       │   └── requirements/       # Requirement 中立模型、Connector port 与 /requirements
 │       ├── tests/
 │       ├── package.json
 │       └── README.md
@@ -42,6 +43,10 @@ reqloop/
    Command、Resource 等变体统一收束在 PluginContribution 下。
 3. Plugin 的领域逻辑与外部 Connector 分离：Reconciler 负责根据 `spec/status` 收敛状态，
    Connector 只负责协议调用和 DTO 映射，不能反向拥有 loop。
+   Requirement/Forge 等对象保持 provider-neutral，provider 属于 Connector 或其绑定的
+   repository，不摊进每个领域对象。连接参数归 Plugin 配置，cursor/cache 归 Baton 注入的
+   host-owned data 目录，ReqLoopRun 等 loop 状态归 session Resource；data 目录契约落地前
+   不得在 Plugin 内硬编码 `~/.baton` 路径。
 4. 本地开发可以使用 link 来源，但发布版本必须不可变；来源 provenance 不进入 `pluginId` 或
    PluginInstance 身份。
 5. 新 Plugin 必须放进 `plugins/`，同时更新 Marketplace 索引和根 README；具体配置、限制和

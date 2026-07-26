@@ -25,7 +25,8 @@ develop a plugin
 The repository grows with Baton's external plugin runtime. Hello validates the
 smallest Package lifecycle; Hello Counter and Turn Coach exercise
 Resource/Reconcile, Builtin Resource watches, and durable proposals; ReqLoop is
-the first requirement-loop Package and observes external devloop review state.
+the first requirement-loop Package, contributes `/requirements`, and observes
+external devloop review state.
 
 ## Install and use in Baton
 
@@ -73,7 +74,8 @@ Resource/Reconcile and Proposal contracts.
 - [Turn Coach](./plugins/turn-coach/README.md) — an end-to-end canary for
   Builtin Resource replay, persistent state, and proposed input.
 - [ReqLoop](./plugins/reqloop/README.md) — requirement-level coordination;
-  `0.0.1` starts with devloop review completion follow-up.
+  `0.1.2` adds provider-neutral requirement list/read and keeps devloop review
+  completion follow-up.
 
 See the [Requirement Loop design](./docs/reqloop.md) for the domain model,
 Connector boundary, and Harness collaboration model.

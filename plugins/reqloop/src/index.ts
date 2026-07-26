@@ -9,9 +9,11 @@ import {
   DevloopReviewConnector,
   reviewFollowUpText,
 } from "./connectors/devloop-review.ts";
+import type { RequirementConnector } from "./requirements/protocol.ts";
+import { createRequirementsCommand } from "./requirements/command.ts";
 
 export const REQLOOP_PLUGIN_ID = "qiankunli/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.0.1";
+export const REQLOOP_PACKAGE_VERSION = "0.1.2";
 export const REQLOOP_REVIEW_WATCH_KIND = "reqloop.review-watch";
 export const REQLOOP_REVIEW_WATCH_ID = "current-repo";
 const REVIEW_POLL_INTERVAL_MS = 2_000;
@@ -47,11 +49,15 @@ function existingWatch(
 
 export function createReqloopPackage(options: {
   connector?: DevloopReviewConnector;
+  requirementConnector?: RequirementConnector;
 } = {}): PluginPackage {
   return Object.freeze({
     pluginId: REQLOOP_PLUGIN_ID,
     version: REQLOOP_PACKAGE_VERSION,
     async activate(context: PluginActivationContext) {
+      context.registerCommand(
+        createRequirementsCommand(options.requirementConnector),
+      );
       const repo = currentRepo(context);
       const connector = options.connector ?? new DevloopReviewConnector(repo);
       if (!connector.historyPath) return;
@@ -116,3 +122,4 @@ const reqloop = createReqloopPackage();
 
 export default reqloop;
 export * from "./connectors/devloop-review.ts";
+export * from "./requirements/protocol.ts";
