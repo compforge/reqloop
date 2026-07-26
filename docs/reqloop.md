@@ -45,7 +45,7 @@ reqloop 作为独立 Package 通过 reqloop Marketplace 发布，不是 Baton co
 
 ### ReqLoopRun
 
-`ReqLoopRun` 是 reqloop 声明的一种 PluginResource，表示“一项 Requirement 正在经历的一次
+`ReqLoopRun` 是 reqloop 声明的一种 Resource，表示“一项 Requirement 正在经历的一次
 闭环”。它用 `spec/status` 分开期望和观测：
 
 ```text
@@ -71,20 +71,20 @@ Requirement 是业务锚点，ReqLoopRun 是执行实例。二者分开，才能
 Requirement、验收目标和完成策略属于用户认可的 Contract；PR、部署、review 和 Harness 结果
 是实际产出。Harness 可以建议修改 Requirement，但只有用户认可后才更新 `spec`。
 
-### ReqLoopReconciler
+### ReqLoopController
 
-`ReqLoopReconciler` 是 ReqLoopRun Resource Contribution 的一部分。Resource 变化、Harness
-结果、启动恢复和 `requeueAfter` 到期都只负责让某个 ReqLoopRun 重新进入 reconcile；
-Reconciler 读取最新 `spec/status` 和必要的外部状态，再决定当前是否需要：
+`ReqLoopController` 管理 ReqLoopRun。Resource 变化、Harness 结果、启动恢复、Controller cron
+Source 和 `requeueAfter` 到期都只负责让某个 ReqLoopRun 重新进入 reconcile；Controller 读取
+最新 `spec/status` 和必要的外部状态，再决定当前是否需要：
 
-- 更新 `status` 与 Board projection；
+- 更新 `status`，并通过 `present(resource)` 生成 Board presentation；
 - 调用 reqloop 自己的 Connector，使外部状态靠近 `spec`；
 - 返回一份 `kind: "proposed-input"` 的 Plugin Output，建议用户审核后交给 Harness；
 - 没有下一步时等待新事实，或用 `requeueAfter` 安排下一次检查。
 
-Reconciler 不把触发原因当成必须执行一次的命令。重复触发、队列合并或进程重启都可以让同一
+Controller 不把触发原因当成必须执行一次的命令。重复触发、队列合并或进程重启都可以让同一
 key 再次 reconcile；只要 `spec` 和外部状态没有变化，它就不应产生新的非幂等动作。Board 是
-ReqLoopRun 面向人和其他参与者的共享投影与操作面，而不是另一份领域事实源。
+ReqLoopRun 面向人和其他参与者的共享展示与操作面，而不是另一份领域事实源。
 
 ### Requirement
 
@@ -116,7 +116,7 @@ Baton runtime 中的独立组件。
 ```text
                         reqloop
 ┌───────────────────────────────────────────────────────┐
-│ ReqLoopRun / Reducer / Reconciler / Policy / Commands │
+│ ReqLoopRun / Reducer / Controller / Policy / Commands │
 │                    │                                  │
 │          internal Connector ports                     │
 │       ┌────────────┼─────────────┬─────────────┐       │
@@ -169,32 +169,32 @@ adapter。reqloop 复用这套模型原则，但不导入 devloop 的实现或�
 同时启用多个 Connector；Meego source 只保存 `projectKey`、可选 CLI profile 和 category
 列表，OAuth token 由 Meegle CLI 管理。它不与其它 Plugin 混入同一个配置文件。待 Baton
 提供正式的 Plugin config/data 路径契约后再迁移，reqloop 的运行时状态仍不能进入配置文件。
-ReqLoopRun 始终是 BatonSession-scoped PluginResource。
+ReqLoopRun 始终是 BatonSession-scoped Resource。
 
 首版 Connector 随 reqloop package 交付，不急于开放第三方 Connector SDK。等出现独立发布、
 版本兼容和多团队贡献的真实需求后，再设计 reqloop 自己的扩展机制，避免提前在 Baton 中恢复
 第二套 Plugin 系统。
 
-## 4. reqloop 对 Baton 的贡献
+## 4. reqloop 注册到 Baton 的能力
 
 从 Baton 视角，reqloop 只是一个能力较完整的 Plugin：
 
 ```text
 reqloop
 ├── slash command    /requirements
-└── resource         ReqLoopRun
+└── controller       ReqLoopRun
     ├── spec/status schema
-    ├── reconciler   按 ReqLoopRun key 收敛状态
-    ├── board        Requirement、进展、证据和待处理事项
-    └── context?     单次 Harness turn 的筛选或补充
+    ├── reconcile    按 ReqLoopRun key 收敛状态
+    ├── present      Requirement、进展、证据和待处理事项
+    └── context?     单次 Harness turn 的 Resource Context source
 ```
 
-reqloop 的 Connector 是 Resource controller 的内部依赖，不提升为 Baton Contribution。
-Reconciler 可以在 manifest 已声明、当前 `spec` 已授权的范围内直接调用 Connector：
+reqloop 的 Connector 是 Controller 的内部依赖，不提升为 Baton 顶层能力。Controller 可以在
+manifest 已声明、当前 `spec` 已授权的范围内直接调用 Connector：
 
 ```text
 ReqLoopRun.spec 要求 review
-  → ReqLoopReconciler
+  → ReqLoopController.reconcile
   → VerdictConnector.start(stable operation key)
   → patch status.review = running
   → requeueAfter
@@ -202,7 +202,7 @@ ReqLoopRun.spec 要求 review
   → patch status.review = completed
 ```
 
-外部操作如果超时，Reconciler 先按稳定 operation key 重新观察，不能盲目重复创建。只有将来
+外部操作如果超时，Controller 先按稳定 operation key 重新观察，不能盲目重复创建。只有将来
 出现无法自然表达成 `spec`、又需要被独立调用的一次性命令时，才为 Baton 增加 Action。
 
 ## 5. 与 devloop 和 Harness 的关系
@@ -224,7 +224,7 @@ Baton ──context / user turn──▶ Harness
                               Baton
                                 │ persisted event
                                 ▼
-                         ReqLoopReconciler
+                         ReqLoopController
                            ├── patch status
                            └── Connector: 部署/review/收尾
 ```
@@ -235,18 +235,18 @@ reqloop 只消费 Baton 归一后的 `harness.delivery.ready`、`harness.develop
 
 review 完成提醒是首个渐进落地的例外适配：devloop 仍在 Harness 内触发 review，并把终态追加到
 自己的 `review-history.jsonl`；reqloop 内部的 `DevloopReviewConnector` 将这份外部 ledger
-映射为 Verdict observation，review-watch Resource 通过 `requeueAfter` 定时重读。Reconciler
+映射为 Verdict observation，review-watch Controller 通过固定 cron Source 定时重读。Controller
 持久记录已观察 identity；有 findings、文件失败或 review error 时，返回
 `proposed-input`，提醒用户让当前 Harness 对照代码检查 comments。devloop 的 channel/waiter
 不再是 Baton 内提醒成立的前提；Connector 只消费 `review sha == 当前 checkout HEAD` 的记录，
 避免 repo 级 ledger 中其他 worktree 的结果串到当前会话。Baton core 不解析 `.devloop` 格式。
 
 首期 reqloop 需要修改代码或诊断失败时，返回 `PluginOutput(kind: "proposed-input")`。Baton
-将它投影到 InteractionDock；用户采用后进入 composer，可原样提交、编辑后提交，也可直接
+将它展示到 InteractionDock；用户采用后进入 composer，可原样提交、编辑后提交，也可直接
 丢弃。只有提交后才成为普通 Input，继续走现有 Input → Attempt → Harness 路径。reqloop
 不直接调用 Codex/Claude Code，也不持有其原生 session。
 
-长期如果真实工作区证明必须在无人输入时恢复 Harness，再让 Reconciler 通过 Baton 的受控能力
+长期如果真实工作区证明必须在无人输入时恢复 Harness，再让 Controller 通过 Baton 的受控能力
 请求一个或多个 Harness。该能力嵌套在 Resource/Reconcile 契约下，不提前增加一个顶层
 Harness Work 类型；Harness 的路由、成本、并发、取消和可靠投递仍归 Baton。
 
@@ -254,17 +254,17 @@ Harness Work 类型；Harness 的路由、成本、并发、取消和可靠投�
 
 1. 用户首次运行 Baton 时看到 Requirement Loop quickstart；配置 reqloop 的需求与部署平台。
 2. 用户通过 `/requirements` 选择需求，或直接粘贴、输入一项需求；reqloop 创建或恢复
-   ReqLoopRun，将目标和验收条件写入 `spec`，并投影到 Board。
-3. ReqLoopReconciler 返回“根据需求完成开发并提交 PR”的 `proposed-input` Output，Board 展示这段
+   ReqLoopRun，将目标和验收条件写入 `spec`，并展示到 Board。
+3. ReqLoopController 返回“根据需求完成开发并提交 PR”的 `proposed-input` Output，Board 展示这段
    文本。用户原样提交或编辑后提交，Baton 组装 context 并交给目标 Harness；这仍是
    user-driven turn。
 4. Harness 内部的 devloop 约束 agent 完成开发小闭环；Harness 边界报告带 ReqLoopRun reference
-   的 `harness.delivery.ready`，Reconciler 将 PR 等实际交付物写入 `status`。
-5. 当前由 devloop 触发的 review 完成后，`DevloopReviewConnector + requeueAfter` 观察其终态；
+   的 `harness.delivery.ready`，Controller 将 PR 等实际交付物写入 `status`。
+5. 当前由 devloop 触发的 review 完成后，`DevloopReviewConnector + cron Source` 观察其终态；
    后续由 reqloop 自己发起的远端 review 仍可由 VerdictConnector 配合 `requeueAfter` 查询。
-6. review 要求修改时，Reconciler 返回包含 review 意见的修复 `proposed-input` Output；用户审核后再次
+6. review 要求修改时，Controller 返回包含 review 意见的修复 `proposed-input` Output；用户审核后再次
    驱动 Harness。
-7. Deployment、Verdict 和 Completion Policy 满足时，Reconciler 更新 conditions，并在已由
+7. Deployment、Verdict 和 Completion Policy 满足时，Controller 更新 conditions，并在已由
    `spec` 授权的范围内推进部署或关闭需求。
 
 Harness turn 停止、Board 更新或 Context 可用都不自动代表下一步已完成。reqloop 总是重新读取
@@ -281,32 +281,32 @@ Harness turn 停止、Board 更新或 Context 可用都不自动代表下一步�
 
 - 用户通过 BoardView 观察 Requirement Loop 的目标、进度、结果、blocker 和待处理请求；
 - ContextComposer 从 ReqLoopRun 与 Board snapshot 选择和当前 Harness、session、turn 有关的信息；
-- reqloop 从 ReqLoopRun 投影 Requirement、Deployment、Verdict 等结构化摘要，也可以读取同
+- reqloop 从 ReqLoopRun 生成 Requirement、Deployment、Verdict 等结构化摘要，也可以读取同
   scope 的 Baton 和 Harness observation，决定下一步如何收敛；
-- Baton 并行驱动多个 Harness 时，各 Harness 的进度、交付物和交接状态经 Baton 投影到 Board，
+- Baton 并行驱动多个 Harness 时，各 Harness 的进度、交付物和交接状态经 Baton 展示到 Board，
   再按目标 Harness 编译成 context，实现受控的状态共享。
 
 “可行动事项”和“状态事实”只是 UI 可使用的默认 facet，不是封闭数据类型或固定页面布局。
 reqloop 读取带 revision 的结构化 BoardSnapshot，不解析面向人的渲染文本。
 
-reqloop 只能更新自己的 ReqLoopRun status 与 Board projection，不能覆盖 Baton 或 Harness 的
+reqloop 只能更新自己的 ReqLoopRun status；Board presentation 只能从 Resource 派生，不能覆盖 Baton 或 Harness 的
 事实；它通过 resourceRef、领域 ID 和 provenance 关联不同 owner 的信息。并行 observation 由
-Reconciler 汇入新的 Resource revision，各 Plugin 和 ContextComposer 总是基于明确版本读取。
+Controller 汇入新的 Resource revision，各 Plugin 和 ContextComposer 总是基于明确版本读取。
 
 Board 也不是 reqloop 唯一的信息通道。领域事件仍走 Baton Event Ledger，Connector 原始状态
-仍保留在外部系统或 reqloop 私有投影，大体积证据通过 Resource reference 按需读取；只对一次
+仍保留在外部系统或 reqloop 私有缓存，大体积证据通过 Resource reference 按需读取；只对一次
 Harness turn 有效或不适合共享的信息可以在 context 交付时单独补充。
 
 reqloop manifest 声明 Connector 可能访问和修改的外部资源范围，使用户在启用 Plugin 时预先
 知道它可能做什么。`spec` 表达已经认可的 desired state；部署生产或关闭需求等敏感变化应在
-对应 spec 更新落盘前经过 Baton Permission Gate。Reconciler 只能收敛已授权的 spec，不能在
+对应 spec 更新落盘前经过 Baton Permission Gate。Controller 只能收敛已授权的 spec，不能在
 运行时自行扩大 operation 或 scope。Plugin 升级新增权限或扩大 scope 时必须重新授权。
 
 自动化按信任渐进：
 
 ```text
-Observe    Reconciler 只更新 Board，由人判断和执行
-Recommend  Reconciler 给出 proposed-input Output
+Observe    Controller 只更新 Resource / Board，由人判断和执行
+Recommend  Controller 给出 proposed-input Output
 Approve    人审核、编辑后提交为普通 Input
 Automate   已授权 spec 下的 Connector 操作自动收敛
 Autonomous 真实工作区证明需要无人续跑后，再开放受控 Harness 调用
@@ -316,29 +316,29 @@ Autonomous 真实工作区证明需要无人续跑后，再开放受控 Harness 
 
 ## 8. 状态与恢复
 
-ReqLoopRun 是 reqloop 持久化的 PluginResource，不以 Board 文本作为真相源。`spec` 保存用户
-认可的 Contract，`status` 保存 Reconciler 对 Baton、Harness 和外部系统事实的当前观测；私有
+ReqLoopRun 是 reqloop 持久化的 Resource，不以 Board 文本作为真相源。`spec` 保存用户
+认可的 Contract，`status` 保存 Controller 对 Baton、Harness 和外部系统事实的当前观测；私有
 Connector cursor 和缓存只用于加速读取，不成为第二真相源。
 
 ```text
-Input / Harness Event / external observation / timer due
+Input / Harness Event / external observation / cron or timer due
                          │
                          ▼
                     ReqLoopRun
                          │
                          ▼
-                ReqLoopReconciler
+                ReqLoopController
                   ├── patch status
-                  ├── Board / Context projection
+                  ├── Board presentation / Resource Context source
                   ├── PluginOutput(proposed-input)
-                  └── requeueAfter
+                  └── requeueAfter（仅动态复查）
 ```
 
 BoardView 和 ContextBundle 按不同预算与受众从 ReqLoopRun 和相关事实中派生。Resource 创建、
-spec 更新、Harness 结果和 `requeueAfter` 到期都会 enqueue 同一 key；Baton 合并重复触发，并
+spec 更新、Harness 结果、cron Source 和 `requeueAfter` 到期都会 enqueue 同一 key；Baton 合并重复触发，并
 保证同一个 ReqLoopRun 不并发 reconcile。
 
-ReqLoopReconciler 可以调用自己拥有的 Connector，但外部写入使用稳定 operation key；调用超时
+ReqLoopController 可以调用自己拥有的 Connector，但外部写入使用稳定 operation key；调用超时
 或进程崩溃后先查询实际状态，再决定是否继续。`nextReconcileAt` 随 Resource 持久化，Baton
 重启后恢复到期检查。Board 仍是跨参与者共享的协调读模型，不取代 ReqLoopRun 或外部系统的事实
 来源。
@@ -353,28 +353,29 @@ Baton 作为通用产品需要一个清晰的默认故事。reqloop 随 Baton �
 - 不需要：用户可以禁用 reqloop，只使用 Baton 的 Harness 接力或安装其他 loop Plugin。
 
 “随 Baton 交付”不等于“写进 Baton core”。Baton 的默认 UX 可以优先展示 reqloop，但 UI 仍
-通过 slash command、Board contribution 和 Plugin metadata 渲染，不读取 reqloop 私有状态。
+通过 slash command、Board presentation 和 Plugin metadata 渲染，不读取 reqloop 私有状态。
 
 ## 10. 关键不变量
 
 1. Requirement、Deployment、Verdict 和 ReqLoopRun 只属于 reqloop，不进入 Baton core。
 2. Connector 只属于 reqloop 内部，不成为 Baton Plugin API 或 runtime identity。
-3. Reconciler 可以调用 reqloop Connector，但只能收敛已授权 spec，并对不确定外部写入先观察
+3. Controller 可以调用 reqloop Connector，但只能收敛已授权 spec，并对不确定外部写入先观察
    后重试。
 4. reqloop 只通过 Baton 的 Input、Event 和 Resource reference 与 Harness 协作；对 devloop
    review ledger 的兼容只存在于 reqloop 内部 Connector，不进入 Baton core，也不允许
-   Reconciler 调用 devloop 的 Harness 私有能力。
-5. 首期 Reconciler 只返回 `proposed-input` Output，用户提交后才形成普通 Input。
+   Controller 调用 devloop 的 Harness 私有能力。
+5. 首期 Controller 只返回 `proposed-input` Output，用户提交后才形成普通 Input。
 6. 未来即使开放主动 Harness 调用，reqloop 也不直接持有 Harness runtime 或原生 session。
 7. ReqLoopRun 是 session 级持久 Resource；Connector cursor 和私有 snapshot 只进入
    host-owned reqloop data 目录，Board 与二者都不是独立真相源。
 8. reqloop 通过独立 Marketplace Package 交付、可禁用、可升级；Baton core 在没有 reqloop 时
    仍完整工作。
 9. Plugin 声明能力不等于获得权限；敏感 desired state 在写入 spec 前完成授权。
-10. reqloop 只能修改自己的 Resource status 与 Board projection；其他 owner 的产出只能作为
-    observation 读取。
-11. `requeueAfter` 是首期唯一时间触发；Baton 将其持久化为 `nextReconcileAt`。
-12. Resource、Input、Harness 结果和 timer 只触发重新检查；Reconciler 不把触发当成必须逐条
+10. reqloop 只能修改自己的 Resource status；Board presentation 只能从 Resource 派生，其他
+    owner 的产出只能作为 observation 读取。
+11. 固定周期观察使用 Controller cron Source；`requeueAfter` 只服务一次性动态复查，并持久化为
+    `nextReconcileAt`。
+12. Resource、Input、Harness 结果、cron 和 timer 只触发重新检查；Controller 不把触发当成必须逐条
     执行的命令。
 
 ## 11. 待继续讨论
@@ -382,7 +383,7 @@ Baton 作为通用产品需要一个清晰的默认故事。reqloop 随 Baton �
 1. Requirement 与 ReqLoopRun 是默认一对一，还是允许同一 Requirement 存在多个并行 run？
 2. Completion Policy 的默认条件和用户覆盖边界是什么？
 3. Connector 配置如何表达多个部署环境、租户和 credential binding？
-4. 哪些真实场景不能由 `requeueAfter` 覆盖，足以引入 EventSource 或 Schedule？
+4. 哪些真实场景不能由 Resource 变化、Controller cron Source 或 `requeueAfter` 覆盖，足以引入 EventSource？
 5. ReqLoopRun 的 spec/status schema 如何版本化和迁移？
 6. DevelopmentOutcome 应包含哪些最小字段，才能让不同 Harness Plugin 统一产生
    `harness.delivery.ready` 和阻塞事件？

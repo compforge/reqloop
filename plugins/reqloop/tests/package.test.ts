@@ -16,10 +16,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import type {
+  Command,
+  Controller,
   PluginActivationContext,
-  PluginCommandContribution,
-  PluginResource,
-  ResourceContribution,
+  Resource,
 } from "@qiankun01/baton-plugin";
 
 import reqloop, {
@@ -142,10 +142,10 @@ describe("ReqLoop PluginPackage", () => {
         };
       },
     };
-    let command: PluginCommandContribution | undefined;
+    let command: Command | undefined;
     const context = {
       session: { batonSessionId: "bs_test", cwd: root },
-      registerCommand(contribution: PluginCommandContribution) {
+      registerCommand(contribution: Command) {
         command = contribution;
       },
     } as unknown as PluginActivationContext;
@@ -376,10 +376,10 @@ describe("ReqLoop PluginPackage", () => {
         };
       },
     });
-    let command: PluginCommandContribution | undefined;
+    let command: Command | undefined;
     const context = {
       session: { batonSessionId: "bs_test", cwd: testRoot() },
-      registerCommand(contribution: PluginCommandContribution) {
+      registerCommand(contribution: Command) {
         command = contribution;
       },
     } as unknown as PluginActivationContext;
@@ -425,7 +425,7 @@ describe("ReqLoop PluginPackage", () => {
       checkout: () => ({ headSha }),
     });
     let resource:
-      | PluginResource<
+      | Resource<
           { repo: string },
           {
             observedReviewKey?: string;
@@ -434,8 +434,8 @@ describe("ReqLoop PluginPackage", () => {
           }
         >
       | undefined;
-    let resourceContribution:
-      | ResourceContribution<
+    let controller:
+      | Controller<
           { repo: string },
           {
             observedReviewKey?: string;
@@ -498,10 +498,9 @@ describe("ReqLoop PluginPackage", () => {
       session: { batonSessionId: "bs_test", cwd: root },
       resources,
       registerCommand() {},
-      registerResource(contribution: typeof resourceContribution) {
-        resourceContribution = contribution;
+      registerController(candidate: typeof controller) {
+        controller = candidate;
       },
-      watchBuiltinResource() {},
       onClose() {},
     } as unknown as PluginActivationContext;
     const plugin = createReqloopPackage({
@@ -511,9 +510,17 @@ describe("ReqLoop PluginPackage", () => {
 
     await plugin.activate(context);
     expect(resource?.status.observedSha).toBe("baseline");
-    expect(resourceContribution?.resourceKind).toBe(
+    expect(controller?.resourceKind).toBe(
       REQLOOP_REVIEW_WATCH_KIND,
     );
+    expect(controller?.sources).toEqual([
+      {
+        type: "cron",
+        sourceId: "review-poll",
+        cron: "*/2 * * * * *",
+        timeZone: "UTC",
+      },
+    ]);
 
     headSha = "new-review";
     appendReview(path, {
@@ -524,7 +531,7 @@ describe("ReqLoop PluginPackage", () => {
       pr_number: 7,
       findings: [{ path: "src/app.ts", msg: "missing cancellation" }],
     });
-    const result = await resourceContribution!.reconciler.reconcile(
+    const result = await controller!.reconcile(
       {
         session: {
           batonSessionId: "bs_test",
@@ -549,6 +556,6 @@ describe("ReqLoop PluginPackage", () => {
     expect(result?.output?.text).toContain(
       "src/app.ts — missing cancellation",
     );
-    expect(result?.requeueAfterMs).toBeGreaterThan(0);
+    expect(result?.requeueAfterMs).toBeUndefined();
   });
 });

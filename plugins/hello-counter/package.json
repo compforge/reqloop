@@ -1,8 +1,8 @@
 {
   "name": "@qiankunli/baton-plugin-hello-counter",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "private": true,
-  "description": "A Baton plugin that counts user turns and demonstrates PluginResource + Builtin Resource watch.",
+  "description": "A Baton plugin that counts user turns with Resource Controllers and Board presentation.",
   "type": "module",
   "scripts": {
     "test": "bun test"

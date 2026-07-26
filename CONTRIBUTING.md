@@ -9,7 +9,7 @@ plugins/<plugin-name>/
 ├── .baton-plugin/
 │   └── plugin.json
 ├── src/
-│   ├── domain/       # 领域对象、Policy 与 Reconciler
+│   ├── domain/       # 领域对象、Policy 与 Controller
 │   ├── connectors/   # 可选：外部系统协议与 DTO 映射
 │   └── index.ts      # PluginPackage 导出入口
 ├── tests/
@@ -24,20 +24,19 @@ plugins/<plugin-name>/
 ## 新增 Plugin
 
 1. 新建 `plugins/<plugin-name>/`，实现 Baton 公共 Plugin API 暴露的 `PluginPackage`。
-2. 添加 `.baton-plugin/plugin.json`，声明稳定 `pluginId`、版本、入口、Contribution 和权限。
+2. 添加 `.baton-plugin/plugin.json`，声明稳定 `pluginId`、版本、入口和权限。
 3. 在 `.baton-plugin/marketplace.json` 的 `plugins` 数组注册该目录。
 4. 在根 `README.md` 和 `README.zh-CN.md` 的 Plugin 列表增加入口。
-5. 为激活、关闭、重启恢复和每种 Contribution 添加契约测试。
+5. 为激活、关闭、重启恢复和每种 Command / Controller 添加契约测试。
 
 ## 边界
 
 - 只允许从 `@qiankun01/baton-plugin` 导入 Baton 公共 Plugin 类型；禁止依赖 Baton 仓库相对
   路径、宿主包或内部模块。
-- Command 和 Resource 是 `PluginContribution` 的变体，不各自建设 Package、Instance 或
-  Binding 生命周期。
+- Command 和 Controller 共用 Package、Instance 与 Binding 生命周期，不各自建设平行扩展体系。
 - Resource 的 `spec` 保存用户认可的期望，`status` 保存可重新观测的事实；Connector 缓存不能
   成为第二真相源。
-- Reconciler 的外部写入必须使用稳定 operation key；超时后先观察实际状态，不能盲目重放。
+- Controller 的外部写入必须使用稳定 operation key；超时后先观察实际状态，不能盲目重放。
 - Marketplace manifest 是可审阅的静态声明，不能写入函数、凭据或 PluginInstance 配置。
 
 ## 本地开发

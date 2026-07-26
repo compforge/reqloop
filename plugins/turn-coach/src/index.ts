@@ -1,4 +1,5 @@
 import type {
+  BatonTurnResourceData,
   PluginActivationContext,
   PluginPackage,
 } from "@qiankun01/baton-plugin";
@@ -37,7 +38,7 @@ function proposedInput(userText: string): string {
 
 const turnCoach: PluginPackage = Object.freeze({
   pluginId: "qiankunli/turn-coach",
-  version: "0.0.1",
+  version: "0.0.2",
 
   activate(context: PluginActivationContext): void {
     let initialState = context.resources
@@ -59,56 +60,52 @@ const turnCoach: PluginPackage = Object.freeze({
       });
     }
 
-    context.registerResource<TurnCoachSpec, TurnCoachStatus>({
+    context.registerController<TurnCoachSpec, TurnCoachStatus>({
       resourceKind: RESOURCE_KIND,
-      reconciler: {
-        async reconcile(_baton, resource) {
-          if (resource.status.observedGeneration === resource.metadata.generation) return;
-          context.resources.patchStatus(resource, {
-            observedGeneration: resource.metadata.generation,
-          });
-        },
+      async reconcile(_baton, resource) {
+        if (resource.status.observedGeneration === resource.metadata.generation) return;
+        context.resources.patchStatus(resource, {
+          observedGeneration: resource.metadata.generation,
+        });
       },
     });
 
-    context.watchBuiltinResource({
+    context.registerController<Record<string, never>, BatonTurnResourceData>({
       resourceKind: "baton.turn",
-      reconciler: {
-        async reconcile(baton, turn) {
-          const state = context.resources
-            .list<TurnCoachSpec, TurnCoachStatus>(RESOURCE_KIND)
-            .find((resource) => resource.metadata.resourceId === RESOURCE_ID);
+      async reconcile(baton, turn) {
+        const state = context.resources
+          .list<TurnCoachSpec, TurnCoachStatus>(RESOURCE_KIND)
+          .find((resource) => resource.metadata.resourceId === RESOURCE_ID);
 
-          if (!state) throw new Error(`${RESOURCE_KIND}/${RESOURCE_ID} is missing`);
-          if (!state.spec.enabled) return;
-          if (
-            state.status.activatedAt &&
-            turn.metadata.observedAt < state.status.activatedAt
-          ) {
-            // First enable may replay a long existing ledger. The persisted
-            // activation boundary keeps that history from flooding the composer.
-            return;
-          }
+        if (!state) throw new Error(`${RESOURCE_KIND}/${RESOURCE_ID} is missing`);
+        if (!state.spec.enabled) return;
+        if (
+          state.status.activatedAt &&
+          turn.metadata.updatedAt < state.status.activatedAt
+        ) {
+          // First enable may replay a long existing ledger. The persisted
+          // activation boundary keeps that history from flooding the composer.
+          return;
+        }
 
-          const lastRevision = state.status.lastCoachedRevision ?? 0;
-          if (turn.metadata.revision > lastRevision) {
-            context.resources.patchStatus(state, {
-              coachedTurns: baton.turns.length,
-              lastCoachedRevision: turn.metadata.revision,
-              lastTurnId: turn.data.turnId,
-              observedGeneration: state.metadata.generation,
-            });
-          }
+        const lastRevision = state.status.lastCoachedRevision ?? 0;
+        if (turn.metadata.resourceVersion > lastRevision) {
+          context.resources.patchStatus(state, {
+            coachedTurns: baton.turns.length,
+            lastCoachedRevision: turn.metadata.resourceVersion,
+            lastTurnId: turn.status.turnId,
+            observedGeneration: state.metadata.generation,
+          });
+        }
 
-          // Replay must return the same output: Baton persists and deduplicates the
-          // Proposal, so a crash between reconcile and publication cannot lose it.
-          return {
-            output: {
-              kind: "proposed-input",
-              text: proposedInput(turn.data.userText ?? ""),
-            },
-          };
-        },
+        // Replay must return the same output: Baton persists and deduplicates the
+        // Proposal, so a crash between reconcile and publication cannot lose it.
+        return {
+          output: {
+            kind: "proposed-input",
+            text: proposedInput(turn.status.userText ?? ""),
+          },
+        };
       },
     });
   },

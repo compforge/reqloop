@@ -1,6 +1,6 @@
 {
   "name": "@qiankunli/baton-plugin-turn-coach",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "description": "End-to-end canary for Baton Plugin resources, turn watches, and proposed input.",
   "type": "module",

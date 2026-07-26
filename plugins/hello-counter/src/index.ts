@@ -1,4 +1,5 @@
 import type {
+  BatonTurnResourceData,
   PluginPackage,
   PluginActivationContext,
 } from "@qiankun01/baton-plugin";
@@ -16,113 +17,97 @@ interface CounterStatus {
 
 const helloCounter: PluginPackage = Object.freeze({
   pluginId: "qiankunli/hello-counter",
-  version: "0.0.3",
+  version: "0.0.4",
 
   async activate(context: PluginActivationContext): Promise<void> {
-    // 1. 注册 CounterState PluginResource
-    context.registerResource<CounterSpec, CounterStatus>({
+    // 1. 注册 CounterState Resource Controller
+    context.registerController<CounterSpec, CounterStatus>({
       resourceKind: "CounterState",
-      reconciler: {
-        async reconcile(baton, resource) {
-          console.log(
-            `[hello-counter] Reconciling CounterState: generation=${resource.metadata.generation}, totalTurns=${resource.status?.totalTurns || 0}`,
-          );
+      async reconcile(_baton, resource) {
+        console.log(
+          `[hello-counter] Reconciling CounterState: generation=${resource.metadata.generation}, totalTurns=${resource.status?.totalTurns || 0}`,
+        );
 
-          // 如果未启用，不做任何操作
-          if (!resource.spec.enabled) {
-            console.log("[hello-counter] Counter is disabled");
-            return {};
-          }
-
-          // 正常情况下，这里什么都不做，因为实际计数由 baton.turn watch 触发
+        // 如果未启用，不做任何操作
+        if (!resource.spec.enabled) {
+          console.log("[hello-counter] Counter is disabled");
           return {};
-        },
+        }
+
+        // 正常情况下，这里什么都不做，因为实际计数由 baton.turn Controller 触发
+        return {};
       },
-      board: {
-        project(resource) {
-          const totalTurns = resource.status.totalTurns;
-          if (typeof totalTurns !== "number") return [];
-          return [
-            {
-              key: "summary",
-              title: "Hello Counter",
-              status: `${totalTurns} turn${totalTurns === 1 ? "" : "s"}`,
-              ...(resource.status.lastUserText
-                ? { detail: `Latest: ${resource.status.lastUserText}` }
-                : {}),
-              tone: resource.spec.enabled ? "success" : "muted",
-            },
-          ];
-        },
+      present(resource) {
+        const totalTurns = resource.status.totalTurns;
+        if (typeof totalTurns !== "number") return undefined;
+        return {
+          title: "Hello Counter",
+          status: `${totalTurns} turn${totalTurns === 1 ? "" : "s"}`,
+          ...(resource.status.lastUserText
+            ? { detail: `Latest: ${resource.status.lastUserText}` }
+            : {}),
+          tone: resource.spec.enabled ? "success" : "muted",
+        };
       },
     });
 
     // 2. Watch baton.turn，每次用户提问时更新计数
-    context.watchBuiltinResource({
+    context.registerController<Record<string, never>, BatonTurnResourceData>({
       resourceKind: "baton.turn",
-      reconciler: {
-        async reconcile(baton, turnResource) {
-          console.log(
-            `[hello-counter] Turn detected: ${turnResource.data.turnId}`,
-          );
+      async reconcile(_baton, turnResource) {
+        console.log(
+          `[hello-counter] Turn detected: ${turnResource.status.turnId}`,
+        );
 
-          // 演示：访问完整的 turns 历史
-          // const allTurns = baton.turns;
-          // console.log(`[hello-counter] Total turns in history: ${allTurns.length}`);
+        // 查找或创建 CounterState
+        const counterList = context.resources.list<
+          CounterSpec,
+          CounterStatus
+        >("CounterState");
 
-          // 查找或创建 CounterState
-          const counterList = await context.resources.list<
-            CounterSpec,
-            CounterStatus
-          >("CounterState");
+        let counter = counterList.find((c) => c.metadata.resourceId === "main");
 
-          let counter = counterList.find((c) => c.metadata.resourceId === "main");
-
-          if (!counter) {
-            // 第一次：创建 CounterState（status 会初始化为空对象）
-            console.log("[hello-counter] Creating initial CounterState");
-            counter = await context.resources.create<CounterSpec, CounterStatus>(
-              "CounterState",
-              {
-                resourceId: "main",
-                spec: { enabled: true },
-              },
-            );
-            // 首次创建后，立即初始化 status
-            counter = await context.resources.patchStatus(counter, {
-              totalTurns: 0,
-              observedGeneration: 0,
-            });
-          }
-
-          // 检查是否启用
-          if (!counter.spec.enabled) {
-            console.log("[hello-counter] Counter is disabled, skipping");
-            return {};
-          }
-
-          // 更新计数
-          const newTotal = (counter.status?.totalTurns || 0) + 1;
-          console.log(`[hello-counter] Updating count: ${newTotal}`);
-
-          // 演示：如果需要删除资源，可以使用 delete()
-          // await context.resources.delete("CounterState", "main");
-
-          counter = await context.resources.patchStatus(counter, {
-            totalTurns: newTotal,
-            lastTurnId: turnResource.data.turnId,
-            lastUserText: turnResource.data.userText?.slice(0, 50), // 只保存前50字符
-            observedGeneration: counter.metadata.generation,
-          });
-
-          // 返回 proposed-input 建议
-          return {
-            output: {
-              kind: "proposed-input",
-              text: `📊 统计：你已经问了 ${newTotal} 个问题。最近一次：${turnResource.data.userText?.slice(0, 30)}...`,
+        if (!counter) {
+          // 第一次：创建 CounterState（status 会初始化为空对象）
+          console.log("[hello-counter] Creating initial CounterState");
+          counter = context.resources.create<CounterSpec, CounterStatus>(
+            "CounterState",
+            {
+              resourceId: "main",
+              spec: { enabled: true },
             },
-          };
-        },
+          );
+          // 首次创建后，立即初始化 status
+          counter = context.resources.patchStatus(counter, {
+            totalTurns: 0,
+            observedGeneration: 0,
+          });
+        }
+
+        // 检查是否启用
+        if (!counter.spec.enabled) {
+          console.log("[hello-counter] Counter is disabled, skipping");
+          return {};
+        }
+
+        // 更新计数
+        const newTotal = (counter.status?.totalTurns || 0) + 1;
+        console.log(`[hello-counter] Updating count: ${newTotal}`);
+
+        counter = context.resources.patchStatus(counter, {
+          totalTurns: newTotal,
+          lastTurnId: turnResource.status.turnId,
+          lastUserText: turnResource.status.userText?.slice(0, 50), // 只保存前50字符
+          observedGeneration: counter.metadata.generation,
+        });
+
+        // 返回 proposed-input 建议
+        return {
+          output: {
+            kind: "proposed-input",
+            text: `📊 统计：你已经问了 ${newTotal} 个问题。最近一次：${turnResource.status.userText?.slice(0, 30)}...`,
+          },
+        };
       },
     });
 

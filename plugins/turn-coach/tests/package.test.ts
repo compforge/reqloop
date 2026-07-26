@@ -45,13 +45,19 @@ function turnResource(
   return {
     kind: "baton.turn" as const,
     metadata: {
-      revision,
+      batonSessionId: "bs_test",
+      pluginInstanceId: "turn_coach_default",
       resourceId: turnId,
-      observedAt,
+      generation: 1,
+      resourceVersion: revision,
+      createdAt: observedAt,
+      updatedAt: observedAt,
     },
-    data: {
+    spec: {},
+    status: {
       turnId,
       userText,
+      toolCalls: [],
     },
   };
 }
@@ -116,19 +122,17 @@ function activationHarness() {
       config: {},
     },
     resources,
-    registerResource(contribution: {
+    registerController(controller: {
       resourceKind: string;
-      reconciler: { reconcile: TestReconciler };
+      reconcile: TestReconciler;
     }) {
-      expect(contribution.resourceKind).toBe("TurnCoachState");
-      stateReconciler = contribution.reconciler.reconcile;
-    },
-    watchBuiltinResource(contribution: {
-      resourceKind: string;
-      reconciler: { reconcile: TestReconciler };
-    }) {
-      expect(contribution.resourceKind).toBe("baton.turn");
-      turnReconciler = contribution.reconciler.reconcile;
+      if (controller.resourceKind === "TurnCoachState") {
+        stateReconciler = controller.reconcile;
+      } else if (controller.resourceKind === "baton.turn") {
+        turnReconciler = controller.reconcile;
+      } else {
+        throw new Error(`unexpected Resource kind: ${controller.resourceKind}`);
+      }
     },
     onClose() {},
   } as unknown as Parameters<typeof turnCoach.activate>[0];

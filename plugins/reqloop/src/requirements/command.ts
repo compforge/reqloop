@@ -1,5 +1,5 @@
 import type {
-  PluginCommandContribution,
+  Command,
   PluginCommandResult,
 } from "@qiankun01/baton-plugin";
 
@@ -73,7 +73,7 @@ function decodeRequirementIdentity(value: string): RequirementIdentity {
 
 export function createRequirementsCommand(
   connectors: readonly RequirementConnector[] = [],
-): PluginCommandContribution {
+): Command {
   const sources = new Set(connectors.map(({ source }) => source));
   if (sources.size !== connectors.length) {
     throw new Error("requirement connector sources must be unique");
