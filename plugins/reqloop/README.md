@@ -137,7 +137,7 @@ review without an open PR/MR are ignored.
 
 ```text
 pluginId: qiankunli/reqloop
-version:  0.1.11
+version:  0.1.12
 ```
 
 Install this Marketplace in Baton, install `qiankunli/reqloop`, then enable it

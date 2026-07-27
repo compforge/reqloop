@@ -234,6 +234,52 @@ describe("GitHubForgeConnector", () => {
     });
   });
 
+  test("paginates discovery until the filtered limit is reached", async () => {
+    const pages: number[] = [];
+    const fetch: Fetch = async (input) => {
+      const url = new URL(String(input));
+      const page = Number(url.searchParams.get("page"));
+      pages.push(page);
+      if (page === 1) {
+        return json([
+          { number: 4, state: "closed", merged_at: null },
+          { number: 3, state: "open", merged_at: null },
+        ], {
+          link:
+            '<https://api.github.com/repos/owner/repo/pulls?page=2>; rel="next"',
+        });
+      }
+      return json([
+        {
+          number: 2,
+          state: "closed",
+          merged_at: "2026-07-25T08:00:00Z",
+        },
+        { number: 1, state: "open", merged_at: null },
+      ]);
+    };
+    const connector = new GitHubForgeConnector({
+      source: "github.com",
+      provider: "github",
+      host: "github.com",
+      token: "secret",
+    }, { fetch });
+
+    await expect(connector.list("owner/repo", 2)).resolves.toEqual([
+      {
+        source: "github.com",
+        repository: "owner/repo",
+        number: 3,
+      },
+      {
+        source: "github.com",
+        repository: "owner/repo",
+        number: 2,
+      },
+    ]);
+    expect(pages).toEqual([1, 2]);
+  });
+
   test("changes the activity key when a review comment changes", async () => {
     let commentId = "PRRC_1";
     const fetch: Fetch = async (input) => {
@@ -421,5 +467,44 @@ describe("GitLabForgeConnector", () => {
       reviewThreads: "none",
       mergeability: "unknown",
     });
+  });
+
+  test("paginates discovery until the filtered limit is reached", async () => {
+    const pages: number[] = [];
+    const fetch: Fetch = async (input) => {
+      const url = new URL(String(input));
+      const page = Number(url.searchParams.get("page"));
+      pages.push(page);
+      if (page === 1) {
+        return json([
+          { iid: 4, state: "closed" },
+          { iid: 3, state: "opened" },
+        ], { "x-next-page": "2" });
+      }
+      return json([
+        { iid: 2, state: "merged" },
+        { iid: 1, state: "opened" },
+      ]);
+    };
+    const connector = new GitLabForgeConnector({
+      source: "gitlab.example.com",
+      provider: "gitlab",
+      host: "gitlab.example.com",
+      token: "secret",
+    }, { fetch });
+
+    await expect(connector.list("group/repo", 2)).resolves.toEqual([
+      {
+        source: "gitlab.example.com",
+        repository: "group/repo",
+        number: 3,
+      },
+      {
+        source: "gitlab.example.com",
+        repository: "group/repo",
+        number: 2,
+      },
+    ]);
+    expect(pages).toEqual([1, 2]);
   });
 });
