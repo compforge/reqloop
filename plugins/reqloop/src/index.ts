@@ -40,7 +40,7 @@ import type {
 import { upsertPullRequestReview } from "./pull-requests/resource.ts";
 
 export const REQLOOP_PLUGIN_ID = "qiankunli/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.1.10";
+export const REQLOOP_PACKAGE_VERSION = "0.1.11";
 
 function currentRepo(context: PluginActivationContext): string {
   const cwd = context.session.cwd;
@@ -176,5 +176,6 @@ export * from "./pull-requests/resource.ts";
 export * from "./requirements/connectors/meego.ts";
 export * from "./requirements/context.ts";
 export * from "./requirements/controller.ts";
+export * from "./requirements/conditions.ts";
 export * from "./requirements/protocol.ts";
 export * from "./requirements/resource.ts";

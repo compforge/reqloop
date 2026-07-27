@@ -74,6 +74,13 @@ Requirement、验收目标和完成策略属于用户认可的 Contract；PR、�
 状态进入 `status.externalState`，不直接充当 reqloop 内部状态机。Harness 可以建议修改
 Requirement，但只有用户认可后才更新 `spec`。
 
+`status.conditions` 使用 Baton Plugin API 的可选 Kubernetes 风格 wire shape，并由 reqloop
+解释领域语义。`Observed` 表示最近一次 RequirementConnector 观测是否成功；
+`ReadyToClose` 汇总关联 PullRequest 是否已满足当前收尾条件。每个 type 只保留当前一条记录，
+只有 `True / False / Unknown` 迁移才更新 `lastTransitionTime`；reason、message 或
+observedGeneration 刷新不伪造新迁移。Conditions 是当前谓词，不是事件历史，也不取代
+externalState 或后续 completion policy。
+
 重开、重试或多环境验收先表达为同一 Requirement 的状态演进。只有真实出现“一项 Requirement
 必须同时拥有多个独立执行实例”的需求时，才引入 Run / Attempt 概念。
 
@@ -212,6 +219,12 @@ Controller cron Source 和 `requeueAfter` 到期都只负责让某个 Requiremen
 - 返回一份 `kind: "interaction"` 的 Plugin Output，请用户作出由当前 Resource 消费的决定；
 - 返回一份 `kind: "proposed-input"` 的 Plugin Output，建议用户审核后交给 Harness；
 - 没有下一步时等待新事实，或用 `requeueAfter` 安排下一次检查。
+
+当前实现中，Connector 成功或失败分别把 `Observed` 更新为 `True` 或 `False`。
+`ReadyToClose` 在没有关联 PR、存在未合并 PR、冲突或未解决 review thread 时为 `False`；
+所有关联 PR 已合并但 review thread 状态不可观察时为 `Unknown`；至少一项关联 PR 且全部合并、
+review thread 均为 none 或 resolved 时才为 `True`。关闭提醒直接消费这个 condition，不维护
+第二套完成判断。
 
 Controller 不把触发原因当成必须执行一次的命令。重复触发、队列合并或进程重启都可以让同一
 key 再次 reconcile；只要 `spec` 和外部状态没有变化，它就不应产生新的非幂等动作。Board 是

@@ -1,3 +1,5 @@
+import type { ConditionedStatus } from "@qiankun01/baton-plugin";
+
 /** Provider-neutral lifecycle state used by Requirement Loop policy. */
 export type RequirementState =
   | "open"
@@ -40,7 +42,9 @@ export interface RequirementSpec {
   readonly acceptanceCriteria?: readonly string[];
 }
 
-export interface RequirementStatus {
+export interface RequirementStatus extends ConditionedStatus {
+  /** Spec generation used by the latest successful Requirement observation. */
+  readonly observedGeneration?: number;
   readonly externalState?: RequirementState;
   readonly assignee?: string;
   readonly updatedAt?: string;
