@@ -8,7 +8,7 @@ import type {
   RequirementSpec,
   RequirementStatus,
 } from "./protocol.ts";
-import { REQUIREMENT_RESOURCE_KIND } from "./resource.ts";
+import { REQUIREMENT_RESOURCE_TYPE } from "./resource.ts";
 
 type RequirementResource = Readonly<
   Resource<RequirementSpec, RequirementStatus>
@@ -88,7 +88,7 @@ export function createRequirementContextProvider(
       const normalizedQuery = query.trim().toLocaleLowerCase();
       return resources
         .list<RequirementSpec, RequirementStatus>(
-          REQUIREMENT_RESOURCE_KIND,
+          REQUIREMENT_RESOURCE_TYPE,
         )
         .filter(isActive)
         .filter((resource) =>
@@ -96,10 +96,13 @@ export function createRequirementContextProvider(
           searchableText(resource).includes(normalizedQuery)
         )
         .sort((left, right) =>
-          right.metadata.updatedAt.localeCompare(left.metadata.updatedAt)
+          (right.status.updatedAt ?? right.metadata.creationTimestamp)
+            .localeCompare(
+              left.status.updatedAt ?? left.metadata.creationTimestamp,
+            )
         )
         .map((resource) => ({
-          id: resource.metadata.resourceId,
+          id: resource.metadata.name,
           label: resource.spec.title,
           detail: [
             resource.spec.identity.source,
@@ -112,9 +115,9 @@ export function createRequirementContextProvider(
     provide(id, { maxChars }) {
       const resource = resources
         .list<RequirementSpec, RequirementStatus>(
-          REQUIREMENT_RESOURCE_KIND,
+          REQUIREMENT_RESOURCE_TYPE,
         )
-        .find(({ metadata }) => metadata.resourceId === id);
+        .find(({ metadata }) => metadata.name === id);
       if (!resource) return;
       return requirementContext(resource).slice(0, maxChars);
     },

@@ -12,7 +12,10 @@ import type {
   RequirementStatus,
 } from "./protocol.ts";
 
-export const REQUIREMENT_RESOURCE_KIND = "reqloop.requirement";
+export const REQUIREMENT_RESOURCE_TYPE = Object.freeze({
+  apiVersion: "reqloop.baton.dev/v1alpha1",
+  kind: "Requirement",
+} as const);
 
 function normalizedIdentity(
   identity: RequirementIdentity,
@@ -57,16 +60,16 @@ export function upsertRequirement(
   requirement: Requirement,
 ): Readonly<Resource<RequirementSpec, RequirementStatus>> {
   const identity = normalizedIdentity(requirement);
-  const resourceId = requirementResourceId(identity);
+  const name = requirementResourceId(identity);
   let resource = resources
-    .list<RequirementSpec, RequirementStatus>(REQUIREMENT_RESOURCE_KIND)
-    .find((candidate) => candidate.metadata.resourceId === resourceId);
+    .list<RequirementSpec, RequirementStatus>(REQUIREMENT_RESOURCE_TYPE)
+    .find((candidate) => candidate.metadata.name === name);
 
   if (!resource) {
     resource = resources.create<RequirementSpec, RequirementStatus>(
-      REQUIREMENT_RESOURCE_KIND,
+      REQUIREMENT_RESOURCE_TYPE,
       {
-        resourceId,
+        name,
         spec: {
           identity,
           title: requirement.title,
@@ -80,7 +83,7 @@ export function upsertRequirement(
       },
     );
   } else if (!sameIdentity(resource.spec.identity, identity)) {
-    throw new Error(`Requirement Resource identity mismatch: ${resourceId}`);
+    throw new Error(`Requirement Resource identity mismatch: ${name}`);
   }
   return resources.patchStatus(resource, {
     externalState: requirement.state,

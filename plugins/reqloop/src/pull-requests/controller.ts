@@ -9,7 +9,7 @@ import type {
   RequirementSpec,
   RequirementStatus,
 } from "../requirements/protocol.ts";
-import { REQUIREMENT_RESOURCE_KIND } from "../requirements/resource.ts";
+import { REQUIREMENT_RESOURCE_TYPE } from "../requirements/resource.ts";
 import type {
   ForgeConnector,
   PullRequestIdentity,
@@ -18,8 +18,7 @@ import type {
   PullRequestStatus,
 } from "./protocol.ts";
 import {
-  ensurePullRequestResource,
-  PULL_REQUEST_RESOURCE_KIND,
+  PULL_REQUEST_RESOURCE_TYPE,
   upsertPullRequest,
   upsertPullRequestReview,
 } from "./resource.ts";
@@ -58,15 +57,15 @@ function activeRequirements(
   resources: ResourceClient,
 ): readonly Readonly<Resource<RequirementSpec, RequirementStatus>>[] {
   return resources
-    .list<RequirementSpec, RequirementStatus>(REQUIREMENT_RESOURCE_KIND)
+    .list<RequirementSpec, RequirementStatus>(REQUIREMENT_RESOURCE_TYPE)
     .filter(({ status }) =>
       status.externalState !== "completed" &&
       status.externalState !== "closed"
     );
 }
 
-function requirementOptionId(resourceId: string): string {
-  return `${ASSOCIATION_REQUIREMENT_PREFIX}${resourceId}`;
+function requirementOptionId(name: string): string {
+  return `${ASSOCIATION_REQUIREMENT_PREFIX}${name}`;
 }
 
 function terminalLifecycle(
@@ -79,10 +78,6 @@ export function createPullRequestController(
   resources?: ResourceClient,
   connectors: readonly ForgeConnector[] = [],
   reviewConnector?: PullRequestReviewConnector,
-  repositories: readonly Pick<
-    PullRequestIdentity,
-    "source" | "repository"
-  >[] = [],
 ): Controller<
   PullRequestSpec,
   PullRequestStatus
@@ -94,42 +89,16 @@ export function createPullRequestController(
     }
     connectorsBySource.set(connector.source, connector);
   }
-  const source = {
-    type: "cron" as const,
-    sourceId: "pull-request-poll",
-    cron: PULL_REQUEST_POLL_CRON,
-    timeZone: "UTC",
-    ...(resources && repositories.length > 0
-      ? {
-        async discover() {
-          for (const repository of repositories) {
-            const connector = connectorsBySource.get(repository.source);
-            if (!connector) continue;
-            const pullRequests = await connector.list(
-              repository.repository,
-            );
-            for (const identity of pullRequests) {
-              if (
-                identity.source !== repository.source ||
-                identity.repository !== repository.repository
-              ) {
-                throw new Error(
-                  "ForgeConnector discovered a PullRequest outside its repository",
-                );
-              }
-              ensurePullRequestResource(resources, identity);
-            }
-          }
-        },
-      }
-      : {}),
-  };
-
   return {
-    resourceKind: PULL_REQUEST_RESOURCE_KIND,
+    resourceType: PULL_REQUEST_RESOURCE_TYPE,
     ...(resources && (connectors.length > 0 || reviewConnector)
       ? {
-        sources: [source],
+        sources: [{
+          type: "cron" as const,
+          sourceId: "pull-request-poll",
+          cron: PULL_REQUEST_POLL_CRON,
+          timeZone: "UTC",
+        }],
       }
       : {}),
     async reconcile(baton, resource) {
@@ -154,7 +123,7 @@ export function createPullRequestController(
         const requirements = activeRequirements(resources);
         if (requirements.length > 0) {
           const decisionKey =
-            `associate-requirement:${current.metadata.resourceId}`;
+            `associate-requirement:${current.metadata.name}`;
           current = resources.patchStatus(current, {
             requirementAssociation: {
               state: "prompted",
@@ -170,7 +139,7 @@ export function createPullRequestController(
               options: [
                 ...requirements.map((requirement) => ({
                   optionId: requirementOptionId(
-                    requirement.metadata.resourceId,
+                    requirement.metadata.name,
                   ),
                   label: requirement.spec.title,
                   description:
@@ -199,17 +168,17 @@ export function createPullRequestController(
               requirementAssociation: { state: "standalone" },
             });
           } else if (selected?.startsWith(ASSOCIATION_REQUIREMENT_PREFIX)) {
-            const resourceId = selected.slice(
+            const name = selected.slice(
               ASSOCIATION_REQUIREMENT_PREFIX.length,
             );
-            if (resourceId) {
+            if (name) {
               current = resources.patchStatus(current, {
                 requirementAssociation: {
                   state: "linked",
                   requirement: {
-                    resourceKind: REQUIREMENT_RESOURCE_KIND,
-                    resourceId,
-                    resourceOwner: "plugin",
+                    ...REQUIREMENT_RESOURCE_TYPE,
+                    namespace: current.metadata.namespace,
+                    name,
                   },
                 },
               });

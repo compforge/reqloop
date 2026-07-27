@@ -13,11 +13,11 @@ import type {
 import {
   createRequirementContextProvider,
   createRequirementController,
-  PULL_REQUEST_RESOURCE_KIND,
+  PULL_REQUEST_RESOURCE_TYPE,
   type PullRequestSpec,
   type PullRequestStatus,
   type RequirementConnector,
-  REQUIREMENT_RESOURCE_KIND,
+  REQUIREMENT_RESOURCE_TYPE,
   type RequirementSpec,
   type RequirementStatus,
   upsertRequirement,
@@ -36,44 +36,43 @@ function resourceClient(): {
     | Readonly<Resource<PullRequestSpec, PullRequestStatus>>
     | undefined;
   const client = {
-    list(kind?: string) {
-      if (kind === REQUIREMENT_RESOURCE_KIND) {
+    list(type: { apiVersion: string; kind: string }) {
+      if (type.kind === REQUIREMENT_RESOURCE_TYPE.kind) {
         return resource ? [resource] : [];
       }
-      if (kind === PULL_REQUEST_RESOURCE_KIND) {
+      if (type.kind === PULL_REQUEST_RESOURCE_TYPE.kind) {
         return pullRequest ? [pullRequest] : [];
       }
       return [resource, pullRequest].filter(Boolean);
     },
     create(
-      kind: string,
+      type: { apiVersion: string; kind: string },
       input: {
-        resourceId: string;
+        name: string;
         spec: RequirementSpec | PullRequestSpec;
       },
     ) {
       const created = {
-        kind,
+        ...type,
         metadata: {
-          resourceId: input.resourceId,
-          batonSessionId: "bs_test",
-          pluginInstanceId: "pi_reqloop",
+          name: input.name,
+          namespace: "pi_reqloop",
+          uid: `uid-${input.name}`,
           generation: 1,
-          resourceVersion: 1,
-          createdAt: "2026-07-26T00:00:00.000Z",
-          updatedAt: "2026-07-26T00:00:00.000Z",
+          resourceVersion: "1",
+          creationTimestamp: "2026-07-26T00:00:00.000Z",
         },
         spec: input.spec,
         status: {},
       };
-      if (kind === REQUIREMENT_RESOURCE_KIND) {
-        resource = created as Resource<
+      if (type.kind === REQUIREMENT_RESOURCE_TYPE.kind) {
+        resource = created as unknown as Resource<
           RequirementSpec,
           RequirementStatus
         >;
         return resource;
       }
-      pullRequest = created as Resource<
+      pullRequest = created as unknown as Resource<
         PullRequestSpec,
         PullRequestStatus
       >;
@@ -87,11 +86,13 @@ function resourceClient(): {
         ...current,
         metadata: {
           ...current.metadata,
-          resourceVersion: current.metadata.resourceVersion + 1,
+          resourceVersion: String(
+            Number(current.metadata.resourceVersion) + 1,
+          ),
         },
         status: { ...current.status, ...patch },
       };
-      if (current.kind === REQUIREMENT_RESOURCE_KIND) {
+      if (current.kind === REQUIREMENT_RESOURCE_TYPE.kind) {
         resource = updated as unknown as Resource<
           RequirementSpec,
           RequirementStatus
@@ -121,7 +122,10 @@ describe("Requirement Resource", () => {
       acceptanceCriteria: ["The Requirement appears on the Board"],
     });
 
-    expect(requirement.kind).toBe(REQUIREMENT_RESOURCE_KIND);
+    expect({
+      apiVersion: requirement.apiVersion,
+      kind: requirement.kind,
+    }).toEqual(REQUIREMENT_RESOURCE_TYPE);
     expect(requirement.status.externalState).toBe("in_progress");
     expect(createRequirementController().present?.(requirement)).toEqual({
       title: "Requirement intake",
@@ -149,14 +153,14 @@ describe("Requirement Resource", () => {
 
     expect(provider.kind).toBe("requirement");
     expect(provider.search("durable")).toEqual([{
-      id: requirement.metadata.resourceId,
+      id: requirement.metadata.name,
       label: "Requirement intake",
       detail: "meego · story · REQ-7 · in_progress",
     }]);
     expect(provider.search("issue")).toEqual([]);
 
     const context = await provider.provide(
-      requirement.metadata.resourceId,
+      requirement.metadata.name,
       { maxChars: 1_000 },
     );
     expect(context).toContain("Requirement: Requirement intake");
@@ -166,7 +170,7 @@ describe("Requirement Resource", () => {
     );
     expect(
       await provider.provide(
-        requirement.metadata.resourceId,
+        requirement.metadata.name,
         { maxChars: 20 },
       ),
     ).toBe(context?.slice(0, 20));
@@ -203,8 +207,8 @@ describe("Requirement Resource", () => {
     const pullRequest = resources.client.create<
       PullRequestSpec,
       PullRequestStatus
-    >(PULL_REQUEST_RESOURCE_KIND, {
-      resourceId: "pr_merged",
+    >(PULL_REQUEST_RESOURCE_TYPE, {
+      name: "pr_merged",
       spec: {
         identity: {
           source: "github.com",
@@ -219,9 +223,9 @@ describe("Requirement Resource", () => {
       requirementAssociation: {
         state: "linked",
         requirement: {
-          resourceKind: REQUIREMENT_RESOURCE_KIND,
-          resourceId: requirement.metadata.resourceId,
-          resourceOwner: "plugin",
+          ...REQUIREMENT_RESOURCE_TYPE,
+          namespace: requirement.metadata.namespace,
+          name: requirement.metadata.name,
         },
       },
     });
@@ -307,8 +311,8 @@ describe("Requirement Resource", () => {
     const pullRequest = resources.client.create<
       PullRequestSpec,
       PullRequestStatus
-    >(PULL_REQUEST_RESOURCE_KIND, {
-      resourceId: "pr_closed",
+    >(PULL_REQUEST_RESOURCE_TYPE, {
+      name: "pr_closed",
       spec: {
         identity: {
           source: "github.com",
@@ -323,9 +327,9 @@ describe("Requirement Resource", () => {
       requirementAssociation: {
         state: "linked",
         requirement: {
-          resourceKind: REQUIREMENT_RESOURCE_KIND,
-          resourceId: requirement.metadata.resourceId,
-          resourceOwner: "plugin",
+          ...REQUIREMENT_RESOURCE_TYPE,
+          namespace: requirement.metadata.namespace,
+          name: requirement.metadata.name,
         },
       },
     });

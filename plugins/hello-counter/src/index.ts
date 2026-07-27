@@ -3,6 +3,9 @@ import type {
   PluginPackage,
   PluginActivationContext,
 } from "@qiankun01/baton-plugin";
+import {
+  BATON_TURN_RESOURCE_TYPE,
+} from "@qiankun01/baton-plugin";
 
 interface CounterSpec {
   enabled: boolean;
@@ -15,14 +18,19 @@ interface CounterStatus {
   observedGeneration: number;
 }
 
+const COUNTER_RESOURCE_TYPE = Object.freeze({
+  apiVersion: "hello-counter.baton.dev/v1alpha1",
+  kind: "CounterState",
+} as const);
+
 const helloCounter: PluginPackage = Object.freeze({
   pluginId: "qiankunli/hello-counter",
-  version: "0.0.4",
+  version: "0.0.5",
 
   async activate(context: PluginActivationContext): Promise<void> {
     // 1. 注册 CounterState Resource Controller
     context.registerController<CounterSpec, CounterStatus>({
-      resourceKind: "CounterState",
+      resourceType: COUNTER_RESOURCE_TYPE,
       async reconcile(_baton, resource) {
         console.log(
           `[hello-counter] Reconciling CounterState: generation=${resource.metadata.generation}, totalTurns=${resource.status?.totalTurns || 0}`,
@@ -53,7 +61,7 @@ const helloCounter: PluginPackage = Object.freeze({
 
     // 2. Watch baton.turn，每次用户提问时更新计数
     context.registerController<Record<string, never>, BatonTurnResourceData>({
-      resourceKind: "baton.turn",
+      resourceType: BATON_TURN_RESOURCE_TYPE,
       async reconcile(_baton, turnResource) {
         console.log(
           `[hello-counter] Turn detected: ${turnResource.status.turnId}`,
@@ -63,17 +71,17 @@ const helloCounter: PluginPackage = Object.freeze({
         const counterList = context.resources.list<
           CounterSpec,
           CounterStatus
-        >("CounterState");
+        >(COUNTER_RESOURCE_TYPE);
 
-        let counter = counterList.find((c) => c.metadata.resourceId === "main");
+        let counter = counterList.find((c) => c.metadata.name === "main");
 
         if (!counter) {
           // 第一次：创建 CounterState（status 会初始化为空对象）
           console.log("[hello-counter] Creating initial CounterState");
           counter = context.resources.create<CounterSpec, CounterStatus>(
-            "CounterState",
+            COUNTER_RESOURCE_TYPE,
             {
-              resourceId: "main",
+              name: "main",
               spec: { enabled: true },
             },
           );

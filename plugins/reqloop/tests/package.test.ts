@@ -27,13 +27,14 @@ import type {
 import reqloop, {
   createReqloopPackage,
   DevloopReviewConnector,
+  REPOSITORY_RESOURCE_TYPE,
   loadMeegoRequirementConfigs,
   MeegleCliRequirementConnector,
-  PULL_REQUEST_RESOURCE_KIND,
+  PULL_REQUEST_RESOURCE_TYPE,
   type PullRequestSpec,
   type PullRequestStatus,
   type RequirementConnector,
-  REQUIREMENT_RESOURCE_KIND,
+  REQUIREMENT_RESOURCE_TYPE,
 } from "../src/index.ts";
 
 const roots: string[] = [];
@@ -191,7 +192,7 @@ describe("ReqLoop PluginPackage", () => {
     };
     let command: Command | undefined;
     let contextProvider: ContextProvider | undefined;
-    const resourceKinds: string[] = [];
+    const resourceTypes: { apiVersion: string; kind: string }[] = [];
     const context = {
       session: { batonSessionId: "bs_test", cwd: root },
       registerCommand(contribution: Command) {
@@ -200,8 +201,10 @@ describe("ReqLoop PluginPackage", () => {
       registerContextProvider(provider: ContextProvider) {
         contextProvider = provider;
       },
-      registerController(controller: { resourceKind: string }) {
-        resourceKinds.push(controller.resourceKind);
+      registerController(
+        controller: { resourceType: { apiVersion: string; kind: string } },
+      ) {
+        resourceTypes.push(controller.resourceType);
       },
     } as unknown as PluginActivationContext;
 
@@ -210,9 +213,10 @@ describe("ReqLoop PluginPackage", () => {
       commandId: "requirements",
       name: "requirements",
     });
-    expect(resourceKinds).toEqual([
-      REQUIREMENT_RESOURCE_KIND,
-      PULL_REQUEST_RESOURCE_KIND,
+    expect(resourceTypes).toEqual([
+      REQUIREMENT_RESOURCE_TYPE,
+      PULL_REQUEST_RESOURCE_TYPE,
+      REPOSITORY_RESOURCE_TYPE,
     ]);
     expect(contextProvider?.kind).toBe("requirement");
     expect(await command!.execute({ argument: "intake" })).toMatchObject({
@@ -507,6 +511,77 @@ describe("ReqLoop PluginPackage", () => {
     ]);
   });
 
+  test("materializes repositories when they enter the observation scope", async () => {
+    const events: string[] = [];
+    let repository:
+      | Resource<
+          import("../src/index.ts").RepositorySpec,
+          import("../src/index.ts").RepositoryStatus
+        >
+      | undefined;
+    const resources = {
+      list(type: { kind: string }) {
+        return type.kind === REPOSITORY_RESOURCE_TYPE.kind &&
+            repository
+          ? [repository]
+          : [];
+      },
+      create(
+        type: { apiVersion: string; kind: string },
+        input: {
+          name: string;
+          spec: import("../src/index.ts").RepositorySpec;
+        },
+      ) {
+        events.push(`create:${type.kind}`);
+        repository = {
+          ...type,
+          metadata: {
+            name: input.name,
+            namespace: "pi_reqloop",
+            uid: `uid-${input.name}`,
+            generation: 1,
+            resourceVersion: "1",
+            creationTimestamp: new Date(0).toISOString(),
+          },
+          spec: input.spec,
+          status: {},
+        };
+        return repository;
+      },
+    };
+    const context = {
+      session: { batonSessionId: "bs_test", cwd: testRoot() },
+      resources,
+      registerCommand() {},
+      registerContextProvider() {},
+      registerController(controller: Controller<unknown, unknown>) {
+        events.push(`register:${controller.resourceType.kind}`);
+      },
+    } as unknown as PluginActivationContext;
+
+    await createReqloopPackage({
+      requirementConnectors: [],
+      forgeConnectors: [],
+      repositories: [{
+        source: "github.com",
+        repository: "qiankunli/reqloop",
+      }],
+      reviewConnector: { latest: () => undefined },
+    }).activate(context);
+
+    expect(repository?.spec.identity).toEqual({
+      source: "github.com",
+      repository: "qiankunli/reqloop",
+    });
+    expect(events).toEqual([
+      "register:Requirement",
+      "register:PullRequest",
+      "register:Repository",
+      "create:Repository",
+    ]);
+  });
+
   test("persists the activation baseline and proposes actionable follow-up", async () => {
     const root = testRoot();
     const path = historyPath(root);
@@ -534,25 +609,24 @@ describe("ReqLoop PluginPackage", () => {
       | undefined;
 
     const resources = {
-      list(kind?: string) {
-        return kind === PULL_REQUEST_RESOURCE_KIND && resource
+      list(type: { apiVersion: string; kind: string }) {
+        return type.kind === PULL_REQUEST_RESOURCE_TYPE.kind && resource
           ? [resource]
           : [];
       },
       create(
-        kind: string,
-        input: { resourceId: string; spec: PullRequestSpec },
+        type: { apiVersion: string; kind: string },
+        input: { name: string; spec: PullRequestSpec },
       ) {
         resource = {
-          kind,
+          ...type,
           metadata: {
-            batonSessionId: "bs_test",
-            pluginInstanceId: "pi_reqloop",
-            resourceId: input.resourceId,
+            name: input.name,
+            namespace: "pi_reqloop",
+            uid: `uid-${input.name}`,
             generation: 1,
-            resourceVersion: 1,
-            createdAt: new Date(0).toISOString(),
-            updatedAt: new Date(0).toISOString(),
+            resourceVersion: "1",
+            creationTimestamp: new Date(0).toISOString(),
           },
           spec: input.spec,
           status: {},
@@ -567,7 +641,9 @@ describe("ReqLoop PluginPackage", () => {
           ...current,
           metadata: {
             ...current.metadata,
-            resourceVersion: current.metadata.resourceVersion + 1,
+            resourceVersion: String(
+              Number(current.metadata.resourceVersion) + 1,
+            ),
           },
           status: { ...current.status, ...patch },
         };
@@ -589,8 +665,18 @@ describe("ReqLoop PluginPackage", () => {
       resources,
       registerCommand() {},
       registerContextProvider() {},
-      registerController(candidate: typeof controller) {
-        controller = candidate;
+      registerController(
+        candidate: Controller<unknown, unknown>,
+      ) {
+        if (
+          candidate.resourceType.kind ===
+            PULL_REQUEST_RESOURCE_TYPE.kind
+        ) {
+          controller = candidate as Controller<
+            PullRequestSpec,
+            PullRequestStatus
+          >;
+        }
       },
       onClose() {},
     } as unknown as PluginActivationContext;
@@ -602,7 +688,7 @@ describe("ReqLoop PluginPackage", () => {
 
     await plugin.activate(context);
     expect(resource?.status.review?.sha).toBe("baseline");
-    expect(controller?.resourceKind).toBe(PULL_REQUEST_RESOURCE_KIND);
+    expect(controller?.resourceType).toBe(PULL_REQUEST_RESOURCE_TYPE);
     expect(controller?.sources).toEqual([
       {
         type: "cron",
@@ -655,9 +741,9 @@ describe("ReqLoop PluginPackage", () => {
           interactionId: "ix_accept",
           decisionKey,
           resource: {
-            resourceKind: PULL_REQUEST_RESOURCE_KIND,
-            resourceId: resource!.metadata.resourceId,
-            resourceOwner: "plugin",
+            ...PULL_REQUEST_RESOURCE_TYPE,
+            namespace: resource!.metadata.namespace,
+            name: resource!.metadata.name,
           },
           outcome: { kind: "answered", values: ["accept"] },
         },

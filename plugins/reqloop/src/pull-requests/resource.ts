@@ -13,7 +13,10 @@ import type {
   PullRequestStatus,
 } from "./protocol.ts";
 
-export const PULL_REQUEST_RESOURCE_KIND = "reqloop.pull-request";
+export const PULL_REQUEST_RESOURCE_TYPE = Object.freeze({
+  apiVersion: "reqloop.baton.dev/v1alpha1",
+  kind: "PullRequest",
+} as const);
 
 function normalizedIdentity(
   identity: PullRequestIdentity,
@@ -87,22 +90,22 @@ export function ensurePullRequestResource(
   requestedIdentity: PullRequestIdentity,
 ): Readonly<Resource<PullRequestSpec, PullRequestStatus>> {
   const identity = normalizedIdentity(requestedIdentity);
-  const resourceId = pullRequestResourceId(identity);
+  const name = pullRequestResourceId(identity);
   let resource = resources
-    .list<PullRequestSpec, PullRequestStatus>(PULL_REQUEST_RESOURCE_KIND)
-    .find((candidate) => candidate.metadata.resourceId === resourceId);
+    .list<PullRequestSpec, PullRequestStatus>(PULL_REQUEST_RESOURCE_TYPE)
+    .find((candidate) => candidate.metadata.name === name);
 
   if (!resource) {
     resource = resources.create<PullRequestSpec, PullRequestStatus>(
-      PULL_REQUEST_RESOURCE_KIND,
+      PULL_REQUEST_RESOURCE_TYPE,
       {
-        resourceId,
+        name,
         spec: { identity },
       },
     );
   } else if (!sameIdentity(resource.spec.identity, identity)) {
     throw new Error(
-      `PullRequest Resource identity mismatch: ${resourceId}`,
+      `PullRequest Resource identity mismatch: ${name}`,
     );
   }
   return resource;

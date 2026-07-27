@@ -23,6 +23,7 @@ reqloop/
 │       │   └── plugin.json
 │       ├── src/
 │       │   ├── requirements/       # Requirement Resource、Controller、Connector 与命令
+│       │   ├── repositories/       # 仓库观察范围与 PullRequest 集合发现
 │       │   └── pull-requests/      # PullRequest Resource、Controller、Forge 与 review Connector
 │       ├── tests/
 │       ├── package.json

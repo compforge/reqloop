@@ -9,7 +9,7 @@ import type {
   PullRequestSpec,
   PullRequestStatus,
 } from "../pull-requests/protocol.ts";
-import { PULL_REQUEST_RESOURCE_KIND } from "../pull-requests/resource.ts";
+import { PULL_REQUEST_RESOURCE_TYPE } from "../pull-requests/resource.ts";
 import type {
   Requirement,
   RequirementConnector,
@@ -18,7 +18,7 @@ import type {
   RequirementStatus,
 } from "./protocol.ts";
 import {
-  REQUIREMENT_RESOURCE_KIND,
+  REQUIREMENT_RESOURCE_TYPE,
   upsertRequirement,
 } from "./resource.ts";
 
@@ -44,19 +44,19 @@ function isTerminal(status: RequirementStatus): boolean {
 
 function linkedPullRequests(
   resources: ResourceClient,
-  requirementResourceId: string,
+  requirementName: string,
 ): readonly Readonly<Resource<PullRequestSpec, PullRequestStatus>>[] {
   return resources
     .list<PullRequestSpec, PullRequestStatus>(
-      PULL_REQUEST_RESOURCE_KIND,
+      PULL_REQUEST_RESOURCE_TYPE,
     )
     .filter(({ status }) =>
       status.requirementAssociation?.state === "linked" &&
-      status.requirementAssociation.requirement.resourceOwner === "plugin" &&
-      status.requirementAssociation.requirement.resourceKind ===
-        REQUIREMENT_RESOURCE_KIND &&
-      status.requirementAssociation.requirement.resourceId ===
-        requirementResourceId &&
+      status.requirementAssociation.requirement.apiVersion ===
+        REQUIREMENT_RESOURCE_TYPE.apiVersion &&
+      status.requirementAssociation.requirement.kind ===
+        REQUIREMENT_RESOURCE_TYPE.kind &&
+      status.requirementAssociation.requirement.name === requirementName &&
       status.lifecycle !== "closed"
     );
 }
@@ -100,7 +100,7 @@ function closeReminderKey(
   }
   return pullRequests
     .map(({ metadata }) =>
-      `${metadata.resourceId}@${metadata.resourceVersion}`
+      `${metadata.name}@${metadata.resourceVersion}`
     )
     .sort()
     .join(",");
@@ -122,7 +122,7 @@ export function createRequirementController(
   }
 
   return {
-    resourceKind: REQUIREMENT_RESOURCE_KIND,
+    resourceType: REQUIREMENT_RESOURCE_TYPE,
     maxConcurrency: 2,
     ...(resources && connectors.length > 0
       ? {
@@ -155,7 +155,7 @@ export function createRequirementController(
 
       const pullRequests = linkedPullRequests(
         resources,
-        current.metadata.resourceId,
+        current.metadata.name,
       );
       current = resources.patchStatus(current, {
         linkedPullRequests: summarizePullRequests(pullRequests),

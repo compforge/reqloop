@@ -84,6 +84,31 @@ PR/MR 不写入 Requirement `spec`：它们是否出现、关联到哪个 Requir
 不再阻塞收尾；初始状态同样没有 PR/MR，因此仍须与开发结果、验收等条件组合，不能单独让新建
 Requirement 立即进入可关闭状态。
 
+### Repository
+
+`Repository` 是 PR/MR 集合发现的长期 owner。它按 `source + repository` 唯一标识一个
+外部仓库，由多项 Requirement 共享，而不是每创建一项 Requirement 就复制一份：
+
+```text
+Repository
+├── spec
+│   └── identity          Forge source + repository
+└── status
+    ├── connectorAvailable
+    ├── discoveredPullRequests
+    └── lastScanAt
+```
+
+创建条件是“仓库进入 reqloop 的观察范围”。当前 Plugin 激活时从 BatonSession `cwd` 的
+`origin` 识别默认仓库，也允许嵌入方显式提供仓库；两条入口都按稳定 identity 幂等创建。未来
+Requirement 支持 `repositoryRefs` 后，用户确认仓库目标的入口同样负责确保对应
+Repository 存在。多个 Requirement 引用同一仓库时复用同一 Resource；发现 PR/MR 或创建
+Requirement 本身都不是新建 Repository 的理由。
+
+RepositoryController 通过 `ForgeConnector.list()` 物化缺失的 PullRequest，再用
+`requeueAfter` 安排下一次集合扫描。PullRequestController 只负责逐 PR/MR 的状态观察，不再通过
+`ControllerSource.discover()` 承担集合 owner 职责。
+
 ### PullRequest
 
 `PullRequest` 是 reqloop 自己的一种 Resource，统一表示 GitHub Pull Request 和 GitLab Merge
@@ -169,13 +194,12 @@ Interaction 询问一次，回答写回 `requirementAssociation`。系统事实�
 自动化提升的是某一类动作在明确范围内的信任等级，不是绕过状态模型的一键开关。每次执行仍要
 保留意图、结果和最新外部观测；副作用不确定时先重新观察，不能盲目重试。
 
-PullRequestController 的 cron Source 负责发现：每次到期先通过 `ForgeConnector.list()` 列出
-当前仓库的 open / merged PullRequest，并为新 identity 创建缺失 Resource；Baton 随后把全部当前
-PullRequest Resource 放入同一 reconcile queue，由逐 Resource 的 `ForgeConnector.get()` 刷新
-状态。merged 保留为 Requirement 收尾证据，但 merged 和 closed 都是终止状态，不再继续轮询；
-closed 也不会被发现。发现不是独立 EventSource，也不需要
-Candidate 或 Discovery Resource；未来其它发现手段
-仍应落成同一种 PullRequest，再复用同一 reconcile 路径。
+RepositoryController 负责集合发现：它通过 `ForgeConnector.list()` 列出当前仓库的
+open / merged PullRequest，为新 identity 创建缺失 Resource，并安排下一次扫描。PullRequest
+创建后由 Baton 自动入队，逐 Resource 的 PullRequestController 再通过
+`ForgeConnector.get()` 刷新状态。merged 保留为 Requirement 收尾证据，但 merged 和 closed
+都是终止状态，不再继续轮询；closed 也不会被发现。未来其它发现手段仍应确保同一
+Repository 或落成同一种 PullRequest，再复用既有 reconcile 路径。
 
 ### RequirementController
 
@@ -377,22 +401,24 @@ Harness Work 类型；Harness 的路由、成本、并发、取消和可靠投�
 ## 6. 用户主流程
 
 1. 用户首次运行 Baton 时看到 Requirement Loop quickstart；配置 reqloop 的需求与部署平台。
-2. 用户通过 `/requirements` 选择需求，或直接粘贴、输入一项需求；reqloop 创建或恢复
+2. reqloop 激活时识别当前 checkout 的仓库，并创建或恢复共享的 Repository；其
+   Reconciler 持续发现 PullRequest。
+3. 用户通过 `/requirements` 选择需求，或直接粘贴、输入一项需求；reqloop 创建或恢复
    Requirement Resource，将目标和验收条件写入 `spec`，并展示到 Board。
-3. RequirementController 返回“根据需求完成开发并提交 PR”的 `proposed-input` Output，Board 展示这段
+4. RequirementController 返回“根据需求完成开发并提交 PR”的 `proposed-input` Output，Board 展示这段
    文本。用户原样提交或编辑后提交，Baton 组装 context 并交给目标 Harness；这仍是
    user-driven turn。
-4. Harness 内部的 devloop 约束 agent 完成开发小闭环；Harness 边界报告 DevelopmentOutcome，
+5. Harness 内部的 devloop 约束 agent 完成开发小闭环；Harness 边界报告 DevelopmentOutcome，
    或 reqloop 的 ForgeConnector 观察到新的 PR/MR，reqloop 创建或刷新 PullRequest Resource。
    若存在活跃 Requirement 且尚未询问归属，reqloop 发起一次 durable Interaction；用户可关联
    一项 Requirement，也可让 PullRequest 独立存在。决定写入
    `PullRequest.status.requirementAssociation`，不根据匹配猜测自动关联，也不重复询问。
-5. PullRequestController 观察 review thread、merge conflict 与 open / merged / closed；
+6. PullRequestController 观察 review thread、merge conflict 与 open / merged / closed；
    当前由 devloop 触发的 review 完成后，`DevloopReviewConnector + cron Source` 也可观察其终态；
    后续由 reqloop 自己发起的远端 review 仍可由 VerdictConnector 配合 `requeueAfter` 查询。
-6. review 要求修改时，Controller 让用户 accept 或 ignore；两种选择都写入 PullRequest status
+7. review 要求修改时，Controller 让用户 accept 或 ignore；两种选择都写入 PullRequest status
    且只提醒一次。accept 返回包含 review 意见的修复 `proposed-input`，用户审核后再次驱动 Harness。
-7. 首期 Completion Policy 在至少存在一个关联 PR、所有关联 PR 已 merged 且 review thread
+8. 首期 Completion Policy 在至少存在一个关联 PR、所有关联 PR 已 merged 且 review thread
    状态均为 none 或 resolved 时，吐出一次去重 toast，提醒用户前往需求平台关闭 Requirement。外部关闭由
    Connector 重新观察成功后，不再向 Board 展示该 Requirement；当前阶段不执行外部写操作。
 
@@ -506,11 +532,12 @@ Baton 作为通用产品需要一个清晰的默认故事。reqloop 随 Baton �
 10. reqloop 只能修改自己的 Resource status；Board presentation 展示活跃 Requirement 与孤立
     的活跃 PullRequest；关联不改变 PullRequest 的独立身份，只改变 Board 的主展示对象。其他
     owner 的产出只能作为 observation 读取。
-11. 固定周期观察使用 Controller cron Source；`requeueAfter` 只服务一次性动态复查，并持久化为
-    `nextReconcileAt`。
+11. 全量周期唤醒可以使用 Controller cron Source；单个长期 owner 的下一次检查使用
+    `requeueAfter`，调度由 Baton 持久化，不进入 Resource metadata。
 12. Resource、Input、Harness 结果、cron 和 timer 只触发重新检查；Controller 不把触发当成必须逐条
     执行的命令。
-13. PR/MR 作为 PullRequest Resource 独立观察；归属决定只写入 PullRequest status，最多指向一份
+13. Repository 按 `source + repository` 统一拥有集合发现生命周期，并可被多个 Requirement
+    共享；PR/MR 作为 PullRequest Resource 独立观察。归属决定只写入 PullRequest status，最多指向一份
     Requirement。Requirement 不在 spec/status 双写实际 PR/MR 列表。
 14. Event、webhook、cron 和 timer 只表示“事实可能变化”；状态转换必须以重新观察后的 Resource
     status 为依据。人的 durable decision 与外部 observation 分字段持久化。
