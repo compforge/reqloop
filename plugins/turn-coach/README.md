@@ -5,7 +5,7 @@ without depending on an external service:
 
 ```text
 pluginId: qiankunli/turn-coach
-version:  0.0.2
+version:  0.0.3
 ```
 
 It observes the read-only `baton.turn` Baton-owned Resource, keeps a

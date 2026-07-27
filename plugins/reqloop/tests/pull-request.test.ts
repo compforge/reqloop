@@ -11,15 +11,19 @@ import type {
 } from "@qiankun01/baton-plugin";
 
 import {
+  createRepositoryController,
   createPullRequestController,
+  REPOSITORY_RESOURCE_TYPE,
   type ForgeConnector,
-  PULL_REQUEST_RESOURCE_KIND,
+  type RepositorySpec,
+  type RepositoryStatus,
+  PULL_REQUEST_RESOURCE_TYPE,
   pullRequestResourceId,
   type PullRequest,
   type PullRequestReviewConnector,
   type PullRequestSpec,
   type PullRequestStatus,
-  REQUIREMENT_RESOURCE_KIND,
+  REQUIREMENT_RESOURCE_TYPE,
   type RequirementSpec,
   type RequirementStatus,
   upsertPullRequest,
@@ -30,7 +34,10 @@ function resourceClient(): {
   readonly current: () => Readonly<
     Resource<PullRequestSpec, PullRequestStatus>
   > | undefined;
-  readonly addRequirement: (resourceId?: string) => void;
+  readonly repositoryCurrent: () => Readonly<
+    Resource<RepositorySpec, RepositoryStatus>
+  > | undefined;
+  readonly addRequirement: (name?: string) => void;
 } {
   let resource:
     | Readonly<Resource<PullRequestSpec, PullRequestStatus>>
@@ -38,69 +45,101 @@ function resourceClient(): {
   let requirement:
     | Readonly<Resource<RequirementSpec, RequirementStatus>>
     | undefined;
+  let repository:
+    | Readonly<Resource<RepositorySpec, RepositoryStatus>>
+    | undefined;
   const client = {
-    list(kind?: string) {
-      if (kind === REQUIREMENT_RESOURCE_KIND) {
+    list(type: { apiVersion: string; kind: string }) {
+      if (type.kind === REQUIREMENT_RESOURCE_TYPE.kind) {
         return requirement ? [requirement] : [];
       }
-      if (kind === PULL_REQUEST_RESOURCE_KIND) {
+      if (type.kind === PULL_REQUEST_RESOURCE_TYPE.kind) {
         return resource ? [resource] : [];
       }
-      return [resource, requirement].filter(Boolean);
+      if (type.kind === REPOSITORY_RESOURCE_TYPE.kind) {
+        return repository ? [repository] : [];
+      }
+      return [resource, requirement, repository].filter(Boolean);
     },
     create(
-      kind: string,
-      input: { resourceId: string; spec: PullRequestSpec },
+      type: { apiVersion: string; kind: string },
+      input: {
+        name: string;
+        spec: PullRequestSpec | RepositorySpec;
+      },
     ) {
-      resource = {
-        kind,
+      const created = {
+        ...type,
         metadata: {
-          resourceId: input.resourceId,
-          batonSessionId: "bs_test",
-          pluginInstanceId: "pi_reqloop",
+          name: input.name,
+          namespace: "pi_reqloop",
+          uid: `uid-${input.name}`,
           generation: 1,
-          resourceVersion: 1,
-          createdAt: "2026-07-26T00:00:00.000Z",
-          updatedAt: "2026-07-26T00:00:00.000Z",
+          resourceVersion: "1",
+          creationTimestamp: "2026-07-26T00:00:00.000Z",
         },
         spec: input.spec,
         status: {},
       };
+      if (type.kind === REPOSITORY_RESOURCE_TYPE.kind) {
+        repository = created as Resource<
+          RepositorySpec,
+          RepositoryStatus
+        >;
+        return repository;
+      }
+      resource = created as Resource<
+        PullRequestSpec,
+        PullRequestStatus
+      >;
       return resource;
     },
     patchStatus(
-      current: Readonly<Resource<PullRequestSpec, PullRequestStatus>>,
-      patch: Partial<PullRequestStatus>,
+      current: Readonly<Resource>,
+      patch: Record<string, unknown>,
     ) {
       const status = { ...current.status, ...patch };
       if (JSON.stringify(current.status) === JSON.stringify(status)) {
         return current;
       }
-      resource = {
+      const updated = {
         ...current,
         metadata: {
           ...current.metadata,
-          resourceVersion: current.metadata.resourceVersion + 1,
+          resourceVersion: String(
+            Number(current.metadata.resourceVersion) + 1,
+          ),
         },
         status,
       };
+      if (current.kind === REPOSITORY_RESOURCE_TYPE.kind) {
+        repository = updated as unknown as Resource<
+          RepositorySpec,
+          RepositoryStatus
+        >;
+        return repository;
+      }
+      resource = updated as unknown as Resource<
+        PullRequestSpec,
+        PullRequestStatus
+      >;
       return resource;
     },
   } as unknown as ResourceClient;
   return {
     client,
     current: () => resource,
-    addRequirement(resourceId = "req_active") {
+    repositoryCurrent: () => repository,
+    addRequirement(name = "req_active") {
       requirement = {
-        kind: REQUIREMENT_RESOURCE_KIND,
+        ...REQUIREMENT_RESOURCE_TYPE,
         metadata: {
-          resourceId,
-          batonSessionId: "bs_test",
-          pluginInstanceId: "pi_reqloop",
+          name,
+          namespace: "pi_reqloop",
+          uid: `uid-${name}`,
           generation: 1,
-          resourceVersion: 1,
-          createdAt: "2026-07-26T00:00:00.000Z",
-          updatedAt: "2026-07-26T00:00:00.000Z",
+          resourceVersion: "1",
+          creationTimestamp: "2026-07-26T00:00:00.000Z",
         },
         spec: {
           identity: {
@@ -159,8 +198,11 @@ describe("PullRequest Resource", () => {
       observation,
     );
 
-    expect(created.kind).toBe(PULL_REQUEST_RESOURCE_KIND);
-    expect(created.metadata.resourceId).toBe(
+    expect({
+      apiVersion: created.apiVersion,
+      kind: created.kind,
+    }).toEqual(PULL_REQUEST_RESOURCE_TYPE);
+    expect(created.metadata.name).toBe(
       pullRequestResourceId(observation.identity),
     );
     expect(created.spec).toEqual({ identity: observation.identity });
@@ -185,7 +227,7 @@ describe("PullRequest Resource", () => {
       observation,
     );
 
-    expect(controller.resourceKind).toBe(PULL_REQUEST_RESOURCE_KIND);
+    expect(controller.resourceType).toBe(PULL_REQUEST_RESOURCE_TYPE);
     expect(controller.present?.(pullRequest)).toEqual({
       title: "qiankunli/reqloop #17",
       status: "Unresolved review threads",
@@ -199,9 +241,9 @@ describe("PullRequest Resource", () => {
         requirementAssociation: {
           state: "linked",
           requirement: {
-            resourceKind: REQUIREMENT_RESOURCE_KIND,
-            resourceId: "req_active",
-            resourceOwner: "plugin",
+            ...REQUIREMENT_RESOURCE_TYPE,
+            namespace: "pi_reqloop",
+            name: "req_active",
           },
         },
       },
@@ -297,9 +339,9 @@ describe("PullRequest Resource", () => {
         interactionId: "ix_associate",
         decisionKey: prompted.output.decisionKey,
         resource: {
-          resourceKind: PULL_REQUEST_RESOURCE_KIND,
-          resourceId: current.metadata.resourceId,
-          resourceOwner: "plugin",
+          ...PULL_REQUEST_RESOURCE_TYPE,
+          namespace: current.metadata.namespace,
+          name: current.metadata.name,
         },
         outcome: {
           kind: "answered",
@@ -311,9 +353,9 @@ describe("PullRequest Resource", () => {
     expect(resources.current()?.status.requirementAssociation).toEqual({
       state: "linked",
       requirement: {
-        resourceKind: REQUIREMENT_RESOURCE_KIND,
-        resourceId: "req_active",
-        resourceOwner: "plugin",
+        ...REQUIREMENT_RESOURCE_TYPE,
+        namespace: "pi_reqloop",
+        name: "req_active",
       },
     });
     expect(controller.present?.(resources.current()!)).toBeUndefined();
@@ -388,9 +430,9 @@ describe("PullRequest Resource", () => {
         interactionId: "ix_ignore",
         decisionKey: prompted.output.decisionKey,
         resource: {
-          resourceKind: PULL_REQUEST_RESOURCE_KIND,
-          resourceId: pullRequest.metadata.resourceId,
-          resourceOwner: "plugin",
+          ...PULL_REQUEST_RESOURCE_TYPE,
+          namespace: pullRequest.metadata.namespace,
+          name: pullRequest.metadata.name,
         },
         outcome: { kind: "answered", values: ["ignore"] },
       }]),
@@ -409,12 +451,14 @@ describe("PullRequest Resource", () => {
     ).toBeUndefined();
   });
 
-  test("discovers missing PullRequest Resources from its cron Source", async () => {
+  test("discovers missing PullRequests by reconciling a Repository", async () => {
     const resources = resourceClient();
+    let listCalls = 0;
     const forge: ForgeConnector = {
       source: "github-primary",
       provider: "github",
       async list(repository) {
+        listCalls += 1;
         return [{
           source: "github-primary",
           repository,
@@ -431,27 +475,34 @@ describe("PullRequest Resource", () => {
         };
       },
     };
-    const controller = createPullRequestController(
+    const controller = createRepositoryController(
       resources.client,
       [forge],
-      undefined,
-      [{
+    );
+    const repository = resources.client.create<
+      RepositorySpec,
+      RepositoryStatus
+    >(REPOSITORY_RESOURCE_TYPE, {
+      name: "repo_test",
+      spec: {
+        identity: {
         source: "github-primary",
         repository: "qiankunli/reqloop",
-      }],
-    );
-    const source = controller.sources?.[0] as
-      | { discover?: () => Promise<void> | void }
-      | undefined;
+        },
+      },
+    });
 
-    await source?.discover?.();
+    const result = await controller.reconcile({} as never, repository);
 
     expect(resources.current()?.spec.identity).toEqual({
       source: "github-primary",
       repository: "qiankunli/reqloop",
       number: 18,
     });
-    await controller.reconcile(
+    await createPullRequestController(
+      resources.client,
+      [forge],
+    ).reconcile(
       {} as never,
       resources.current()!,
     );
@@ -462,5 +513,19 @@ describe("PullRequest Resource", () => {
       mergeability: "unknown",
       observedAt: "2026-07-26T11:00:00.000Z",
     });
+    const repositoryStatus = resources.repositoryCurrent()?.status;
+    expect(repositoryStatus).toMatchObject({
+      connectorAvailable: true,
+      discoveredPullRequests: 1,
+    });
+    expect(typeof repositoryStatus?.lastScanAt).toBe("string");
+    expect(result).toEqual({ requeueAfterMs: 30_000 });
+    const replay = await controller.reconcile(
+      {} as never,
+      resources.repositoryCurrent()!,
+    );
+    expect(listCalls).toBe(1);
+    expect(replay?.requeueAfterMs).toBeGreaterThan(0);
+    expect(replay?.requeueAfterMs).toBeLessThanOrEqual(30_000);
   });
 });

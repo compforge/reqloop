@@ -89,15 +89,17 @@ asks the user to accept or ignore the result. The choice is persisted once per
 review observation; only `accept` produces a Harness follow-up that evaluates
 and fixes real findings.
 
-ReqLoop owns a provider-neutral `reqloop.pull-request` Resource for GitHub PRs
-and GitLab MRs. Its immutable spec identifies `source + repository + number`;
-status records lifecycle, review-thread state and activity, mergeability,
-optional Requirement association, and observation time. Every Controller cron Source
-first calls `ForgeConnector.list()` to
-materialize missing PullRequest Resources, then keyed reconciliation calls
-`get()` to refresh each PullRequest. `GitHubForgeConnector` and
-`GitLabForgeConnector` provide both operations. Selecting `/requirements`
-materializes a stable `reqloop.requirement` Resource. An open PullRequest is
+ReqLoop owns provider-neutral `Repository` and `PullRequest` Resources for
+GitHub and GitLab. A repository enters observation scope when the plugin is
+activated for a checkout whose `origin` can be identified, or when an embedding
+explicitly supplies that repository. One `Repository` is shared by every
+Requirement that targets the same `source + repository`; it is not created once
+per Requirement. Its reconciler calls `ForgeConnector.list()`, materializes
+missing PullRequest Resources, records the latest scan, and schedules the next
+scan. PullRequest reconciliation then calls `get()` to refresh lifecycle,
+review-thread state and activity, mergeability, and observation time.
+`GitHubForgeConnector` and `GitLabForgeConnector` provide both operations.
+Selecting `/requirements` materializes a stable `Requirement` Resource. An open PullRequest is
 shown on the Board while standalone. Linking it to a Requirement keeps the
 PullRequest Resource independent but presents the Requirement as the primary
 Board item. Merged PullRequests leave the Board and
@@ -116,7 +118,7 @@ source platform. ReqLoop does not mutate external Requirement state yet.
 ```text
 devloop review-history.jsonl
   → DevloopReviewConnector
-  → matching reqloop.pull-request status + Controller
+  → matching PullRequest status + Controller
   → durable Interaction
   → user chooses accept or ignore once
   → proposed-input
@@ -131,7 +133,7 @@ review without an open PR/MR are ignored.
 
 ```text
 pluginId: qiankunli/reqloop
-version:  0.1.9
+version:  0.1.10
 ```
 
 Install this Marketplace in Baton, install `qiankunli/reqloop`, then enable it
@@ -142,10 +144,13 @@ for the BatonSession that owns the repository.
 ReqLoop 在 Baton core 之外拥有需求级闭环。`/requirements` 通过
 `RequirementConnector` 展示平台无关的需求列表，选中后读取归一化详情；首个具体平台将接
 Meego。代码平台按同样边界接 `ForgeConnector`，参考 devloop 的 provider-neutral Forge 模型，
-但不导入其实现。PullRequestController 的 cron Source 先通过 Connector `list()` 创建缺失
-`reqloop.pull-request` Resource，再由逐 Resource reconcile 调用 `get()` 刷新生命周期、review
-thread、merge conflict 和 review activity fingerprint。`/requirements` 选中的需求会物化为
-稳定的 `reqloop.requirement` Resource。孤立且活跃的 PullRequest 会单独显示在 Board；关联
+但不导入其实现。仓库进入观察范围时，reqloop 按 `source + repository` 幂等创建一份
+`Repository` Resource；当前入口是 Plugin 激活时识别 BatonSession `cwd` 的 `origin`，
+嵌入方也可显式提供。多个 Requirement 指向同一仓库时复用它，不按需求重复创建。
+RepositoryController 通过 Connector `list()` 创建缺失的 PullRequest Resource，记录扫描
+结果并安排下一次扫描；逐 PullRequest reconcile 再调用 `get()` 刷新生命周期、review thread、
+merge conflict 和 review activity fingerprint。`/requirements` 选中的需求会物化为稳定的
+`Requirement` Resource。孤立且活跃的 PullRequest 会单独显示在 Board；关联
 Requirement 后仍保留独立 Resource，但 Board 以 Requirement 为主展示。merged 后生命周期
 结束并停止轮询；closed PullRequest 不再发现或轮询。Requirement 卡片会汇总关联 PR 的生命周期、
 merge conflict 和 unresolved review thread。devloop review 也通过完整 PullRequest identity

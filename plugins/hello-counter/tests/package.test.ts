@@ -38,25 +38,25 @@ describe("Hello Counter PluginPackage", () => {
       | undefined;
     await helloCounter.activate({
       registerController(controller: {
-        resourceKind: string;
+        resourceType: { kind: string };
         present?: typeof present;
       }) {
-        if (controller.resourceKind === "CounterState") {
+        if (controller.resourceType.kind === "CounterState") {
           present = controller.present;
         }
       },
     } as unknown as PluginActivationContext);
 
     const resource = {
+      apiVersion: "hello-counter.baton.dev/v1alpha1",
       kind: "CounterState",
       metadata: {
-        resourceId: "main",
-        batonSessionId: "bs_test",
-        pluginInstanceId: "hello_counter",
+        name: "main",
+        namespace: "hello_counter",
+        uid: "uid-main",
         generation: 1,
-        resourceVersion: 2,
-        createdAt: "2026-07-25T00:00:00.000Z",
-        updatedAt: "2026-07-25T00:00:00.000Z",
+        resourceVersion: "2",
+        creationTimestamp: "2026-07-25T00:00:00.000Z",
       },
       spec: { enabled: true },
       status: {},

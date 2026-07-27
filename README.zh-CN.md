@@ -83,9 +83,9 @@ Binding、Resource/Controller 和 Proposal 契约。
   `baton.turn` Controller 的组合。
 - [Turn Coach](./plugins/turn-coach/README.md) — 验证 Baton-owned Resource replay、持久状态和
   proposed input 的端到端 canary。
-- [ReqLoop](./plugins/reqloop/README.md) — 需求级闭环协调；`0.1.9` 物化 Requirement
-  Resource，将活跃 Requirement 暴露为可搜索的 Harness context、观察 Forge review 活动，
-  并只询问一次 PullRequest 是否关联 Requirement。
+- [ReqLoop](./plugins/reqloop/README.md) — 需求级闭环协调；`0.1.10` 物化 Requirement
+  Resource，将活跃 Requirement 暴露为可搜索的 Harness context、通过 Repository
+  Resource 发现 PullRequest，并只询问一次 PullRequest 是否关联 Requirement。
 
 领域模型、Connector 边界与 Harness 协作方式见
 [Requirement Loop 设计](./docs/reqloop.md)。

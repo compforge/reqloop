@@ -5,6 +5,15 @@ import type {
 import { spawnSync } from "node:child_process";
 
 import {
+  createRepositoryController,
+} from "./repositories/controller.ts";
+import type {
+  RepositoryIdentity,
+} from "./repositories/protocol.ts";
+import {
+  ensureRepositoryResource,
+} from "./repositories/resource.ts";
+import {
   DevloopReviewConnector,
 } from "./pull-requests/connectors/devloop-review.ts";
 import type { RequirementConnector } from "./requirements/protocol.ts";
@@ -26,13 +35,12 @@ import {
 } from "./pull-requests/connectors/config.ts";
 import type {
   ForgeConnector,
-  PullRequestIdentity,
   PullRequestReviewConnector,
 } from "./pull-requests/protocol.ts";
 import { upsertPullRequestReview } from "./pull-requests/resource.ts";
 
 export const REQLOOP_PLUGIN_ID = "qiankunli/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.1.9";
+export const REQLOOP_PACKAGE_VERSION = "0.1.10";
 
 function currentRepo(context: PluginActivationContext): string {
   const cwd = context.session.cwd;
@@ -42,9 +50,9 @@ function currentRepo(context: PluginActivationContext): string {
   return cwd;
 }
 
-function currentPullRequestRepository(
+function currentRepository(
   cwd: string,
-): Pick<PullRequestIdentity, "source" | "repository"> | undefined {
+): RepositoryIdentity | undefined {
   const result = spawnSync(
     "git",
     ["remote", "get-url", "origin"],
@@ -86,10 +94,7 @@ export function createReqloopPackage(options: {
   requirementConnector?: RequirementConnector;
   requirementConnectors?: readonly RequirementConnector[];
   forgeConnectors?: readonly ForgeConnector[];
-  pullRequestRepositories?: readonly Pick<
-    PullRequestIdentity,
-    "source" | "repository"
-  >[];
+  repositories?: readonly RepositoryIdentity[];
 } = {}): PluginPackage {
   return Object.freeze({
     pluginId: REQLOOP_PLUGIN_ID,
@@ -115,17 +120,15 @@ export function createReqloopPackage(options: {
       );
       const forgeConnectors =
         options.forgeConnectors ?? createForgeConnectors();
-      const pullRequestRepositories =
-        options.pullRequestRepositories ??
+      const repositories =
+        options.repositories ??
         [
-          currentPullRequestRepository(currentRepo(context)),
+          currentRepository(currentRepo(context)),
         ].filter(
           (
             repository,
-          ): repository is Pick<
-            PullRequestIdentity,
-            "source" | "repository"
-          > => repository !== undefined,
+          ): repository is RepositoryIdentity =>
+            repository !== undefined,
         );
       const reviewConnector =
         options.reviewConnector ??
@@ -139,9 +142,17 @@ export function createReqloopPackage(options: {
           context.resources,
           forgeConnectors,
           reviewConnector,
-          pullRequestRepositories,
         ),
       );
+      context.registerController(
+        createRepositoryController(
+          context.resources,
+          forgeConnectors,
+        ),
+      );
+      for (const repository of repositories) {
+        ensureRepositoryResource(context.resources, repository);
+      }
     },
   });
 }
@@ -150,6 +161,9 @@ const reqloop = createReqloopPackage();
 
 export default reqloop;
 export * from "./config.ts";
+export * from "./repositories/controller.ts";
+export * from "./repositories/protocol.ts";
+export * from "./repositories/resource.ts";
 export * from "./pull-requests/connectors/config.ts";
 export * from "./pull-requests/connectors/devloop-review.ts";
 export * from "./pull-requests/connectors/github.ts";
