@@ -109,6 +109,7 @@ export interface PullRequestReviewConnector {
 export interface ForgeConnector {
   readonly source: string;
   readonly provider: "github" | "gitlab";
+  /** `limit` applies after closed PR/MR entries are filtered across pages. */
   list(
     repository: string,
     limit?: number,

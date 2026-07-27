@@ -17,6 +17,8 @@ import {
 } from "./http.ts";
 
 const MAX_DISCUSSION_PAGES = 20;
+const MAX_MERGE_REQUEST_PAGES = 20;
+const MERGE_REQUEST_PAGE_SIZE = 100;
 
 export interface GitLabForgeConnectorOptions {
   readonly fetch?: Fetch;
@@ -88,27 +90,51 @@ export class GitLabForgeConnector implements ForgeConnector {
     limit?: number,
   ): Promise<readonly PullRequestIdentity[]> {
     const count = positiveLimit(limit);
-    const { data } = await this.#http.request(
-      "GET",
-      `${this.#projectBase(repository)}` +
-        `/merge_requests?state=all&order_by=created_at&sort=desc&per_page=${count}`,
-      { headers: this.#headers() },
-    );
-    return records("GitLab MergeRequests", data)
-      .filter((mergeRequest) =>
-        mergeRequest.state === "opened" || mergeRequest.state === "merged"
-      )
-      .map((mergeRequest, index) => {
+    const result: PullRequestIdentity[] = [];
+    const seen = new Set<number>();
+    let page = 1;
+    for (
+      let pageCount = 0;
+      pageCount < MAX_MERGE_REQUEST_PAGES;
+      pageCount += 1
+    ) {
+      const { data, headers } = await this.#http.request(
+        "GET",
+        `${this.#projectBase(repository)}` +
+          "/merge_requests?state=all&order_by=created_at&sort=desc" +
+          `&per_page=${MERGE_REQUEST_PAGE_SIZE}&page=${page}`,
+        { headers: this.#headers() },
+      );
+      const mergeRequests = records("GitLab MergeRequests", data);
+      for (const [index, mergeRequest] of mergeRequests.entries()) {
+        if (
+          mergeRequest.state !== "opened" &&
+          mergeRequest.state !== "merged"
+        ) {
+          continue;
+        }
         const number = mergeRequest.iid;
         if (!Number.isSafeInteger(number) || (number as number) < 1) {
           throw new Error(`GitLab MergeRequests[${index}].iid is invalid`);
         }
-        return {
+        if (seen.has(number as number)) continue;
+        seen.add(number as number);
+        result.push({
           source: this.source,
           repository,
           number: number as number,
-        };
-      });
+        });
+        if (result.length === count) return result;
+      }
+      const nextPage = headers.get("x-next-page");
+      if (!nextPage) return result;
+      const parsed = Number(nextPage);
+      if (!Number.isSafeInteger(parsed) || parsed <= page) {
+        throw new Error("GitLab MergeRequest pagination is invalid");
+      }
+      page = parsed;
+    }
+    throw new Error("GitLab MergeRequest pagination limit exceeded");
   }
 
   async get(identity: PullRequestIdentity): Promise<PullRequest> {

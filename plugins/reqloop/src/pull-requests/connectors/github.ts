@@ -17,6 +17,8 @@ import {
 } from "./http.ts";
 
 const MAX_REVIEW_THREAD_PAGES = 20;
+const MAX_PULL_REQUEST_PAGES = 20;
+const PULL_REQUEST_PAGE_SIZE = 100;
 
 export interface GitHubForgeConnectorOptions {
   readonly fetch?: Fetch;
@@ -84,27 +86,43 @@ export class GitHubForgeConnector implements ForgeConnector {
     limit?: number,
   ): Promise<readonly PullRequestIdentity[]> {
     const count = positiveLimit(limit);
-    const { data } = await this.#http.request(
-      "GET",
-      `${this.#restBase}/repos/${repositoryPath(repository)}` +
-        `/pulls?state=all&sort=created&direction=desc&per_page=${count}`,
-      { headers: this.#headers() },
-    );
-    return records("GitHub PullRequests", data)
-      .filter((pullRequest) =>
-        pullRequest.state === "open" || Boolean(pullRequest.merged_at)
-      )
-      .map((pullRequest, index) => {
+    const result: PullRequestIdentity[] = [];
+    const seen = new Set<number>();
+    for (let page = 1; page <= MAX_PULL_REQUEST_PAGES; page += 1) {
+      const { data, headers } = await this.#http.request(
+        "GET",
+        `${this.#restBase}/repos/${repositoryPath(repository)}` +
+          "/pulls?state=all&sort=created&direction=desc" +
+          `&per_page=${PULL_REQUEST_PAGE_SIZE}&page=${page}`,
+        { headers: this.#headers() },
+      );
+      const pullRequests = records("GitHub PullRequests", data);
+      for (const [index, pullRequest] of pullRequests.entries()) {
+        if (
+          pullRequest.state !== "open" &&
+          !Boolean(pullRequest.merged_at)
+        ) {
+          continue;
+        }
         const number = pullRequest.number;
         if (!Number.isSafeInteger(number) || (number as number) < 1) {
           throw new Error(`GitHub PullRequests[${index}].number is invalid`);
         }
-        return {
+        if (seen.has(number as number)) continue;
+        seen.add(number as number);
+        result.push({
           source: this.source,
           repository,
           number: number as number,
-        };
-      });
+        });
+        if (result.length === count) return result;
+      }
+      const hasNextPage = headers.get("link")
+        ?.split(",")
+        .some((link) => /;\s*rel="next"/.test(link)) ?? false;
+      if (!hasNextPage) return result;
+    }
+    throw new Error("GitHub PullRequest pagination limit exceeded");
   }
 
   async get(identity: PullRequestIdentity): Promise<PullRequest> {
