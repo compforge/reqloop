@@ -13,10 +13,12 @@ import type {
 import {
   createRequirementContextProvider,
   createRequirementController,
+  getStatusCondition,
   PULL_REQUEST_RESOURCE_TYPE,
   type PullRequestSpec,
   type PullRequestStatus,
   type RequirementConnector,
+  REQUIREMENT_CONDITION,
   REQUIREMENT_RESOURCE_TYPE,
   type RequirementSpec,
   type RequirementStatus,
@@ -127,6 +129,19 @@ describe("Requirement Resource", () => {
       kind: requirement.kind,
     }).toEqual(REQUIREMENT_RESOURCE_TYPE);
     expect(requirement.status.externalState).toBe("in_progress");
+    expect(requirement.status.observedGeneration).toBe(
+      requirement.metadata.generation,
+    );
+    expect(
+      getStatusCondition(
+        requirement.status.conditions,
+        REQUIREMENT_CONDITION.observed,
+      ),
+    ).toMatchObject({
+      status: "True",
+      observedGeneration: requirement.metadata.generation,
+      reason: "ObservationSucceeded",
+    });
     expect(createRequirementController().present?.(requirement)).toEqual({
       title: "Requirement intake",
       status: "in_progress",
@@ -217,9 +232,9 @@ describe("Requirement Resource", () => {
         },
       },
     });
-    const linkedPullRequest = resources.client.patchStatus(pullRequest, {
+    let linkedPullRequest = resources.client.patchStatus(pullRequest, {
       lifecycle: "merged",
-      reviewThreads: "unresolved",
+      reviewThreads: "unknown",
       requirementAssociation: {
         state: "linked",
         requirement: {
@@ -267,23 +282,60 @@ describe("Requirement Resource", () => {
         open: 0,
         merged: 1,
         conflicted: 0,
-        unresolvedReviewThreads: 1,
+        unresolvedReviewThreads: 0,
       },
     });
+    expect(controller.present?.(resources.current()!)).toMatchObject({
+      status: "in_progress · 1 PR merged",
+      tone: "default",
+    });
+    expect(resources.current()?.status.closeReminderKey).toBeUndefined();
+    expect(
+      getStatusCondition(
+        resources.current()?.status.conditions,
+        REQUIREMENT_CONDITION.readyToClose,
+      ),
+    ).toMatchObject({
+      status: "Unknown",
+      reason: "ReviewStatusUnknown",
+    });
+    expect(toasts).toHaveLength(0);
+
+    linkedPullRequest = resources.client.patchStatus(linkedPullRequest, {
+      reviewThreads: "unresolved",
+    });
+    await controller.reconcile({} as never, resources.current()!);
     expect(controller.present?.(resources.current()!)).toMatchObject({
       status: "in_progress · 1 PR merged · 1 unresolved review",
       tone: "warning",
     });
-    expect(resources.current()?.status.closeReminderKey).toBeUndefined();
+    expect(
+      getStatusCondition(
+        resources.current()?.status.conditions,
+        REQUIREMENT_CONDITION.readyToClose,
+      ),
+    ).toMatchObject({
+      status: "False",
+      reason: "UnresolvedReviewThreads",
+    });
     expect(toasts).toHaveLength(0);
 
-    resources.client.patchStatus(linkedPullRequest, {
+    linkedPullRequest = resources.client.patchStatus(linkedPullRequest, {
       reviewThreads: "resolved",
     });
     await controller.reconcile({} as never, resources.current()!);
     expect(controller.present?.(resources.current()!)).toMatchObject({
-      status: "in_progress · 1 PR merged",
+      status: "in_progress · 1 PR merged · Ready to close",
       tone: "default",
+    });
+    expect(
+      getStatusCondition(
+        resources.current()?.status.conditions,
+        REQUIREMENT_CONDITION.readyToClose,
+      ),
+    ).toMatchObject({
+      status: "True",
+      reason: "PullRequestsSettled",
     });
     expect(
       typeof resources.current()?.status.closeReminderKey,
@@ -297,6 +349,44 @@ describe("Requirement Resource", () => {
 
     await controller.reconcile({} as never, resources.current()!);
     expect(toasts).toHaveLength(1);
+  });
+
+  test("records a failed Requirement observation before retrying", async () => {
+    const resources = resourceClient();
+    const requirement = upsertRequirement(resources.client, {
+      source: "meego",
+      category: "story",
+      id: "REQ-FAILED",
+      title: "Unavailable requirement",
+      state: "in_progress",
+    });
+    const connector: RequirementConnector = {
+      source: "meego",
+      provider: "meego",
+      async list() {
+        return [];
+      },
+      async get() {
+        throw new Error("provider unavailable");
+      },
+    };
+    const controller = createRequirementController(
+      resources.client,
+      [connector],
+    );
+
+    await expect(
+      controller.reconcile({} as never, requirement),
+    ).rejects.toThrow("provider unavailable");
+    expect(
+      getStatusCondition(
+        resources.current()?.status.conditions,
+        REQUIREMENT_CONDITION.observed,
+      ),
+    ).toMatchObject({
+      status: "False",
+      reason: "ObservationFailed",
+    });
   });
 
   test("ignores linked closed PullRequests in the Requirement projection", async () => {
@@ -348,6 +438,15 @@ describe("Requirement Resource", () => {
       merged: 0,
       conflicted: 0,
       unresolvedReviewThreads: 0,
+    });
+    expect(
+      getStatusCondition(
+        resources.current()?.status.conditions,
+        REQUIREMENT_CONDITION.readyToClose,
+      ),
+    ).toMatchObject({
+      status: "False",
+      reason: "NoLinkedPullRequests",
     });
     expect(controller.present?.(resources.current()!)).toMatchObject({
       status: "in_progress",

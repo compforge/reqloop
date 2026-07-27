@@ -110,10 +110,14 @@ token does not expose that API, and ordinary conversation comments are never
 treated as unresolved review threads.
 
 `RequirementController` refreshes active Requirements from their configured
-Connector. When at least one linked PullRequest exists, all linked
-PullRequests are merged, and every review-thread state is `none` or `resolved`, it
-shows a deduplicated toast asking the user to close the Requirement in its
-source platform. ReqLoop does not mutate external Requirement state yet.
+Connector. `status.conditions` records `Observed` for Connector freshness and
+`ReadyToClose` for the current completion predicate. The latter is `Unknown`
+when review-thread state is unavailable, `False` while linked PullRequests
+still block completion, and `True` only when at least one linked PullRequest
+exists, all are merged, and every review-thread state is `none` or `resolved`.
+That `True` transition drives a deduplicated toast asking the user to close the
+Requirement in its source platform. ReqLoop does not mutate external
+Requirement state yet.
 
 ```text
 devloop review-history.jsonl
@@ -133,7 +137,7 @@ review without an open PR/MR are ignored.
 
 ```text
 pluginId: qiankunli/reqloop
-version:  0.1.10
+version:  0.1.11
 ```
 
 Install this Marketplace in Baton, install `qiankunli/reqloop`, then enable it
@@ -156,9 +160,11 @@ Requirement 后仍保留独立 Resource，但 Board 以 Requirement 为主展示
 merge conflict 和 unresolved review thread。devloop review 也通过完整 PullRequest identity
 汇入同一个 Resource。
 
-RequirementController 会通过配置的 Connector 定时刷新活跃需求。若至少存在一个关联 PR、所有
-关联 PR 都已 merged，且 review thread 状态均为 none 或 resolved，它会去重吐出 toast，提醒用户前往
-需求平台关闭需求；当前阶段不会代用户修改外部需求状态。
+RequirementController 会通过配置的 Connector 定时刷新活跃需求，并在
+`status.conditions` 中维护外部观测 `Observed` 与收尾谓词 `ReadyToClose`。review thread
+不可观察时后者为 `Unknown`，仍有 PR 阻塞时为 `False`；只有至少存在一个关联 PR、所有关联 PR
+都已 merged，且 review thread 状态均为 none 或 resolved 时才为 `True`，并去重吐出 toast
+提醒用户前往需求平台关闭需求。当前阶段不会代用户修改外部需求状态。
 
 `/requirements` Picker 带搜索框；Baton 对输入做防抖并丢弃过期响应，reqloop 将最新查询词
 交给每个 RequirementConnector。当前使用有界结果集，不做分页；零结果仍保持

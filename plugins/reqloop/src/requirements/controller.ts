@@ -21,6 +21,12 @@ import {
   REQUIREMENT_RESOURCE_TYPE,
   upsertRequirement,
 } from "./resource.ts";
+import {
+  getStatusCondition,
+  REQUIREMENT_CONDITION,
+  setStatusCondition,
+  type StatusConditionUpdate,
+} from "./conditions.ts";
 
 const REQUIREMENT_POLL_CRON = "0 * * * * *";
 
@@ -81,23 +87,74 @@ function summarizePullRequests(
   };
 }
 
+function readyToCloseCondition(
+  pullRequests: readonly Readonly<
+    Resource<PullRequestSpec, PullRequestStatus>
+  >[],
+  observedGeneration: number,
+): StatusConditionUpdate {
+  const base = {
+    type: REQUIREMENT_CONDITION.readyToClose,
+    observedGeneration,
+  } as const;
+  if (pullRequests.length === 0) {
+    return {
+      ...base,
+      status: "False",
+      reason: "NoLinkedPullRequests",
+      message: "No active PullRequests are linked to this Requirement.",
+    };
+  }
+  if (pullRequests.some(({ status }) => status.mergeability === "conflicted")) {
+    return {
+      ...base,
+      status: "False",
+      reason: "MergeConflicts",
+      message: "At least one linked PullRequest has merge conflicts.",
+    };
+  }
+  if (pullRequests.some(({ status }) => status.lifecycle !== "merged")) {
+    return {
+      ...base,
+      status: "False",
+      reason: "PullRequestsNotMerged",
+      message: "At least one linked PullRequest is not merged.",
+    };
+  }
+  if (pullRequests.some(({ status }) => status.reviewThreads === "unresolved")) {
+    return {
+      ...base,
+      status: "False",
+      reason: "UnresolvedReviewThreads",
+      message: "At least one linked PullRequest has unresolved review threads.",
+    };
+  }
+  if (
+    pullRequests.some(({ status }) =>
+      status.reviewThreads === undefined ||
+      status.reviewThreads === "unknown"
+    )
+  ) {
+    return {
+      ...base,
+      status: "Unknown",
+      reason: "ReviewStatusUnknown",
+      message: "Review-thread status is unavailable for a linked PullRequest.",
+    };
+  }
+  return {
+    ...base,
+    status: "True",
+    reason: "PullRequestsSettled",
+    message: "All linked PullRequests are merged with no unresolved reviews.",
+  };
+}
+
 function closeReminderKey(
   pullRequests: readonly Readonly<
     Resource<PullRequestSpec, PullRequestStatus>
   >[],
-): string | undefined {
-  if (
-    pullRequests.length === 0 ||
-    pullRequests.some(({ status }) =>
-      status.lifecycle !== "merged" ||
-      (
-        status.reviewThreads !== "none" &&
-        status.reviewThreads !== "resolved"
-      )
-    )
-  ) {
-    return;
-  }
+): string {
   return pullRequests
     .map(({ metadata }) =>
       `${metadata.name}@${metadata.resourceVersion}`
@@ -141,15 +198,29 @@ export function createRequirementController(
         resource.spec.identity.source,
       );
       if (connector) {
-        const observation: Requirement = await connector.get(
-          resource.spec.identity,
-        );
-        if (!sameIdentity(observation, resource.spec.identity)) {
-          throw new Error(
-            "RequirementConnector returned a different Requirement",
+        try {
+          const observation: Requirement = await connector.get(
+            resource.spec.identity,
           );
+          if (!sameIdentity(observation, resource.spec.identity)) {
+            throw new Error(
+              "RequirementConnector returned a different Requirement",
+            );
+          }
+          current = upsertRequirement(resources, observation);
+        } catch (error) {
+          resources.patchStatus(current, {
+            conditions: setStatusCondition(current.status.conditions, {
+              type: REQUIREMENT_CONDITION.observed,
+              status: "False",
+              observedGeneration: current.metadata.generation,
+              reason: "ObservationFailed",
+              message:
+                `Requirement observation from ${resource.spec.identity.source} failed.`,
+            }),
+          });
+          throw error;
         }
-        current = upsertRequirement(resources, observation);
       }
       if (isTerminal(current.status)) return;
 
@@ -157,10 +228,20 @@ export function createRequirementController(
         resources,
         current.metadata.name,
       );
+      const readyToClose = readyToCloseCondition(
+        pullRequests,
+        current.metadata.generation,
+      );
       current = resources.patchStatus(current, {
         linkedPullRequests: summarizePullRequests(pullRequests),
+        conditions: setStatusCondition(
+          current.status.conditions,
+          readyToClose,
+        ),
       });
-      const reminderKey = closeReminderKey(pullRequests);
+      const reminderKey = readyToClose.status === "True"
+        ? closeReminderKey(pullRequests)
+        : undefined;
       if (
         !reminderKey ||
         current.status.closeReminderKey === reminderKey ||
@@ -183,6 +264,10 @@ export function createRequirementController(
       const state = resource.status.externalState;
       if (state === "completed" || state === "closed") return undefined;
       const pullRequests = resource.status.linkedPullRequests;
+      const readyToClose = getStatusCondition(
+        resource.status.conditions,
+        REQUIREMENT_CONDITION.readyToClose,
+      );
       const pullRequestStatus = pullRequests && pullRequests.total > 0
         ? [
           ...(pullRequests.open > 0
@@ -201,6 +286,9 @@ export function createRequirementController(
             ? [
               `${pullRequests.unresolvedReviewThreads} unresolved review`,
             ]
+            : []),
+          ...(readyToClose?.status === "True"
+            ? ["Ready to close"]
             : []),
         ]
         : [];

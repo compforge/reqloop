@@ -5,7 +5,7 @@
     "": {
       "name": "reqloop-marketplace",
       "devDependencies": {
-        "@qiankun01/baton-plugin": "0.1.9",
+        "@qiankun01/baton-plugin": "0.1.10",
         "@types/bun": "^1.3.0",
         "typescript": "^5.9.0",
       },
@@ -20,9 +20,9 @@
     },
     "plugins/reqloop": {
       "name": "@qiankunli/baton-plugin-reqloop",
-      "version": "0.1.10",
+      "version": "0.1.11",
       "peerDependencies": {
-        "@qiankun01/baton-plugin": ">=0.1.9",
+        "@qiankun01/baton-plugin": ">=0.1.10",
       },
     },
     "plugins/turn-coach": {
@@ -31,7 +31,7 @@
     },
   },
   "packages": {
-    "@qiankun01/baton-plugin": ["@qiankun01/baton-plugin@0.1.9", "", {}, "sha512-yPMknGHuZJgIG78xN/89++eSjgKgQ1D7sZUc6UfaLeCxij3gvsjBjLy4JNPfMdShs5fL28qfXdKjnRtynA+vag=="],
+    "@qiankun01/baton-plugin": ["@qiankun01/baton-plugin@0.1.10", "", {}, ""],
 
     "@qiankunli/baton-plugin-hello": ["@qiankunli/baton-plugin-hello@workspace:plugins/hello"],
 

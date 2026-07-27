@@ -11,6 +11,10 @@ import type {
   RequirementSpec,
   RequirementStatus,
 } from "./protocol.ts";
+import {
+  REQUIREMENT_CONDITION,
+  setStatusCondition,
+} from "./conditions.ts";
 
 export const REQUIREMENT_RESOURCE_TYPE = Object.freeze({
   apiVersion: "reqloop.baton.dev/v1alpha1",
@@ -85,7 +89,17 @@ export function upsertRequirement(
   } else if (!sameIdentity(resource.spec.identity, identity)) {
     throw new Error(`Requirement Resource identity mismatch: ${name}`);
   }
+  const observedGeneration = resource.metadata.generation;
+  const conditions = setStatusCondition(resource.status.conditions, {
+    type: REQUIREMENT_CONDITION.observed,
+    status: "True",
+    observedGeneration,
+    reason: "ObservationSucceeded",
+    message: `Requirement was observed from ${identity.source}.`,
+  });
   return resources.patchStatus(resource, {
+    observedGeneration,
+    conditions,
     externalState: requirement.state,
     ...(requirement.assignee !== undefined
       ? { assignee: requirement.assignee }
