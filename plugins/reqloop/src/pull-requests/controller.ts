@@ -28,6 +28,7 @@ import {
 } from "./review.ts";
 
 const PULL_REQUEST_POLL_CRON = "*/30 * * * * *";
+const PULL_REQUEST_POLL_INTERVAL_MS = 30_000;
 const REVIEW_ACTION_ACCEPT = "accept";
 const REVIEW_ACTION_IGNORE = "ignore";
 const ASSOCIATION_STANDALONE = "standalone";
@@ -68,10 +69,20 @@ function requirementOptionId(name: string): string {
   return `${ASSOCIATION_REQUIREMENT_PREFIX}${name}`;
 }
 
-function terminalLifecycle(
-  lifecycle: PullRequestStatus["lifecycle"],
+function observationComplete(
+  status: PullRequestStatus,
 ): boolean {
-  return lifecycle === "merged" || lifecycle === "closed";
+  return status.lifecycle === "closed" ||
+    (status.lifecycle === "merged" &&
+      (status.reviewThreads === "none" ||
+        status.reviewThreads === "resolved"));
+}
+
+function observationDue(observedAt: string | undefined): boolean {
+  if (!observedAt) return true;
+  const elapsed = Date.now() - Date.parse(observedAt);
+  return !Number.isFinite(elapsed) ||
+    elapsed >= PULL_REQUEST_POLL_INTERVAL_MS;
 }
 
 export function createPullRequestController(
@@ -103,85 +114,92 @@ export function createPullRequestController(
       : {}),
     async reconcile(baton, resource) {
       if (!resources) return;
-      // Terminal PRs remain persisted for history and Requirement aggregation,
-      // but reqloop no longer polls or acts on them.
-      if (terminalLifecycle(resource.status.lifecycle)) return;
+      // Merged PRs remain observable until review state can satisfy the
+      // Requirement completion policy. Closed and settled merged PRs are final.
+      if (observationComplete(resource.status)) return;
       const { identity } = resource.spec;
       const connector = connectorsBySource.get(identity.source);
       let current = resource;
-      if (connector) {
+      if (connector && observationDue(resource.status.observedAt)) {
         const observation = await connector.get(identity);
         if (!sameIdentity(observation.identity, identity)) {
           throw new Error("ForgeConnector returned a different PullRequest");
         }
         current = upsertPullRequest(resources, observation);
       }
-      if (terminalLifecycle(current.status.lifecycle)) return;
+      if (
+        current.status.lifecycle === "merged" ||
+        current.status.lifecycle === "closed"
+      ) {
+        return;
+      }
 
-      const association = current.status.requirementAssociation;
-      if (!association) {
-        const requirements = activeRequirements(resources);
-        if (requirements.length > 0) {
-          const decisionKey =
-            `associate-requirement:${current.metadata.name}`;
-          current = resources.patchStatus(current, {
-            requirementAssociation: {
-              state: "prompted",
-              decisionKey,
-            },
-          });
-          return {
-            output: {
-              kind: "interaction",
-              decisionKey,
-              title: "Associate pull request",
-              prompt: `Which Requirement should ${identity.repository} PR/MR ${identity.number} join?`,
-              options: [
-                ...requirements.map((requirement) => ({
-                  optionId: requirementOptionId(
-                    requirement.metadata.name,
-                  ),
-                  label: requirement.spec.title,
-                  description:
-                    `${requirement.spec.identity.source} · ` +
-                    `${requirement.spec.identity.category} · ` +
-                    requirement.spec.identity.id,
-                })),
-                {
-                  optionId: ASSOCIATION_STANDALONE,
-                  label: "Keep standalone",
-                  role: "reject" as const,
-                },
-              ],
-            },
-          };
-        }
-      } else if (association.state === "prompted") {
-        const decision = interactionDecision(
-          baton,
-          association.decisionKey,
-        );
-        if (decision?.outcome?.kind === "answered") {
-          const selected = decision.outcome.values[0];
-          if (selected === ASSOCIATION_STANDALONE) {
+      if (current.status.lifecycle === "open") {
+        const association = current.status.requirementAssociation;
+        if (!association) {
+          const requirements = activeRequirements(resources);
+          if (requirements.length > 0) {
+            const decisionKey =
+              `associate-requirement:${current.metadata.name}`;
             current = resources.patchStatus(current, {
-              requirementAssociation: { state: "standalone" },
+              requirementAssociation: {
+                state: "prompted",
+                decisionKey,
+              },
             });
-          } else if (selected?.startsWith(ASSOCIATION_REQUIREMENT_PREFIX)) {
-            const name = selected.slice(
-              ASSOCIATION_REQUIREMENT_PREFIX.length,
-            );
-            if (name) {
-              current = resources.patchStatus(current, {
-                requirementAssociation: {
-                  state: "linked",
-                  requirement: {
-                    ...REQUIREMENT_RESOURCE_TYPE,
-                    namespace: current.metadata.namespace,
-                    name,
+            return {
+              output: {
+                kind: "interaction",
+                decisionKey,
+                title: "Associate pull request",
+                prompt: `Which Requirement should ${identity.repository} PR/MR ${identity.number} join?`,
+                options: [
+                  ...requirements.map((requirement) => ({
+                    optionId: requirementOptionId(
+                      requirement.metadata.name,
+                    ),
+                    label: requirement.spec.title,
+                    description:
+                      `${requirement.spec.identity.source} · ` +
+                      `${requirement.spec.identity.category} · ` +
+                      requirement.spec.identity.id,
+                  })),
+                  {
+                    optionId: ASSOCIATION_STANDALONE,
+                    label: "Keep standalone",
+                    role: "reject" as const,
                   },
-                },
+                ],
+              },
+            };
+          }
+        } else if (association.state === "prompted") {
+          const decision = interactionDecision(
+            baton,
+            association.decisionKey,
+          );
+          if (decision?.outcome?.kind === "answered") {
+            const selected = decision.outcome.values[0];
+            if (selected === ASSOCIATION_STANDALONE) {
+              current = resources.patchStatus(current, {
+                requirementAssociation: { state: "standalone" },
               });
+            } else if (selected?.startsWith(ASSOCIATION_REQUIREMENT_PREFIX)) {
+              const name = selected.slice(
+                ASSOCIATION_REQUIREMENT_PREFIX.length,
+              );
+              if (name) {
+                current = resources.patchStatus(current, {
+                  requirementAssociation: {
+                    state: "linked",
+                    requirement: {
+                      ...REQUIREMENT_RESOURCE_TYPE,
+                      namespace: current.metadata.namespace,
+                      name,
+                    },
+                  },
+                });
+              }
             }
           }
         }

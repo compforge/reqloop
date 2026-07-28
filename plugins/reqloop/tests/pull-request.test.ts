@@ -362,12 +362,17 @@ describe("PullRequest Resource", () => {
     expect(controller.present?.(resources.current()!)).toBeUndefined();
   });
 
-  test("does not poll merged or closed PullRequests again", async () => {
-    for (const lifecycle of ["merged", "closed"] as const) {
+  test("stops polling closed and review-settled merged PullRequests", async () => {
+    for (
+      const status of [
+        { lifecycle: "closed", reviewThreads: "unknown" },
+        { lifecycle: "merged", reviewThreads: "resolved" },
+      ] as const
+    ) {
       const resources = resourceClient();
       const terminal = upsertPullRequest(resources.client, {
         ...observation,
-        lifecycle,
+        ...status,
       });
       let calls = 0;
       const forge: ForgeConnector = {
@@ -389,6 +394,70 @@ describe("PullRequest Resource", () => {
 
       expect(calls).toBe(0);
     }
+  });
+
+  test("keeps observing merged PullRequests until review state settles", async () => {
+    const resources = resourceClient();
+    const merged = upsertPullRequest(resources.client, {
+      ...observation,
+      lifecycle: "merged",
+      reviewThreads: "unknown",
+    });
+    let calls = 0;
+    const forge: ForgeConnector = {
+      source: "github-primary",
+      provider: "github",
+      async list() {
+        return [];
+      },
+      async get() {
+        calls += 1;
+        return {
+          ...observation,
+          lifecycle: "merged",
+          reviewThreads: "resolved",
+          observedAt: "2026-07-28T08:00:00.000Z",
+        };
+      },
+    };
+
+    await createPullRequestController(
+      resources.client,
+      [forge],
+    ).reconcile(batonSnapshot(), merged);
+
+    expect(calls).toBe(1);
+    expect(resources.current()?.status).toMatchObject({
+      lifecycle: "merged",
+      reviewThreads: "resolved",
+    });
+  });
+
+  test("does not immediately repoll a fresh open observation", async () => {
+    const resources = resourceClient();
+    const current = upsertPullRequest(resources.client, {
+      ...observation,
+      observedAt: new Date().toISOString(),
+    });
+    let calls = 0;
+    const forge: ForgeConnector = {
+      source: "github-primary",
+      provider: "github",
+      async list() {
+        return [];
+      },
+      async get() {
+        calls += 1;
+        return observation;
+      },
+    };
+
+    await createPullRequestController(
+      resources.client,
+      [forge],
+    ).reconcile(batonSnapshot(), current);
+
+    expect(calls).toBe(0);
   });
 
   test("records an ignored review decision and does not remind again", async () => {

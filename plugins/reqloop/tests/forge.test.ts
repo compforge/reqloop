@@ -145,15 +145,17 @@ describe("GitHubForgeConnector", () => {
         });
       }
       if (url.includes("/pulls?")) {
-        return json([
-          { number: 17, state: "open", merged_at: null },
-          {
-            number: 16,
-            state: "closed",
-            merged_at: "2026-07-25T08:00:00Z",
-          },
-          { number: 15, state: "closed", merged_at: null },
-        ]);
+        const state = new URL(url).searchParams.get("state");
+        return state === "open"
+          ? json([{ number: 17, state: "open", merged_at: null }])
+          : json([
+            {
+              number: 16,
+              state: "closed",
+              merged_at: "2026-07-25T08:00:00Z",
+            },
+            { number: 15, state: "closed", merged_at: null },
+          ]);
       }
       return new Response("not found", { status: 404 });
     };
@@ -200,7 +202,10 @@ describe("GitHubForgeConnector", () => {
       "https://api.github.com/graphql",
     );
     expect(calls.some((call) =>
-      call.url.includes("/pulls?state=all")
+      call.url.includes("/pulls?state=open")
+    )).toBe(true);
+    expect(calls.some((call) =>
+      call.url.includes("/pulls?state=closed")
     )).toBe(true);
   });
 
@@ -234,28 +239,31 @@ describe("GitHubForgeConnector", () => {
     });
   });
 
-  test("paginates discovery until the filtered limit is reached", async () => {
-    const pages: number[] = [];
+  test("discovers every open PullRequest before adding recent merged entries", async () => {
+    const pages: string[] = [];
     const fetch: Fetch = async (input) => {
       const url = new URL(String(input));
+      const state = url.searchParams.get("state");
       const page = Number(url.searchParams.get("page"));
-      pages.push(page);
-      if (page === 1) {
+      pages.push(`${state}:${page}`);
+      if (state === "open" && page === 1) {
         return json([
-          { number: 4, state: "closed", merged_at: null },
           { number: 3, state: "open", merged_at: null },
         ], {
           link:
             '<https://api.github.com/repos/owner/repo/pulls?page=2>; rel="next"',
         });
       }
+      if (state === "open") {
+        return json([{ number: 1, state: "open", merged_at: null }]);
+      }
       return json([
+        { number: 4, state: "closed", merged_at: null },
         {
           number: 2,
           state: "closed",
           merged_at: "2026-07-25T08:00:00Z",
         },
-        { number: 1, state: "open", merged_at: null },
       ]);
     };
     const connector = new GitHubForgeConnector({
@@ -265,7 +273,7 @@ describe("GitHubForgeConnector", () => {
       token: "secret",
     }, { fetch });
 
-    await expect(connector.list("owner/repo", 2)).resolves.toEqual([
+    await expect(connector.list("owner/repo", 1)).resolves.toEqual([
       {
         source: "github.com",
         repository: "owner/repo",
@@ -274,10 +282,15 @@ describe("GitHubForgeConnector", () => {
       {
         source: "github.com",
         repository: "owner/repo",
+        number: 1,
+      },
+      {
+        source: "github.com",
+        repository: "owner/repo",
         number: 2,
       },
     ]);
-    expect(pages).toEqual([1, 2]);
+    expect(pages).toEqual(["open:1", "open:2", "closed:1"]);
   });
 
   test("changes the activity key when a review comment changes", async () => {
@@ -370,11 +383,10 @@ describe("GitLabForgeConnector", () => {
         ]);
       }
       if (url.includes("/merge_requests?")) {
-        return json([
-          { iid: 9, state: "opened" },
-          { iid: 8, state: "merged" },
-          { iid: 7, state: "closed" },
-        ]);
+        const state = new URL(url).searchParams.get("state");
+        return state === "opened"
+          ? json([{ iid: 9, state: "opened" }])
+          : json([{ iid: 8, state: "merged" }]);
       }
       return new Response("not found", { status: 404 });
     };
@@ -424,7 +436,10 @@ describe("GitLabForgeConnector", () => {
         "group%2Fsubgroup%2Frepo/merge_requests/9",
     );
     expect(calls.some((call) =>
-      call.url.includes("/merge_requests?state=all")
+      call.url.includes("/merge_requests?state=opened")
+    )).toBe(true);
+    expect(calls.some((call) =>
+      call.url.includes("/merge_requests?state=merged")
     )).toBe(true);
   });
 
@@ -469,22 +484,22 @@ describe("GitLabForgeConnector", () => {
     });
   });
 
-  test("paginates discovery until the filtered limit is reached", async () => {
-    const pages: number[] = [];
+  test("discovers every open MergeRequest before adding recent merged entries", async () => {
+    const pages: string[] = [];
     const fetch: Fetch = async (input) => {
       const url = new URL(String(input));
+      const state = url.searchParams.get("state");
       const page = Number(url.searchParams.get("page"));
-      pages.push(page);
-      if (page === 1) {
-        return json([
-          { iid: 4, state: "closed" },
-          { iid: 3, state: "opened" },
-        ], { "x-next-page": "2" });
+      pages.push(`${state}:${page}`);
+      if (state === "opened" && page === 1) {
+        return json([{ iid: 3, state: "opened" }], {
+          "x-next-page": "2",
+        });
       }
-      return json([
-        { iid: 2, state: "merged" },
-        { iid: 1, state: "opened" },
-      ]);
+      if (state === "opened") {
+        return json([{ iid: 1, state: "opened" }]);
+      }
+      return json([{ iid: 2, state: "merged" }]);
     };
     const connector = new GitLabForgeConnector({
       source: "gitlab.example.com",
@@ -493,7 +508,7 @@ describe("GitLabForgeConnector", () => {
       token: "secret",
     }, { fetch });
 
-    await expect(connector.list("group/repo", 2)).resolves.toEqual([
+    await expect(connector.list("group/repo", 1)).resolves.toEqual([
       {
         source: "gitlab.example.com",
         repository: "group/repo",
@@ -502,9 +517,14 @@ describe("GitLabForgeConnector", () => {
       {
         source: "gitlab.example.com",
         repository: "group/repo",
+        number: 1,
+      },
+      {
+        source: "gitlab.example.com",
+        repository: "group/repo",
         number: 2,
       },
     ]);
-    expect(pages).toEqual([1, 2]);
+    expect(pages).toEqual(["opened:1", "opened:2", "merged:1"]);
   });
 });

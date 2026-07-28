@@ -208,8 +208,9 @@ RepositoryController 负责集合发现：它合并可选的 best-effort 本地 
 `ForgeConnector.list()`；本地 source 只缩短发现路径，Forge 始终执行并负责完整性。Controller
 为新 identity 创建缺失 Resource，并安排下一次扫描。PullRequest
 创建后由 Baton 自动入队，逐 Resource 的 PullRequestController 再通过
-`ForgeConnector.get()` 刷新状态。merged 保留为 Requirement 收尾证据，但 merged 和 closed
-都是终止状态，不再继续轮询；closed 也不会被发现。未来其它发现手段仍应确保同一
+`ForgeConnector.get()` 刷新状态。merged 保留为 Requirement 收尾证据，并在 review 状态为
+unknown 或 unresolved 时继续观察；closed 和 review 已收敛的 merged 不再轮询，closed 也不会
+被发现。未来其它发现手段仍应确保同一
 Repository 或落成同一种 PullRequest，再复用既有 reconcile 路径。
 
 ### RequirementController

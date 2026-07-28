@@ -89,7 +89,21 @@ export class GitLabForgeConnector implements ForgeConnector {
     repository: string,
     limit?: number,
   ): Promise<readonly PullRequestIdentity[]> {
-    const count = positiveLimit(limit);
+    const recentMergedLimit = positiveLimit(limit);
+    const open = await this.#listByState(repository, "opened");
+    const merged = await this.#listByState(
+      repository,
+      "merged",
+      recentMergedLimit,
+    );
+    return [...open, ...merged];
+  }
+
+  async #listByState(
+    repository: string,
+    state: "opened" | "merged",
+    limit?: number,
+  ): Promise<readonly PullRequestIdentity[]> {
     const result: PullRequestIdentity[] = [];
     const seen = new Set<number>();
     let page = 1;
@@ -101,18 +115,13 @@ export class GitLabForgeConnector implements ForgeConnector {
       const { data, headers } = await this.#http.request(
         "GET",
         `${this.#projectBase(repository)}` +
-          "/merge_requests?state=all&order_by=created_at&sort=desc" +
+          `/merge_requests?state=${state}&order_by=updated_at&sort=desc` +
           `&per_page=${MERGE_REQUEST_PAGE_SIZE}&page=${page}`,
         { headers: this.#headers() },
       );
       const mergeRequests = records("GitLab MergeRequests", data);
       for (const [index, mergeRequest] of mergeRequests.entries()) {
-        if (
-          mergeRequest.state !== "opened" &&
-          mergeRequest.state !== "merged"
-        ) {
-          continue;
-        }
+        if (mergeRequest.state !== state) continue;
         const number = mergeRequest.iid;
         if (!Number.isSafeInteger(number) || (number as number) < 1) {
           throw new Error(`GitLab MergeRequests[${index}].iid is invalid`);
@@ -124,7 +133,7 @@ export class GitLabForgeConnector implements ForgeConnector {
           repository,
           number: number as number,
         });
-        if (result.length === count) return result;
+        if (limit !== undefined && result.length === limit) return result;
       }
       const nextPage = headers.get("x-next-page");
       if (!nextPage) return result;
@@ -134,7 +143,9 @@ export class GitLabForgeConnector implements ForgeConnector {
       }
       page = parsed;
     }
-    throw new Error("GitLab MergeRequest pagination limit exceeded");
+    throw new Error(
+      `GitLab ${state} MergeRequest pagination limit exceeded`,
+    );
   }
 
   async get(identity: PullRequestIdentity): Promise<PullRequest> {
