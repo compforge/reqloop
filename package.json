@@ -11,7 +11,7 @@
     "check": "tsc --noEmit && bun test"
   },
   "devDependencies": {
-    "@qiankun01/baton-plugin": "0.1.11",
+    "@qiankun01/baton-plugin": "0.1.13",
     "@types/bun": "^1.3.0",
     "typescript": "^5.9.0"
   },

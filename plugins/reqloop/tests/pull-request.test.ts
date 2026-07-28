@@ -20,7 +20,6 @@ import {
   PULL_REQUEST_RESOURCE_TYPE,
   pullRequestResourceId,
   type PullRequest,
-  type PullRequestDiscoverySource,
   type PullRequestReviewConnector,
   type PullRequestSpec,
   type PullRequestStatus,
@@ -521,10 +520,9 @@ describe("PullRequest Resource", () => {
     ).toBeUndefined();
   });
 
-  test("discovers missing PullRequests by reconciling a Repository", async () => {
+  test("uses Forge listing as Repository discovery fallback", async () => {
     const resources = resourceClient();
     let listCalls = 0;
-    let sourceCalls = 0;
     const forge: ForgeConnector = {
       source: "github-primary",
       provider: "github",
@@ -546,32 +544,9 @@ describe("PullRequest Resource", () => {
         };
       },
     };
-    const source: PullRequestDiscoverySource = {
-      sourceId: "local",
-      discover(repository) {
-        sourceCalls += 1;
-        return [{
-          ...repository,
-          number: 19,
-        }];
-      },
-    };
-    const unavailableSource: PullRequestDiscoverySource = {
-      sourceId: "unavailable",
-      discover() {
-        throw new Error("devloop is unavailable");
-      },
-    };
-    const logs: Array<{ message: string; details?: object }> = [];
     const controller = createRepositoryController(
       resources.client,
       [forge],
-      [source, unavailableSource],
-      {
-        write(entry) {
-          logs.push(entry);
-        },
-      },
     );
     const repository = resources.client.create<
       RepositorySpec,
@@ -610,7 +585,7 @@ describe("PullRequest Resource", () => {
     const repositoryStatus = resources.repositoryCurrent()?.status;
     expect(repositoryStatus).toMatchObject({
       connectorAvailable: true,
-      discoveredPullRequests: 2,
+      discoveredPullRequests: 1,
     });
     expect(typeof repositoryStatus?.lastScanAt).toBe("string");
     expect(result).toEqual({ requeueAfterMs: 30_000 });
@@ -618,16 +593,7 @@ describe("PullRequest Resource", () => {
       {} as never,
       resources.repositoryCurrent()!,
     );
-    expect(sourceCalls).toBe(1);
     expect(listCalls).toBe(1);
-    expect(logs).toEqual([expect.objectContaining({
-      message: "PullRequest discovery source failed",
-      details: {
-        sourceId: "unavailable",
-        forgeSource: "github-primary",
-        repository: "qiankunli/reqloop",
-      },
-    })]);
     expect(replay?.requeueAfterMs).toBeGreaterThan(0);
     expect(replay?.requeueAfterMs).toBeLessThanOrEqual(30_000);
   });
