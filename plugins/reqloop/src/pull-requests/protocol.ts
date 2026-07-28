@@ -109,7 +109,7 @@ export interface PullRequestReviewConnector {
 export interface ForgeConnector {
   readonly source: string;
   readonly provider: "github" | "gitlab";
-  /** `limit` applies after closed PR/MR entries are filtered across pages. */
+  /** Lists every open PR/MR plus at most `limit` recently merged entries. */
   list(
     repository: string,
     limit?: number,

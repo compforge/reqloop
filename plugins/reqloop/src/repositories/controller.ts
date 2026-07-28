@@ -126,7 +126,7 @@ export function createRepositoryController(
         status: resource.status.connectorAvailable === false
           ? "Forge connector unavailable"
           : resource.status.lastScanAt
-          ? `${resource.status.discoveredPullRequests ?? 0} open PR/MR`
+          ? `${resource.status.discoveredPullRequests ?? 0} tracked PR/MR`
           : "Waiting for first scan",
         detail: source,
         tone: resource.status.connectorAvailable === false

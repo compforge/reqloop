@@ -85,22 +85,36 @@ export class GitHubForgeConnector implements ForgeConnector {
     repository: string,
     limit?: number,
   ): Promise<readonly PullRequestIdentity[]> {
-    const count = positiveLimit(limit);
+    const recentMergedLimit = positiveLimit(limit);
+    const open = await this.#listByState(repository, "open");
+    const merged = await this.#listByState(
+      repository,
+      "closed",
+      recentMergedLimit,
+    );
+    return [...open, ...merged];
+  }
+
+  async #listByState(
+    repository: string,
+    state: "open" | "closed",
+    limit?: number,
+  ): Promise<readonly PullRequestIdentity[]> {
     const result: PullRequestIdentity[] = [];
     const seen = new Set<number>();
     for (let page = 1; page <= MAX_PULL_REQUEST_PAGES; page += 1) {
       const { data, headers } = await this.#http.request(
         "GET",
         `${this.#restBase}/repos/${repositoryPath(repository)}` +
-          "/pulls?state=all&sort=created&direction=desc" +
+          `/pulls?state=${state}&sort=updated&direction=desc` +
           `&per_page=${PULL_REQUEST_PAGE_SIZE}&page=${page}`,
         { headers: this.#headers() },
       );
       const pullRequests = records("GitHub PullRequests", data);
       for (const [index, pullRequest] of pullRequests.entries()) {
         if (
-          pullRequest.state !== "open" &&
-          !Boolean(pullRequest.merged_at)
+          (state === "open" && pullRequest.state !== "open") ||
+          (state === "closed" && !Boolean(pullRequest.merged_at))
         ) {
           continue;
         }
@@ -115,14 +129,16 @@ export class GitHubForgeConnector implements ForgeConnector {
           repository,
           number: number as number,
         });
-        if (result.length === count) return result;
+        if (limit !== undefined && result.length === limit) return result;
       }
       const hasNextPage = headers.get("link")
         ?.split(",")
         .some((link) => /;\s*rel="next"/.test(link)) ?? false;
       if (!hasNextPage) return result;
     }
-    throw new Error("GitHub PullRequest pagination limit exceeded");
+    throw new Error(
+      `GitHub ${state} PullRequest pagination limit exceeded`,
+    );
   }
 
   async get(identity: PullRequestIdentity): Promise<PullRequest> {

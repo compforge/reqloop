@@ -107,7 +107,9 @@ Selecting `/requirements` materializes a stable `Requirement` Resource. An open 
 shown on the Board while standalone. Linking it to a Requirement keeps the
 PullRequest Resource independent but presents the Requirement as the primary
 Board item. Merged PullRequests leave the Board and
-stop polling; closed PullRequests are neither discovered nor polled.
+keep polling only while review state is unresolved or unavailable. Closed and
+review-settled merged PullRequests stop polling; closed PullRequests are not
+discovered.
 Requirement cards summarize linked PR lifecycle, conflicts, and unresolved
 review threads. Review-thread lookup degrades to `unknown` when an instance or
 token does not expose that API, and ordinary conversation comments are never
@@ -141,7 +143,7 @@ review without an open PR/MR are ignored.
 
 ```text
 pluginId: qiankunli/reqloop
-version:  0.1.12
+version:  0.1.13
 ```
 
 Install this Marketplace in Baton, install `qiankunli/reqloop`, then enable it
@@ -162,7 +164,8 @@ reconcile 再调用 `get()` 刷新生命周期、review thread、
 merge conflict 和 review activity fingerprint。`/requirements` 选中的需求会物化为稳定的
 `Requirement` Resource。孤立且活跃的 PullRequest 会单独显示在 Board；关联
 Requirement 后仍保留独立 Resource，但 Board 以 Requirement 为主展示。merged 后生命周期
-结束并停止轮询；closed PullRequest 不再发现或轮询。Requirement 卡片会汇总关联 PR 的生命周期、
+结束后仅在 review 状态未收敛时继续轮询；closed 和 review 已收敛的 merged PullRequest
+不再轮询，closed PullRequest 也不再发现。Requirement 卡片会汇总关联 PR 的生命周期、
 merge conflict 和 unresolved review thread。devloop review 也通过完整 PullRequest identity
 汇入同一个 Resource。
 
