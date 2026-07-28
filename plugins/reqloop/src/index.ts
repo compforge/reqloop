@@ -11,9 +11,6 @@ import type {
   RepositorySpec,
 } from "./repositories/protocol.ts";
 import {
-  DevloopRepositorySource,
-} from "./repositories/sources/devloop.ts";
-import {
   DevloopReviewConnector,
 } from "./pull-requests/connectors/devloop-review.ts";
 import type { RequirementConnector } from "./requirements/protocol.ts";
@@ -31,9 +28,6 @@ import {
   createPullRequestController,
 } from "./pull-requests/controller.ts";
 import {
-  DevloopPullRequestSource,
-} from "./pull-requests/sources/devloop.ts";
-import {
   createForgeConnectors,
 } from "./pull-requests/connectors/config.ts";
 import type {
@@ -42,9 +36,13 @@ import type {
   PullRequestReviewConnector,
 } from "./pull-requests/protocol.ts";
 import { upsertPullRequestReview } from "./pull-requests/resource.ts";
+import { createWorkspaceController } from "./workspaces/controller.ts";
+import { discoverWorkspaceRepositories } from "./workspaces/discovery.ts";
+import type { WorkspaceSpec } from "./workspaces/protocol.ts";
+import { WorkspaceSource } from "./workspaces/source.ts";
 
 export const REQLOOP_PLUGIN_ID = "qiankunli/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.1.14";
+export const REQLOOP_PACKAGE_VERSION = "0.1.17";
 
 function currentRepo(context: PluginActivationContext): string {
   const cwd = context.session.cwd;
@@ -59,6 +57,7 @@ export function createReqloopPackage(options: {
   requirementConnector?: RequirementConnector;
   requirementConnectors?: readonly RequirementConnector[];
   forgeConnectors?: readonly ForgeConnector[];
+  workspaceSources?: readonly Source<WorkspaceSpec>[];
   repositorySources?: readonly Source<RepositorySpec>[];
   pullRequestSources?: readonly Source<PullRequestSpec>[];
 } = {}): PluginPackage {
@@ -87,17 +86,20 @@ export function createReqloopPackage(options: {
       const forgeConnectors =
         options.forgeConnectors ?? createForgeConnectors();
       const cwd = currentRepo(context);
-      const repositorySources =
-        options.repositorySources ??
-        [new DevloopRepositorySource(cwd)];
-      const pullRequestSources =
-        options.pullRequestSources ??
-        [new DevloopPullRequestSource(cwd)];
+      const repositorySources = options.repositorySources ?? [];
+      const pullRequestSources = options.pullRequestSources ?? [];
+      const workspaceSources =
+        options.workspaceSources ?? [new WorkspaceSource(cwd)];
       const reviewConnector =
         options.reviewConnector ??
-        new DevloopReviewConnector(cwd);
-      const reviewBaseline = reviewConnector.latest();
-      if (reviewBaseline) {
+        new DevloopReviewConnector(cwd, {
+          workspaceCheckouts: () =>
+            discoverWorkspaceRepositories(cwd).map(({ path, identity }) => ({
+              path,
+              ...identity,
+            })),
+        });
+      for (const reviewBaseline of reviewConnector.listLatest()) {
         upsertPullRequestReview(context.resources, reviewBaseline);
       }
       context.registerController(
@@ -113,6 +115,13 @@ export function createReqloopPackage(options: {
           context.resources,
           forgeConnectors,
           repositorySources,
+        ),
+      );
+      context.registerController(
+        createWorkspaceController(
+          context.resources,
+          cwd,
+          workspaceSources,
         ),
       );
     },
@@ -143,3 +152,8 @@ export * from "./requirements/controller.ts";
 export * from "./requirements/conditions.ts";
 export * from "./requirements/protocol.ts";
 export * from "./requirements/resource.ts";
+export * from "./workspaces/controller.ts";
+export * from "./workspaces/discovery.ts";
+export * from "./workspaces/protocol.ts";
+export * from "./workspaces/resource.ts";
+export * from "./workspaces/source.ts";

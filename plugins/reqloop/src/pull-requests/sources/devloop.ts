@@ -1,6 +1,4 @@
 import {
-  existsSync,
-  readFileSync,
   unwatchFile,
   watchFile,
 } from "node:fs";
@@ -13,25 +11,12 @@ import type {
 import {
   currentRepositoryIdentity,
 } from "../../repositories/identity.ts";
-import { devloopStatePath } from "../devloop-state.ts";
-import type {
-  PullRequestIdentity,
-  PullRequestSpec,
-} from "../protocol.ts";
+import {
+  devloopStatePath,
+  readOpenPullRequestNumbers,
+} from "../devloop-state.ts";
+import type { PullRequestSpec } from "../protocol.ts";
 import { pullRequestResourceId } from "../resource.ts";
-
-function openPullRequestNumber(value: unknown): number | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return;
-  const pullRequest = value as Record<string, unknown>;
-  if (
-    pullRequest.state !== "open" ||
-    !Number.isSafeInteger(pullRequest.number) ||
-    (pullRequest.number as number) < 1
-  ) {
-    return;
-  }
-  return pullRequest.number as number;
-}
 
 /**
  * Contributes open PullRequest Resources from devloop's optional local cache.
@@ -73,62 +58,26 @@ export class DevloopPullRequestSource implements Source<PullRequestSpec> {
 
   private emitCurrent(context: SourceContext<PullRequestSpec>): void {
     const repository = currentRepositoryIdentity(this.cwd);
-    if (!repository || !this.path || !existsSync(this.path)) {
+    if (!repository || !this.path) {
       this.lastFailureKey = undefined;
       return;
     }
 
-    let text: string;
+    let numbers: readonly number[];
     try {
-      text = readFileSync(this.path, "utf8");
+      numbers = readOpenPullRequestNumbers(this.path);
     } catch (error) {
       this.reportFailure(
         context,
-        `read:${errorKey(error)}`,
-        "Could not read devloop PR state",
+        errorKey(error),
         error,
-      );
-      return;
-    }
-    let value: unknown;
-    try {
-      value = JSON.parse(text) as unknown;
-    } catch (error) {
-      this.reportFailure(
-        context,
-        `parse:${errorKey(error)}`,
-        "Could not parse devloop PR state",
-        error,
-      );
-      return;
-    }
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-      this.reportFailure(
-        context,
-        "shape:root",
-        "Devloop PR state must be a JSON object",
-      );
-      return;
-    }
-    const records = (value as Record<string, unknown>).prs;
-    if (!Array.isArray(records)) {
-      this.reportFailure(
-        context,
-        "shape:prs",
-        "Devloop PR state must contain a prs array",
       );
       return;
     }
     this.lastFailureKey = undefined;
 
-    const identities = new Map<number, PullRequestIdentity>();
-    for (const record of records) {
-      const number = openPullRequestNumber(record);
-      if (number !== undefined) {
-        identities.set(number, { ...repository, number });
-      }
-    }
-    for (const identity of identities.values()) {
+    for (const number of numbers) {
+      const identity = { ...repository, number };
       context.emit({
         name: pullRequestResourceId(identity),
         spec: { identity },
@@ -139,15 +88,17 @@ export class DevloopPullRequestSource implements Source<PullRequestSpec> {
   private reportFailure(
     context: SourceContext<PullRequestSpec>,
     key: string,
-    message: string,
-    cause?: unknown,
+    error: unknown,
   ): void {
     if (this.lastFailureKey === key) return;
     this.lastFailureKey = key;
-    context.reportError(new Error(
-      `${message}: ${this.path}`,
-      cause === undefined ? undefined : { cause },
-    ));
+    context.reportError(
+      error instanceof Error
+        ? error
+        : new Error(`Could not read devloop PR state: ${this.path}`, {
+          cause: error,
+        }),
+    );
   }
 }
 

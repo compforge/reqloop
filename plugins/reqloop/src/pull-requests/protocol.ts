@@ -47,8 +47,9 @@ export interface PullRequestStatus {
   readonly mergeability?: PullRequestMergeability;
   readonly observedAt?: string;
   /**
-   * Absence means the association question has not been asked. `prompted`
-   * remains durable even if the interaction is cancelled, so it is asked once.
+   * Absence means Resource status has no association decision; reconcile still
+   * consults Baton's durable Interaction snapshot before opening one.
+   * `prompted` retains a cancelled or recovery decision key.
    */
   readonly requirementAssociation?: PullRequestRequirementAssociation;
   readonly review?: PullRequestReviewStatus;
@@ -98,7 +99,12 @@ export interface PullRequestReviewStatus {
 }
 
 export interface PullRequestReviewConnector {
-  latest(): PullRequestReviewObservation | undefined;
+  /** Latest checkout-matching observation for each repository in the Workspace. */
+  listLatest(): readonly PullRequestReviewObservation[];
+  /** Latest checkout-matching observation for one PullRequest. */
+  latest(
+    identity: PullRequestIdentity,
+  ): PullRequestReviewObservation | undefined;
 }
 
 /**

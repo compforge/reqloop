@@ -27,6 +27,9 @@ import {
   type RequirementSpec,
   type RequirementStatus,
   upsertPullRequest,
+  WORKSPACE_RESOURCE_TYPE,
+  type WorkspaceSpec,
+  type WorkspaceStatus,
 } from "../src/index.ts";
 
 function resourceClient(): {
@@ -38,6 +41,13 @@ function resourceClient(): {
     Resource<RepositorySpec, RepositoryStatus>
   > | undefined;
   readonly addRequirement: (name?: string) => void;
+  readonly observeRepository: (
+    repository: Readonly<Resource<RepositorySpec, RepositoryStatus>>,
+  ) => void;
+  readonly workspaceCurrent: () => Readonly<
+    Resource<WorkspaceSpec, WorkspaceStatus>
+  > | undefined;
+  readonly clearWorkspace: () => void;
 } {
   let resource:
     | Readonly<Resource<PullRequestSpec, PullRequestStatus>>
@@ -47,6 +57,9 @@ function resourceClient(): {
     | undefined;
   let repository:
     | Readonly<Resource<RepositorySpec, RepositoryStatus>>
+    | undefined;
+  let workspace:
+    | Readonly<Resource<WorkspaceSpec, WorkspaceStatus>>
     | undefined;
   const client = {
     list(type: { apiVersion: string; kind: string }) {
@@ -59,7 +72,10 @@ function resourceClient(): {
       if (type.kind === REPOSITORY_RESOURCE_TYPE.kind) {
         return repository ? [repository] : [];
       }
-      return [resource, requirement, repository].filter(Boolean);
+      if (type.kind === WORKSPACE_RESOURCE_TYPE.kind) {
+        return workspace ? [workspace] : [];
+      }
+      return [resource, requirement, repository, workspace].filter(Boolean);
     },
     create(
       type: { apiVersion: string; kind: string },
@@ -130,6 +146,7 @@ function resourceClient(): {
     client,
     current: () => resource,
     repositoryCurrent: () => repository,
+    workspaceCurrent: () => workspace,
     addRequirement(name = "req_active") {
       requirement = {
         ...REQUIREMENT_RESOURCE_TYPE,
@@ -150,6 +167,45 @@ function resourceClient(): {
           title: "Requirement intake",
         },
         status: { externalState: "in_progress" },
+      };
+    },
+    observeRepository(observed) {
+      workspace = {
+        ...WORKSPACE_RESOURCE_TYPE,
+        metadata: {
+          name: "workspace",
+          namespace: observed.metadata.namespace,
+          uid: "uid-workspace",
+          generation: 1,
+          resourceVersion: "1",
+          creationTimestamp: "2026-07-26T00:00:00.000Z",
+        },
+        spec: { root: { kind: "session-cwd" } },
+        status: {
+          repositories: [{
+            relativePath: ".",
+            repository: {
+              apiVersion: observed.apiVersion,
+              kind: observed.kind,
+              namespace: observed.metadata.namespace,
+              name: observed.metadata.name,
+              uid: observed.metadata.uid,
+            },
+          }],
+        },
+      };
+    },
+    clearWorkspace() {
+      if (!workspace) return;
+      workspace = {
+        ...workspace,
+        metadata: {
+          ...workspace.metadata,
+          resourceVersion: String(
+            Number(workspace.metadata.resourceVersion) + 1,
+          ),
+        },
+        status: { repositories: [] },
       };
     },
   };
@@ -231,7 +287,7 @@ describe("PullRequest Resource", () => {
     expect(controller.present?.(pullRequest)).toEqual({
       title: "qiankunli/reqloop #17",
       status: "Unresolved review threads",
-      detail: "Standalone PullRequest",
+      detail: "Unassociated PullRequest",
       tone: "warning",
     });
     expect(controller.present?.({
@@ -244,6 +300,7 @@ describe("PullRequest Resource", () => {
             ...REQUIREMENT_RESOURCE_TYPE,
             namespace: "pi_reqloop",
             name: "req_active",
+            uid: "uid-req_active",
           },
         },
       },
@@ -305,6 +362,17 @@ describe("PullRequest Resource", () => {
       observation,
     );
     const controller = createPullRequestController(resources.client);
+    const requirement = resources.client.list<
+      RequirementSpec,
+      RequirementStatus
+    >(REQUIREMENT_RESOURCE_TYPE)[0]!;
+
+    expect(controller.watches?.[0]?.resourceType).toBe(
+      REQUIREMENT_RESOURCE_TYPE,
+    );
+    expect(
+      controller.watches?.[0]?.handler.create({ object: requirement }),
+    ).toEqual([{ name: pullRequest.metadata.name }]);
 
     const prompted = await controller.reconcile(
       batonSnapshot(),
@@ -325,13 +393,20 @@ describe("PullRequest Resource", () => {
         },
       ],
     });
-    expect(resources.current()?.status.requirementAssociation).toEqual({
-      state: "prompted",
-      decisionKey: expect.any(String),
-    });
+    expect(
+      resources.current()?.status.requirementAssociation,
+    ).toBeUndefined();
     if (prompted?.output?.kind !== "interaction") {
       throw new Error("expected association Interaction");
     }
+    expect(
+      await controller.reconcile(batonSnapshot(), resources.current()!),
+    ).toMatchObject({
+      output: {
+        kind: "interaction",
+        decisionKey: prompted.output.decisionKey,
+      },
+    });
 
     const current = resources.current()!;
     await controller.reconcile(
@@ -356,9 +431,41 @@ describe("PullRequest Resource", () => {
         ...REQUIREMENT_RESOURCE_TYPE,
         namespace: "pi_reqloop",
         name: "req_active",
+        uid: "uid-req_active",
       },
     });
     expect(controller.present?.(resources.current()!)).toBeUndefined();
+  });
+
+  test("pins legacy Requirement associations to their current uid", async () => {
+    const resources = resourceClient();
+    resources.addRequirement();
+    const pullRequest = upsertPullRequest(resources.client, observation);
+    const legacy = resources.client.patchStatus(pullRequest, {
+      requirementAssociation: {
+        state: "linked",
+        requirement: {
+          ...REQUIREMENT_RESOURCE_TYPE,
+          namespace: "pi_reqloop",
+          name: "req_active",
+        },
+      },
+    });
+
+    await createPullRequestController(resources.client).reconcile(
+      batonSnapshot(),
+      legacy,
+    );
+
+    expect(
+      resources.current()?.status.requirementAssociation,
+    ).toMatchObject({
+      state: "linked",
+      requirement: {
+        name: "req_active",
+        uid: "uid-req_active",
+      },
+    });
   });
 
   test("stops polling closed and review-settled merged PullRequests", async () => {
@@ -466,6 +573,9 @@ describe("PullRequest Resource", () => {
       observation,
     );
     const reviewConnector: PullRequestReviewConnector = {
+      listLatest() {
+        return [];
+      },
       latest() {
         return {
           identity: observation.identity,
@@ -560,6 +670,12 @@ describe("PullRequest Resource", () => {
         },
       },
     });
+    resources.observeRepository(repository);
+    const observedWorkspace = resources.workspaceCurrent()!;
+    const repositoryWatch = controller.watches?.[0];
+    expect(
+      repositoryWatch?.handler.create({ object: observedWorkspace }),
+    ).toEqual([{ name: repository.metadata.name }]);
 
     const result = await controller.reconcile({} as never, repository);
 
@@ -572,7 +688,7 @@ describe("PullRequest Resource", () => {
       resources.client,
       [forge],
     ).reconcile(
-      {} as never,
+      batonSnapshot(),
       resources.current()!,
     );
     expect(resources.current()?.status).toEqual({
@@ -596,5 +712,21 @@ describe("PullRequest Resource", () => {
     expect(listCalls).toBe(1);
     expect(replay?.requeueAfterMs).toBeGreaterThan(0);
     expect(replay?.requeueAfterMs).toBeLessThanOrEqual(30_000);
+
+    resources.clearWorkspace();
+    expect(repositoryWatch?.handler.update({
+      oldObject: observedWorkspace,
+      newObject: resources.workspaceCurrent()!,
+    })).toEqual([{ name: repository.metadata.name }]);
+    expect(
+      repositoryWatch?.handler.delete({ object: observedWorkspace }),
+    ).toEqual([{ name: repository.metadata.name }]);
+    await controller.reconcile(
+      {} as never,
+      resources.repositoryCurrent()!,
+    );
+    expect(resources.repositoryCurrent()?.status.inScope).toBe(false);
+    expect(controller.present?.(resources.repositoryCurrent()!)).toBeUndefined();
+    expect(listCalls).toBe(1);
   });
 });

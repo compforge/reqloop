@@ -118,10 +118,10 @@
   <text x="530" y="468" class="section-title">reqloop · Baton Plugin</text>
   <text x="1415" y="468" text-anchor="end" class="small">Requirement aggregate + Reconcile</text>
 
-  <!-- Wake signal -->
+  <!-- Reconcile triggers -->
   <rect x="550" y="505" width="300" height="58" rx="29" fill="#fff0bf" class="box"/>
-  <text x="700" y="541" text-anchor="middle" class="small">Signal · webhook · schedule</text>
-  <text x="700" y="585" text-anchor="middle" class="tiny">只负责唤醒，Connector 再读取权威事实</text>
+  <text x="700" y="541" text-anchor="middle" class="small">Source emit · Watch · schedule</text>
+  <text x="700" y="585" text-anchor="middle" class="tiny">只负责 enqueue，Controller 再读取权威事实</text>
 
   <!-- Reconcile -->
   <circle cx="800" cy="775" r="102" fill="#e6dcff" class="box"/>
@@ -129,7 +129,7 @@
   <text x="800" y="783" text-anchor="middle" class="small">汇总 Requirement Loop</text>
   <text x="800" y="810" text-anchor="middle" class="small">计算下一步动作</text>
   <path d="M700 563 V620 H800 V658" class="event-flow"/>
-  <text x="750" y="612" text-anchor="middle" class="tiny">wake</text>
+  <text x="750" y="612" text-anchor="middle" class="tiny">enqueue</text>
 
   <!-- Action and approval boundary -->
   <rect x="540" y="645" width="155" height="246" rx="13" fill="#ffffff" class="box"/>

@@ -45,6 +45,8 @@ export interface RequirementSpec {
 export interface RequirementStatus extends ConditionedStatus {
   /** Spec generation used by the latest successful Requirement observation. */
   readonly observedGeneration?: number;
+  /** Latest successful observation time, independent from provider updatedAt. */
+  readonly lastObservedAt?: string;
   readonly externalState?: RequirementState;
   readonly assignee?: string;
   readonly updatedAt?: string;

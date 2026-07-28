@@ -10,6 +10,8 @@ export interface RepositorySpec {
 }
 
 export interface RepositoryStatus {
+  /** Whether at least one current observation entry owns this Repository. */
+  readonly inScope?: boolean;
   readonly lastScanAt?: string;
   readonly discoveredPullRequests?: number;
   readonly connectorAvailable?: boolean;

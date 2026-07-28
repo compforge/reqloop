@@ -1,9 +1,12 @@
 import type {
   BatonSnapshot,
-  ControllerSource,
   Controller,
+  ControllerSource,
+  EventHandler,
+  EventResource,
   Resource,
   ResourceClient,
+  ResourceRef,
   Source,
 } from "@qiankun01/baton-plugin";
 
@@ -62,13 +65,100 @@ function activeRequirements(
   return resources
     .list<RequirementSpec, RequirementStatus>(REQUIREMENT_RESOURCE_TYPE)
     .filter(({ status }) =>
+      status.externalState !== undefined &&
       status.externalState !== "completed" &&
       status.externalState !== "closed"
     );
 }
 
+function activeRequirement(resource: EventResource): boolean {
+  const requirement = resource as Readonly<
+    Resource<RequirementSpec, RequirementStatus>
+  >;
+  return (
+    requirement.status.externalState !== undefined &&
+    requirement.status.externalState !== "completed" &&
+    requirement.status.externalState !== "closed"
+  );
+}
+
+function enqueuePendingAssociationPullRequests(
+  resources: ResourceClient,
+): readonly { readonly name: string }[] {
+  return resources
+    .list<PullRequestSpec, PullRequestStatus>(PULL_REQUEST_RESOURCE_TYPE)
+    .filter(({ status }) =>
+      status.lifecycle === "open" &&
+      (status.requirementAssociation === undefined ||
+        status.requirementAssociation.state === "prompted")
+    )
+    .map(({ metadata }) => ({ name: metadata.name }));
+}
+
+function activeRequirementHandler(resources: ResourceClient): EventHandler {
+  const handler: EventHandler = {
+    create(event) {
+      return activeRequirement(event.object)
+        ? enqueuePendingAssociationPullRequests(resources)
+        : [];
+    },
+    update(event) {
+      return !activeRequirement(event.oldObject) &&
+          activeRequirement(event.newObject)
+        ? enqueuePendingAssociationPullRequests(resources)
+        : [];
+    },
+    delete() {
+      return [];
+    },
+  };
+  return Object.freeze(handler);
+}
+
 function requirementOptionId(name: string): string {
   return `${ASSOCIATION_REQUIREMENT_PREFIX}${name}`;
+}
+
+function requirementRef(
+  requirement: Readonly<Resource<RequirementSpec, RequirementStatus>>,
+): ResourceRef {
+  return {
+    ...REQUIREMENT_RESOURCE_TYPE,
+    namespace: requirement.metadata.namespace,
+    name: requirement.metadata.name,
+    uid: requirement.metadata.uid,
+  };
+}
+
+function associationInteraction(
+  identity: PullRequestIdentity,
+  requirements: readonly Readonly<
+    Resource<RequirementSpec, RequirementStatus>
+  >[],
+  decisionKey: string,
+) {
+  return {
+    kind: "interaction" as const,
+    decisionKey,
+    title: "Associate pull request",
+    prompt:
+      `Which Requirement should ${identity.repository} PR/MR ${identity.number} join?`,
+    options: [
+      ...requirements.map((requirement) => ({
+        optionId: requirementOptionId(requirement.metadata.name),
+        label: requirement.spec.title,
+        description:
+          `${requirement.spec.identity.source} · ` +
+          `${requirement.spec.identity.category} · ` +
+          requirement.spec.identity.id,
+      })),
+      {
+        optionId: ASSOCIATION_STANDALONE,
+        label: "Keep standalone",
+        role: "reject" as const,
+      },
+    ],
+  };
 }
 
 function observationComplete(
@@ -116,18 +206,50 @@ export function createPullRequestController(
   }
   return {
     resourceType: PULL_REQUEST_RESOURCE_TYPE,
+    ...(resources
+      ? {
+        watches: [{
+          resourceType: REQUIREMENT_RESOURCE_TYPE,
+          handler: activeRequirementHandler(resources),
+        }],
+      }
+      : {}),
     ...(controllerSources.length > 0
       ? { sources: controllerSources }
       : {}),
     async reconcile(baton, resource) {
       if (!resources) return;
+      let current = resource;
+      const legacyAssociation = current.status.requirementAssociation;
+      if (
+        legacyAssociation?.state === "linked" &&
+        legacyAssociation.requirement.uid === undefined
+      ) {
+        // 0.1.15 persisted name-based refs. Resolve them once during upgrade;
+        // every newly written association below is pinned to one incarnation.
+        const requirement = resources
+          .list<RequirementSpec, RequirementStatus>(
+            REQUIREMENT_RESOURCE_TYPE,
+          )
+          .find(({ metadata }) =>
+            metadata.namespace === legacyAssociation.requirement.namespace &&
+            metadata.name === legacyAssociation.requirement.name
+          );
+        if (requirement) {
+          current = resources.patchStatus(current, {
+            requirementAssociation: {
+              state: "linked",
+              requirement: requirementRef(requirement),
+            },
+          });
+        }
+      }
       // Merged PRs remain observable until review state can satisfy the
       // Requirement completion policy. Closed and settled merged PRs are final.
-      if (observationComplete(resource.status)) return;
-      const { identity } = resource.spec;
+      if (observationComplete(current.status)) return;
+      const { identity } = current.spec;
       const connector = connectorsBySource.get(identity.source);
-      let current = resource;
-      if (connector && observationDue(resource.status.observedAt)) {
+      if (connector && observationDue(current.status.observedAt)) {
         const observation = await connector.get(identity);
         if (!sameIdentity(observation.identity, identity)) {
           throw new Error("ForgeConnector returned a different PullRequest");
@@ -143,49 +265,29 @@ export function createPullRequestController(
 
       if (current.status.lifecycle === "open") {
         const association = current.status.requirementAssociation;
-        if (!association) {
+        if (!association || association.state === "prompted") {
           const requirements = activeRequirements(resources);
-          if (requirements.length > 0) {
-            const decisionKey =
-              `associate-requirement:${current.metadata.name}`;
-            current = resources.patchStatus(current, {
-              requirementAssociation: {
-                state: "prompted",
-                decisionKey,
-              },
-            });
+          const decisionKey = association?.decisionKey ??
+            `associate-requirement:${current.metadata.name}`;
+          const decision = interactionDecision(baton, decisionKey);
+          if (!decision && requirements.length > 0) {
             return {
-              output: {
-                kind: "interaction",
+              output: associationInteraction(
+                identity,
+                requirements,
                 decisionKey,
-                title: "Associate pull request",
-                prompt: `Which Requirement should ${identity.repository} PR/MR ${identity.number} join?`,
-                options: [
-                  ...requirements.map((requirement) => ({
-                    optionId: requirementOptionId(
-                      requirement.metadata.name,
-                    ),
-                    label: requirement.spec.title,
-                    description:
-                      `${requirement.spec.identity.source} · ` +
-                      `${requirement.spec.identity.category} · ` +
-                      requirement.spec.identity.id,
-                  })),
-                  {
-                    optionId: ASSOCIATION_STANDALONE,
-                    label: "Keep standalone",
-                    role: "reject" as const,
-                  },
-                ],
-              },
+              ),
             };
-          }
-        } else if (association.state === "prompted") {
-          const decision = interactionDecision(
-            baton,
-            association.decisionKey,
-          );
-          if (decision?.outcome?.kind === "answered") {
+          } else if (decision?.outcome?.kind === "cancelled") {
+            if (!association) {
+              current = resources.patchStatus(current, {
+                requirementAssociation: {
+                  state: "prompted",
+                  decisionKey,
+                },
+              });
+            }
+          } else if (decision?.outcome?.kind === "answered") {
             const selected = decision.outcome.values[0];
             if (selected === ASSOCIATION_STANDALONE) {
               current = resources.patchStatus(current, {
@@ -196,29 +298,43 @@ export function createPullRequestController(
                 ASSOCIATION_REQUIREMENT_PREFIX.length,
               );
               if (name) {
-                current = resources.patchStatus(current, {
-                  requirementAssociation: {
-                    state: "linked",
-                    requirement: {
-                      ...REQUIREMENT_RESOURCE_TYPE,
-                      namespace: current.metadata.namespace,
-                      name,
+                const requirement = requirements.find(({ metadata }) =>
+                  metadata.namespace === current.metadata.namespace &&
+                  metadata.name === name
+                );
+                if (requirement) {
+                  current = resources.patchStatus(current, {
+                    requirementAssociation: {
+                      state: "linked",
+                      requirement: requirementRef(requirement),
                     },
-                  },
-                });
+                  });
+                } else if (requirements.length > 0) {
+                  const retryDecisionKey =
+                    `associate-requirement:${current.metadata.name}:retry:` +
+                    current.metadata.resourceVersion;
+                  current = resources.patchStatus(current, {
+                    requirementAssociation: {
+                      state: "prompted",
+                      decisionKey: retryDecisionKey,
+                    },
+                  });
+                  return {
+                    output: associationInteraction(
+                      identity,
+                      requirements,
+                      retryDecisionKey,
+                    ),
+                  };
+                }
               }
             }
           }
         }
       }
 
-      const review = reviewConnector?.latest();
-      if (
-        !review ||
-        !sameIdentity(review.identity, identity)
-      ) {
-        return;
-      }
+      const review = reviewConnector?.latest(identity);
+      if (!review) return;
       if (review.key !== current.status.review?.key) {
         current = upsertPullRequestReview(resources, review);
       }
@@ -294,7 +410,9 @@ export function createPullRequestController(
         status: blockers.length > 0 ? blockers.join(" · ") : "Open",
         detail: resource.status.requirementAssociation?.state === "prompted"
           ? "Waiting for Requirement association"
-          : "Standalone PullRequest",
+          : resource.status.requirementAssociation?.state === "standalone"
+          ? "Standalone PullRequest"
+          : "Unassociated PullRequest",
         tone: resource.status.mergeability === "conflicted"
           ? "error"
           : resource.status.reviewThreads === "unresolved"

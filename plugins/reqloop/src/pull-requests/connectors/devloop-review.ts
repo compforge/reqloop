@@ -27,6 +27,12 @@ interface CheckoutIdentity {
   readonly branch?: string;
 }
 
+export interface PullRequestReviewCheckout {
+  readonly path: string;
+  readonly source?: string;
+  readonly repository?: string;
+}
+
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -144,47 +150,109 @@ function gitCheckout(cwd: string): CheckoutIdentity | undefined {
   });
 }
 
+function sameIdentity(
+  left: PullRequestIdentity,
+  right: PullRequestIdentity,
+): boolean {
+  return (
+    left.source === right.source &&
+    left.repository === right.repository &&
+    left.number === right.number
+  );
+}
+
 /**
  * devloop 是 review 事实的 producer；reqloop 只读取其 append-only ledger，并映射为
  * 已绑定 PullRequest 的 review observation。
  */
 export class DevloopReviewConnector implements PullRequestReviewConnector {
   readonly historyPath?: string;
-  private readonly checkout: () => CheckoutIdentity | undefined;
+  private readonly explicitHistoryPath?: string;
+  private readonly rootCheckout?: () => CheckoutIdentity | undefined;
+  private readonly workspaceCheckouts:
+    () => readonly PullRequestReviewCheckout[];
 
   constructor(
-    cwd: string,
+    private readonly root: string,
     options: {
       historyPath?: string;
       checkout?: () => CheckoutIdentity | undefined;
+      workspaceCheckouts?: () => readonly PullRequestReviewCheckout[];
     } = {},
   ) {
     const explicit = options.historyPath?.trim();
+    this.explicitHistoryPath = explicit || undefined;
     this.historyPath =
       explicit ||
-      devloopStatePath(cwd, "review-history.jsonl");
-    this.checkout = options.checkout ?? (() => gitCheckout(cwd));
+      devloopStatePath(root, "review-history.jsonl");
+    this.rootCheckout = options.checkout;
+    this.workspaceCheckouts = options.workspaceCheckouts ??
+      (() => [{ path: root }]);
   }
 
-  latest(): PullRequestReviewObservation | undefined {
-    if (!this.historyPath || !existsSync(this.historyPath)) return;
+  listLatest(): readonly PullRequestReviewObservation[] {
+    return this.reviewCheckouts().flatMap((checkout) => {
+      const observation = this.latestForCheckout(checkout.path);
+      return observation ? [observation] : [];
+    });
+  }
+
+  latest(
+    identity: PullRequestIdentity,
+  ): PullRequestReviewObservation | undefined {
+    for (const checkout of this.reviewCheckouts()) {
+      if (
+        checkout.source !== undefined &&
+        (checkout.source !== identity.source ||
+          checkout.repository !== identity.repository)
+      ) {
+        continue;
+      }
+      const observation = this.latestForCheckout(checkout.path);
+      if (observation && sameIdentity(observation.identity, identity)) {
+        return observation;
+      }
+    }
+  }
+
+  private reviewCheckouts(): readonly PullRequestReviewCheckout[] {
+    const checkouts = this.explicitHistoryPath
+      ? [{ path: this.root }]
+      : this.workspaceCheckouts();
+    const unique = new Map<string, PullRequestReviewCheckout>();
+    for (const checkout of checkouts) {
+      if (!unique.has(checkout.path)) unique.set(checkout.path, checkout);
+    }
+    return [...unique.values()];
+  }
+
+  private latestForCheckout(
+    checkoutRoot: string,
+  ): PullRequestReviewObservation | undefined {
+    const historyPath = checkoutRoot === this.root
+      ? this.historyPath
+      : devloopStatePath(checkoutRoot, "review-history.jsonl");
+    const checkout = checkoutRoot === this.root && this.rootCheckout
+      ? this.rootCheckout
+      : () => gitCheckout(checkoutRoot);
+    if (!historyPath || !existsSync(historyPath)) return;
     let lines: string[];
     try {
-      lines = readFileSync(this.historyPath, "utf8").split(/\r?\n/);
+      lines = readFileSync(historyPath, "utf8").split(/\r?\n/);
     } catch {
       return;
     }
-    const checkout = this.checkout();
-    if (!checkout) return;
+    const current = checkout();
+    if (!current) return;
     for (let index = lines.length - 1; index >= 0; index -= 1) {
       const line = lines[index]?.trim();
       if (!line) continue;
       const observation = parseHistoryLine(line);
       if (!observation) continue;
       if (
-        observation.sha !== checkout.headSha ||
+        observation.sha !== current.headSha ||
         (observation.branch !== undefined &&
-          observation.branch !== checkout.branch)
+          observation.branch !== current.branch)
       ) {
         continue;
       }

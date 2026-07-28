@@ -40,6 +40,9 @@ import reqloop, {
   type RepositorySpec,
   type RequirementConnector,
   REQUIREMENT_RESOURCE_TYPE,
+  type WorkspaceSpec,
+  WorkspaceSource,
+  WORKSPACE_RESOURCE_TYPE,
 } from "../src/index.ts";
 
 const roots: string[] = [];
@@ -76,6 +79,32 @@ function initializeRepository(root: string): void {
       throw new Error(result.stderr.toString());
     }
   }
+}
+
+function commitRepository(root: string): string {
+  const commit = Bun.spawnSync([
+    "git",
+    "-c",
+    "user.name=ReqLoop Test",
+    "-c",
+    "user.email=reqloop@example.com",
+    "commit",
+    "--allow-empty",
+    "-m",
+    "initial",
+  ], {
+    cwd: root,
+    stdout: "ignore",
+    stderr: "pipe",
+  });
+  if (commit.exitCode !== 0) throw new Error(commit.stderr.toString());
+  const head = Bun.spawnSync(["git", "rev-parse", "HEAD"], {
+    cwd: root,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (head.exitCode !== 0) throw new Error(head.stderr.toString());
+  return head.stdout.toString().trim();
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {
@@ -172,7 +201,7 @@ describe("ReqLoop PluginPackage", () => {
       checkout: () => ({ headSha: "current-head", branch: "feature" }),
     });
 
-    expect(connector.latest()).toMatchObject({
+    expect(connector.listLatest()[0]).toMatchObject({
       identity: {
         source: "github.com",
         repository: "owner/repo",
@@ -187,6 +216,63 @@ describe("ReqLoop PluginPackage", () => {
         },
       ],
     });
+  });
+
+  test("reads review observations from every Workspace checkout", () => {
+    const root = testRoot();
+    const first = join(root, "repo-a");
+    const second = join(root, "repo-b");
+    mkdirSync(first);
+    mkdirSync(second);
+    initializeRepository(first);
+    initializeRepository(second);
+    const firstHead = commitRepository(first);
+    const secondHead = commitRepository(second);
+    appendReview(historyPath(first), {
+      status: "success",
+      sha: firstHead,
+      count: 1,
+      failed: 0,
+      pull_request: {
+        source: "github.com",
+        repository: "owner/repo-a",
+        number: 7,
+      },
+    });
+    appendReview(historyPath(second), {
+      status: "success",
+      sha: secondHead,
+      count: 2,
+      failed: 0,
+      pull_request: {
+        source: "github.com",
+        repository: "owner/repo-b",
+        number: 8,
+      },
+    });
+    const connector = new DevloopReviewConnector(root, {
+      workspaceCheckouts: () => [
+        {
+          path: first,
+          source: "github.com",
+          repository: "owner/repo-a",
+        },
+        {
+          path: second,
+          source: "github.com",
+          repository: "owner/repo-b",
+        },
+      ],
+    });
+
+    expect(
+      connector.listLatest().map(({ identity }) => identity.repository),
+    ).toEqual(["owner/repo-a", "owner/repo-b"]);
+    expect(connector.latest({
+      source: "github.com",
+      repository: "owner/repo-b",
+      number: 8,
+    })?.count).toBe(2);
   });
 
   test("contributes the current checkout as a Repository", () => {
@@ -300,6 +386,7 @@ describe("ReqLoop PluginPackage", () => {
     let command: Command | undefined;
     let contextProvider: ContextProvider | undefined;
     const resourceTypes: { apiVersion: string; kind: string }[] = [];
+    let workspaceController: Controller<unknown, unknown> | undefined;
     const context = {
       session: { batonSessionId: "bs_test", cwd: root },
       registerCommand(contribution: Command) {
@@ -309,9 +396,12 @@ describe("ReqLoop PluginPackage", () => {
         contextProvider = provider;
       },
       registerController(
-        controller: { resourceType: { apiVersion: string; kind: string } },
+        controller: Controller<unknown, unknown>,
       ) {
         resourceTypes.push(controller.resourceType);
+        if (controller.resourceType.kind === WORKSPACE_RESOURCE_TYPE.kind) {
+          workspaceController = controller;
+        }
       },
     } as unknown as PluginActivationContext;
 
@@ -324,7 +414,11 @@ describe("ReqLoop PluginPackage", () => {
       REQUIREMENT_RESOURCE_TYPE,
       PULL_REQUEST_RESOURCE_TYPE,
       REPOSITORY_RESOURCE_TYPE,
+      WORKSPACE_RESOURCE_TYPE,
     ]);
+    expect(workspaceController?.sources?.[0]).toBeInstanceOf(
+      WorkspaceSource,
+    );
     expect(contextProvider?.kind).toBe("requirement");
     expect(await command!.execute({ argument: "intake" })).toMatchObject({
       kind: "picker",
@@ -618,7 +712,12 @@ describe("ReqLoop PluginPackage", () => {
     ]);
   });
 
-  test("registers Repository and PullRequest Sources on their owners", async () => {
+  test("registers Sources and Watches on their Resource owners", async () => {
+    const workspaceSource: Source<WorkspaceSpec> = {
+      type: "resource",
+      sourceId: "workspace-test",
+      start() {},
+    };
     const repositorySource: Source<RepositorySpec> = {
       type: "resource",
       sourceId: "repository-test",
@@ -650,9 +749,13 @@ describe("ReqLoop PluginPackage", () => {
     await createReqloopPackage({
       requirementConnectors: [],
       forgeConnectors: [],
+      workspaceSources: [workspaceSource],
       repositorySources: [repositorySource],
       pullRequestSources: [pullRequestSource],
-      reviewConnector: { latest: () => undefined },
+      reviewConnector: {
+        listLatest: () => [],
+        latest: () => undefined,
+      },
     }).activate(context);
 
     expect(controllers.get(REPOSITORY_RESOURCE_TYPE.kind)?.sources).toEqual([
@@ -661,6 +764,30 @@ describe("ReqLoop PluginPackage", () => {
     expect(
       controllers.get(PULL_REQUEST_RESOURCE_TYPE.kind)?.sources?.[0],
     ).toBe(pullRequestSource);
+    expect(controllers.get(WORKSPACE_RESOURCE_TYPE.kind)?.sources).toEqual([
+      workspaceSource,
+      {
+        type: "cron",
+        sourceId: "workspace-resync",
+        cron: "*/30 * * * * *",
+        timeZone: "UTC",
+      },
+    ]);
+    expect(
+      controllers.get(REQUIREMENT_RESOURCE_TYPE.kind)?.watches?.map(
+        ({ resourceType }) => resourceType,
+      ),
+    ).toEqual([PULL_REQUEST_RESOURCE_TYPE]);
+    expect(
+      controllers.get(PULL_REQUEST_RESOURCE_TYPE.kind)?.watches?.map(
+        ({ resourceType }) => resourceType,
+      ),
+    ).toEqual([REQUIREMENT_RESOURCE_TYPE]);
+    expect(
+      controllers.get(REPOSITORY_RESOURCE_TYPE.kind)?.watches?.map(
+        ({ resourceType }) => resourceType,
+      ),
+    ).toEqual([WORKSPACE_RESOURCE_TYPE]);
   });
 
   test("persists the activation baseline and proposes actionable follow-up", async () => {
@@ -771,7 +898,6 @@ describe("ReqLoop PluginPackage", () => {
     expect(resource?.status.review?.sha).toBe("baseline");
     expect(controller?.resourceType).toBe(PULL_REQUEST_RESOURCE_TYPE);
     expect(controller?.sources).toEqual([
-      expect.any(DevloopPullRequestSource),
       {
         type: "cron",
         sourceId: "pull-request-poll",
