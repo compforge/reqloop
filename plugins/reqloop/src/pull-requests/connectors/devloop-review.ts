@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
 
 import type {
   PullRequestIdentity,
@@ -8,6 +7,7 @@ import type {
   PullRequestReviewConnector,
   PullRequestReviewObservation,
 } from "../protocol.ts";
+import { devloopStatePath } from "./devloop-state.ts";
 
 interface ReviewHistoryRecord {
   readonly status?: unknown;
@@ -134,12 +134,6 @@ function gitOutput(cwd: string, args: readonly string[]): string | undefined {
   return output || undefined;
 }
 
-function gitCommonRoot(cwd: string): string | undefined {
-  const commonDir = gitOutput(cwd, ["rev-parse", "--git-common-dir"]);
-  if (!commonDir) return;
-  return dirname(resolve(cwd, commonDir));
-}
-
 function gitCheckout(cwd: string): CheckoutIdentity | undefined {
   const headSha = gitOutput(cwd, ["rev-parse", "HEAD"]);
   if (!headSha) return;
@@ -166,12 +160,9 @@ export class DevloopReviewConnector implements PullRequestReviewConnector {
     } = {},
   ) {
     const explicit = options.historyPath?.trim();
-    const repoRoot = explicit ? undefined : gitCommonRoot(cwd);
     this.historyPath =
       explicit ||
-      (repoRoot
-        ? join(repoRoot, ".devloop", "review-history.jsonl")
-        : undefined);
+      devloopStatePath(cwd, "review-history.jsonl");
     this.checkout = options.checkout ?? (() => gitCheckout(cwd));
   }
 

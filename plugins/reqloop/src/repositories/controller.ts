@@ -1,11 +1,16 @@
 import type {
   Controller,
+  PluginLogger,
   ResourceClient,
 } from "@qiankun01/baton-plugin";
 
-import type { ForgeConnector } from "../pull-requests/protocol.ts";
+import type {
+  ForgeConnector,
+  PullRequestIdentity,
+} from "../pull-requests/protocol.ts";
 import { ensurePullRequestResource } from "../pull-requests/resource.ts";
 import type {
+  PullRequestDiscoverySource,
   RepositorySpec,
   RepositoryStatus,
 } from "./protocol.ts";
@@ -28,6 +33,8 @@ function nextScanDelay(lastScanAt: string | undefined): number | undefined {
 export function createRepositoryController(
   resources: ResourceClient,
   connectors: readonly ForgeConnector[] = [],
+  discoverySources: readonly PullRequestDiscoverySource[] = [],
+  logger?: PluginLogger,
 ): Controller<RepositorySpec, RepositoryStatus> {
   const connectorsBySource = new Map<string, ForgeConnector>();
   for (const connector of connectors) {
@@ -46,10 +53,48 @@ export function createRepositoryController(
       if (delay !== undefined) return { requeueAfterMs: delay };
 
       const { identity } = resource.spec;
+      const discovered = new Map<number, PullRequestIdentity>();
+      for (const source of discoverySources) {
+        let pullRequests: readonly PullRequestIdentity[];
+        try {
+          pullRequests = await source.discover(identity);
+        } catch (error) {
+          try {
+            logger?.write({
+              level: "warn",
+              component: "pull-request-discovery",
+              message: "PullRequest discovery source failed",
+              error,
+              details: {
+                sourceId: source.sourceId,
+                forgeSource: identity.source,
+                repository: identity.repository,
+              },
+            });
+          } catch {
+            // Diagnostics are best-effort; Forge discovery must still run.
+          }
+          continue;
+        }
+        for (const pullRequest of pullRequests) {
+          if (
+            pullRequest.source === identity.source &&
+            pullRequest.repository === identity.repository
+          ) {
+            discovered.set(pullRequest.number, pullRequest);
+          }
+        }
+      }
+
       const connector = connectorsBySource.get(identity.source);
       if (!connector) {
+        for (const pullRequest of discovered.values()) {
+          ensurePullRequestResource(resources, pullRequest);
+        }
         resources.patchStatus(resource, { connectorAvailable: false });
-        return;
+        return discoverySources.length > 0
+          ? { requeueAfterMs: REPOSITORY_POLL_INTERVAL_MS }
+          : undefined;
       }
 
       const pullRequests = await connector.list(identity.repository);
@@ -62,11 +107,14 @@ export function createRepositoryController(
             "ForgeConnector discovered a PullRequest outside its repository",
           );
         }
+        discovered.set(pullRequest.number, pullRequest);
+      }
+      for (const pullRequest of discovered.values()) {
         ensurePullRequestResource(resources, pullRequest);
       }
       resources.patchStatus(resource, {
         connectorAvailable: true,
-        discoveredPullRequests: pullRequests.length,
+        discoveredPullRequests: discovered.size,
         lastScanAt: new Date().toISOString(),
       });
       return { requeueAfterMs: REPOSITORY_POLL_INTERVAL_MS };

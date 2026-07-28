@@ -20,12 +20,14 @@ import type {
   Command,
   ContextProvider,
   Controller,
+  PluginLogEntry,
   PluginActivationContext,
   Resource,
 } from "@qiankun01/baton-plugin";
 
 import reqloop, {
   createReqloopPackage,
+  DevloopPullRequestSource,
   DevloopReviewConnector,
   REPOSITORY_RESOURCE_TYPE,
   loadMeegoRequirementConfigs,
@@ -156,6 +158,64 @@ describe("ReqLoop PluginPackage", () => {
         },
       ],
     });
+  });
+
+  test("best-effort discovers open PullRequests from devloop state", () => {
+    const root = testRoot();
+    const path = join(root, ".devloop", "pr.json");
+    const repository = {
+      source: "github.com",
+      repository: "qiankunli/reqloop",
+    };
+    const logs: PluginLogEntry[] = [];
+    const source = new DevloopPullRequestSource(root, repository, {
+      path,
+      logger: {
+        write(entry) {
+          logs.push(entry);
+        },
+      },
+    });
+
+    expect(source.discover(repository)).toEqual([]);
+    expect(source.discover(repository)).toEqual([]);
+    expect(logs).toEqual([{
+      level: "debug",
+      component: "devloop.pull-request-source",
+      message: "Devloop PR state file is missing",
+      details: { path },
+    }]);
+
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "{");
+    expect(source.discover(repository)).toEqual([]);
+    expect(source.discover(repository)).toEqual([]);
+    expect(logs.at(-1)).toMatchObject({
+      level: "warn",
+      message: "Could not parse devloop PR state",
+    });
+
+    writeFileSync(path, JSON.stringify({
+      prs: [
+        { number: 30, state: "open" },
+        { number: 29, state: "merged" },
+        { number: 30, state: "open" },
+        { number: 0, state: "open" },
+      ],
+    }));
+
+    expect(source.discover(repository)).toEqual([{
+      ...repository,
+      number: 30,
+    }]);
+    expect(logs.at(-1)).toMatchObject({
+      level: "info",
+      message: "Devloop PR state is readable again",
+    });
+    expect(source.discover({
+      source: "github.com",
+      repository: "another/repo",
+    })).toEqual([]);
   });
 
   test("lists provider-neutral requirements and reads the selected requirement", async () => {

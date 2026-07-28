@@ -94,9 +94,13 @@ GitHub and GitLab. A repository enters observation scope when the plugin is
 activated for a checkout whose `origin` can be identified, or when an embedding
 explicitly supplies that repository. One `Repository` is shared by every
 Requirement that targets the same `source + repository`; it is not created once
-per Requirement. Its reconciler calls `ForgeConnector.list()`, materializes
-missing PullRequest Resources, records the latest scan, and schedules the next
-scan. PullRequest reconciliation then calls `get()` to refresh lifecycle,
+per Requirement. Its reconciler optionally reads the current repository's
+`.devloop/pr.json` as a best-effort, low-latency discovery source, then always
+calls `ForgeConnector.list()` as the complete fallback. Missing or malformed
+devloop state never blocks Forge discovery; failures are deduplicated in the
+owning BatonSession log. The reconciler materializes missing PullRequest
+Resources, records the latest scan, and schedules the next scan. PullRequest
+reconciliation then calls `get()` to refresh lifecycle,
 review-thread state and activity, mergeability, and observation time.
 `GitHubForgeConnector` and `GitLabForgeConnector` provide both operations.
 Selecting `/requirements` materializes a stable `Requirement` Resource. An open PullRequest is
@@ -151,8 +155,10 @@ Meego。代码平台按同样边界接 `ForgeConnector`，参考 devloop 的 pro
 但不导入其实现。仓库进入观察范围时，reqloop 按 `source + repository` 幂等创建一份
 `Repository` Resource；当前入口是 Plugin 激活时识别 BatonSession `cwd` 的 `origin`，
 嵌入方也可显式提供。多个 Requirement 指向同一仓库时复用它，不按需求重复创建。
-RepositoryController 通过 Connector `list()` 创建缺失的 PullRequest Resource，记录扫描
-结果并安排下一次扫描；逐 PullRequest reconcile 再调用 `get()` 刷新生命周期、review thread、
+RepositoryController 可选读取当前仓库 `.devloop/pr.json` 做低延迟发现，并始终通过 Connector
+`list()` 兜底完整性；缺文件或异常不会阻塞 Forge，诊断会去重写入当前 BatonSession 日志。
+Controller 创建缺失的 PullRequest Resource，记录扫描结果并安排下一次扫描；逐 PullRequest
+reconcile 再调用 `get()` 刷新生命周期、review thread、
 merge conflict 和 review activity fingerprint。`/requirements` 选中的需求会物化为稳定的
 `Requirement` Resource。孤立且活跃的 PullRequest 会单独显示在 Board；关联
 Requirement 后仍保留独立 Resource，但 Board 以 Requirement 为主展示。merged 后生命周期
