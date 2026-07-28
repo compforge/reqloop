@@ -20,14 +20,16 @@ import type {
   Command,
   ContextProvider,
   Controller,
-  PluginLogEntry,
   PluginActivationContext,
   Resource,
+  Source,
+  SourceContext,
 } from "@qiankun01/baton-plugin";
 
 import reqloop, {
   createReqloopPackage,
   DevloopPullRequestSource,
+  DevloopRepositorySource,
   DevloopReviewConnector,
   REPOSITORY_RESOURCE_TYPE,
   loadMeegoRequirementConfigs,
@@ -35,6 +37,7 @@ import reqloop, {
   PULL_REQUEST_RESOURCE_TYPE,
   type PullRequestSpec,
   type PullRequestStatus,
+  type RepositorySpec,
   type RequirementConnector,
   REQUIREMENT_RESOURCE_TYPE,
 } from "../src/index.ts";
@@ -57,6 +60,32 @@ function appendReview(
 ): void {
   mkdirSync(dirname(path), { recursive: true });
   appendFileSync(path, `${JSON.stringify(record)}\n`);
+}
+
+function initializeRepository(root: string): void {
+  for (const args of [
+    ["init"],
+    ["remote", "add", "origin", "git@github.com:qiankunli/reqloop.git"],
+  ]) {
+    const result = Bun.spawnSync(["git", ...args], {
+      cwd: root,
+      stdout: "ignore",
+      stderr: "pipe",
+    });
+    if (result.exitCode !== 0) {
+      throw new Error(result.stderr.toString());
+    }
+  }
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  const deadline = Date.now() + 1_000;
+  while (!predicate()) {
+    if (Date.now() >= deadline) {
+      throw new Error("timed out waiting for source observation");
+    }
+    await Bun.sleep(10);
+  }
 }
 
 function batonSnapshot(
@@ -160,41 +189,59 @@ describe("ReqLoop PluginPackage", () => {
     });
   });
 
-  test("best-effort discovers open PullRequests from devloop state", () => {
+  test("contributes the current checkout as a Repository", () => {
     const root = testRoot();
-    const path = join(root, ".devloop", "pr.json");
-    const repository = {
-      source: "github.com",
-      repository: "qiankunli/reqloop",
-    };
-    const logs: PluginLogEntry[] = [];
-    const source = new DevloopPullRequestSource(root, repository, {
-      path,
-      logger: {
-        write(entry) {
-          logs.push(entry);
+    initializeRepository(root);
+    const emitted: Parameters<SourceContext<RepositorySpec>["emit"]>[0][] = [];
+    const source = new DevloopRepositorySource(root);
+
+    source.start({
+      signal: new AbortController().signal,
+      emit(resource) {
+        emitted.push(resource);
+      },
+      reportError() {},
+    });
+
+    expect(emitted).toEqual([{
+      name: expect.stringMatching(/^repo-/),
+      spec: {
+        identity: {
+          source: "github.com",
+          repository: "qiankunli/reqloop",
         },
+      },
+    }]);
+  });
+
+  test("contributes open PullRequests and watches devloop state", async () => {
+    const root = testRoot();
+    initializeRepository(root);
+    const path = join(root, ".devloop", "pr.json");
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "{");
+    const emitted: Parameters<
+      SourceContext<PullRequestSpec>["emit"]
+    >[0][] = [];
+    const errors: unknown[] = [];
+    const abort = new AbortController();
+    const source = new DevloopPullRequestSource(root, {
+      path,
+      watchIntervalMs: 10,
+    });
+
+    source.start({
+      signal: abort.signal,
+      emit(resource) {
+        emitted.push(resource);
+      },
+      reportError(error) {
+        errors.push(error);
       },
     });
 
-    expect(source.discover(repository)).toEqual([]);
-    expect(source.discover(repository)).toEqual([]);
-    expect(logs).toEqual([{
-      level: "debug",
-      component: "devloop.pull-request-source",
-      message: "Devloop PR state file is missing",
-      details: { path },
-    }]);
-
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, "{");
-    expect(source.discover(repository)).toEqual([]);
-    expect(source.discover(repository)).toEqual([]);
-    expect(logs.at(-1)).toMatchObject({
-      level: "warn",
-      message: "Could not parse devloop PR state",
-    });
-
+    expect(errors).toHaveLength(1);
+    expect(String(errors[0])).toContain("Could not parse devloop PR state");
     writeFileSync(path, JSON.stringify({
       prs: [
         { number: 30, state: "open" },
@@ -204,18 +251,18 @@ describe("ReqLoop PluginPackage", () => {
       ],
     }));
 
-    expect(source.discover(repository)).toEqual([{
-      ...repository,
-      number: 30,
+    await waitFor(() => emitted.length === 1);
+    abort.abort();
+    expect(emitted).toEqual([{
+      name: expect.stringMatching(/^pr_/),
+      spec: {
+        identity: {
+          source: "github.com",
+          repository: "qiankunli/reqloop",
+          number: 30,
+        },
+      },
     }]);
-    expect(logs.at(-1)).toMatchObject({
-      level: "info",
-      message: "Devloop PR state is readable again",
-    });
-    expect(source.discover({
-      source: "github.com",
-      repository: "another/repo",
-    })).toEqual([]);
   });
 
   test("lists provider-neutral requirements and reads the selected requirement", async () => {
@@ -571,75 +618,49 @@ describe("ReqLoop PluginPackage", () => {
     ]);
   });
 
-  test("materializes repositories when they enter the observation scope", async () => {
-    const events: string[] = [];
-    let repository:
-      | Resource<
-          import("../src/index.ts").RepositorySpec,
-          import("../src/index.ts").RepositoryStatus
-        >
-      | undefined;
-    const resources = {
-      list(type: { kind: string }) {
-        return type.kind === REPOSITORY_RESOURCE_TYPE.kind &&
-            repository
-          ? [repository]
-          : [];
-      },
-      create(
-        type: { apiVersion: string; kind: string },
-        input: {
-          name: string;
-          spec: import("../src/index.ts").RepositorySpec;
-        },
-      ) {
-        events.push(`create:${type.kind}`);
-        repository = {
-          ...type,
-          metadata: {
-            name: input.name,
-            namespace: "pi_reqloop",
-            uid: `uid-${input.name}`,
-            generation: 1,
-            resourceVersion: "1",
-            creationTimestamp: new Date(0).toISOString(),
-          },
-          spec: input.spec,
-          status: {},
-        };
-        return repository;
-      },
+  test("registers Repository and PullRequest Sources on their owners", async () => {
+    const repositorySource: Source<RepositorySpec> = {
+      type: "resource",
+      sourceId: "repository-test",
+      start() {},
     };
+    const pullRequestSource: Source<PullRequestSpec> = {
+      type: "resource",
+      sourceId: "pull-request-test",
+      start() {},
+    };
+    const controllers = new Map<
+      string,
+      Controller<unknown, unknown>
+    >();
     const context = {
       session: { batonSessionId: "bs_test", cwd: testRoot() },
-      resources,
+      resources: {
+        list() {
+          return [];
+        },
+      },
       registerCommand() {},
       registerContextProvider() {},
       registerController(controller: Controller<unknown, unknown>) {
-        events.push(`register:${controller.resourceType.kind}`);
+        controllers.set(controller.resourceType.kind, controller);
       },
     } as unknown as PluginActivationContext;
 
     await createReqloopPackage({
       requirementConnectors: [],
       forgeConnectors: [],
-      repositories: [{
-        source: "github.com",
-        repository: "qiankunli/reqloop",
-      }],
+      repositorySources: [repositorySource],
+      pullRequestSources: [pullRequestSource],
       reviewConnector: { latest: () => undefined },
     }).activate(context);
 
-    expect(repository?.spec.identity).toEqual({
-      source: "github.com",
-      repository: "qiankunli/reqloop",
-    });
-    expect(events).toEqual([
-      "register:Requirement",
-      "register:PullRequest",
-      "register:Repository",
-      "create:Repository",
+    expect(controllers.get(REPOSITORY_RESOURCE_TYPE.kind)?.sources).toEqual([
+      repositorySource,
     ]);
+    expect(
+      controllers.get(PULL_REQUEST_RESOURCE_TYPE.kind)?.sources?.[0],
+    ).toBe(pullRequestSource);
   });
 
   test("persists the activation baseline and proposes actionable follow-up", async () => {
@@ -750,6 +771,7 @@ describe("ReqLoop PluginPackage", () => {
     expect(resource?.status.review?.sha).toBe("baseline");
     expect(controller?.resourceType).toBe(PULL_REQUEST_RESOURCE_TYPE);
     expect(controller?.sources).toEqual([
+      expect.any(DevloopPullRequestSource),
       {
         type: "cron",
         sourceId: "pull-request-poll",

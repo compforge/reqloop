@@ -7,7 +7,7 @@ import type {
   PullRequestReviewConnector,
   PullRequestReviewObservation,
 } from "../protocol.ts";
-import { devloopStatePath } from "./devloop-state.ts";
+import { devloopStatePath } from "../devloop-state.ts";
 
 interface ReviewHistoryRecord {
   readonly status?: unknown;

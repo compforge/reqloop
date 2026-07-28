@@ -1,8 +1,10 @@
 import type {
   BatonSnapshot,
+  ControllerSource,
   Controller,
   Resource,
   ResourceClient,
+  Source,
 } from "@qiankun01/baton-plugin";
 
 import type {
@@ -89,6 +91,7 @@ export function createPullRequestController(
   resources?: ResourceClient,
   connectors: readonly ForgeConnector[] = [],
   reviewConnector?: PullRequestReviewConnector,
+  sources: readonly Source<PullRequestSpec>[] = [],
 ): Controller<
   PullRequestSpec,
   PullRequestStatus
@@ -100,17 +103,21 @@ export function createPullRequestController(
     }
     connectorsBySource.set(connector.source, connector);
   }
+  const controllerSources: ControllerSource<PullRequestSpec>[] = [
+    ...sources,
+  ];
+  if (resources && (connectors.length > 0 || reviewConnector)) {
+    controllerSources.push({
+      type: "cron",
+      sourceId: "pull-request-poll",
+      cron: PULL_REQUEST_POLL_CRON,
+      timeZone: "UTC",
+    });
+  }
   return {
     resourceType: PULL_REQUEST_RESOURCE_TYPE,
-    ...(resources && (connectors.length > 0 || reviewConnector)
-      ? {
-        sources: [{
-          type: "cron" as const,
-          sourceId: "pull-request-poll",
-          cron: PULL_REQUEST_POLL_CRON,
-          timeZone: "UTC",
-        }],
-      }
+    ...(controllerSources.length > 0
+      ? { sources: controllerSources }
       : {}),
     async reconcile(baton, resource) {
       if (!resources) return;

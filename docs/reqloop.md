@@ -106,18 +106,17 @@ Repository
     └── lastScanAt
 ```
 
-创建条件是“仓库进入 reqloop 的观察范围”。当前 Plugin 激活时从 BatonSession `cwd` 的
-`origin` 识别默认仓库，也允许嵌入方显式提供仓库；两条入口都按稳定 identity 幂等创建。未来
-Requirement 支持 `repositoryRefs` 后，用户确认仓库目标的入口同样负责确保对应
+创建条件是“仓库进入 reqloop 的观察范围”。当前 `DevloopRepositorySource` 在 Plugin 激活后从
+BatonSession `cwd` 的 `origin` 识别默认仓库，并通过 Baton `SourceContext.emit()` 按稳定
+identity 幂等贡献 Repository。未来 Requirement 支持 `repositoryRefs` 后，用户确认仓库目标的入口同样负责确保对应
 Repository 存在。多个 Requirement 引用同一仓库时复用同一 Resource；发现 PR/MR 或创建
 Requirement 本身都不是新建 Repository 的理由。
 
-RepositoryController 可以从可选的本地 discovery source 先物化候选 PullRequest；当前
-Devloop source 只读仓库的 `.devloop/pr.json`，缺失、读取失败或格式异常都降级为空结果并把
-去重诊断写入 BatonSession 日志。无论本地 source 是否命中，Controller 都继续通过
-`ForgeConnector.list()` 兜底完整性，再用 `requeueAfter` 安排下一次集合扫描。
-PullRequestController 只负责逐 PR/MR 的状态观察，不再通过
-`ControllerSource.discover()` 承担集合 owner 职责。
+`DevloopPullRequestSource` 直接挂在 PullRequestController：它先读取并继续监听当前仓库的
+`.devloop/pr.json`，通过 `SourceContext.emit()` 贡献其中活跃的 PullRequest Resource。缺失、
+读取失败或格式异常都降级为空发现，不阻塞其它 Source 或已知 Resource 的 reconcile。
+RepositoryController 独立通过 `ForgeConnector.list()` 兜底集合完整性，再用 `requeueAfter`
+安排下一次扫描；逐 PullRequest 的外部状态仍由 PullRequestController 通过 `get()` 收敛。
 
 ### PullRequest
 
@@ -204,9 +203,9 @@ Interaction 询问一次，回答写回 `requirementAssociation`。系统事实�
 自动化提升的是某一类动作在明确范围内的信任等级，不是绕过状态模型的一键开关。每次执行仍要
 保留意图、结果和最新外部观测；副作用不确定时先重新观察，不能盲目重试。
 
-RepositoryController 负责集合发现：它合并可选的 best-effort 本地 source 与
-`ForgeConnector.list()`；本地 source 只缩短发现路径，Forge 始终执行并负责完整性。Controller
-为新 identity 创建缺失 Resource，并安排下一次扫描。PullRequest
+集合发现有两条并行入口：`DevloopPullRequestSource` 监听本地状态并直接贡献 Resource，缩短
+发现路径；RepositoryController 通过 `ForgeConnector.list()` 兜底完整性，为尚未发现的 identity
+创建缺失 Resource，并安排下一次扫描。PullRequest
 创建后由 Baton 自动入队，逐 Resource 的 PullRequestController 再通过
 `ForgeConnector.get()` 刷新状态。merged 保留为 Requirement 收尾证据，并在 review 状态为
 unknown 或 unresolved 时继续观察；closed 和 review 已收敛的 merged 不再轮询，closed 也不会

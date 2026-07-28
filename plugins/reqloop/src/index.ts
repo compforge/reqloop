@@ -1,21 +1,17 @@
 import type {
   PluginActivationContext,
   PluginPackage,
+  Source,
 } from "@qiankun01/baton-plugin";
-import { spawnSync } from "node:child_process";
 
 import {
   createRepositoryController,
 } from "./repositories/controller.ts";
 import type {
-  PullRequestDiscoverySource,
-  RepositoryIdentity,
+  RepositorySpec,
 } from "./repositories/protocol.ts";
 import {
-  ensureRepositoryResource,
-} from "./repositories/resource.ts";
-import {
-  DevloopPullRequestSource,
+  DevloopRepositorySource,
 } from "./repositories/sources/devloop.ts";
 import {
   DevloopReviewConnector,
@@ -35,16 +31,20 @@ import {
   createPullRequestController,
 } from "./pull-requests/controller.ts";
 import {
+  DevloopPullRequestSource,
+} from "./pull-requests/sources/devloop.ts";
+import {
   createForgeConnectors,
 } from "./pull-requests/connectors/config.ts";
 import type {
   ForgeConnector,
+  PullRequestSpec,
   PullRequestReviewConnector,
 } from "./pull-requests/protocol.ts";
 import { upsertPullRequestReview } from "./pull-requests/resource.ts";
 
 export const REQLOOP_PLUGIN_ID = "qiankunli/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.1.13";
+export const REQLOOP_PACKAGE_VERSION = "0.1.14";
 
 function currentRepo(context: PluginActivationContext): string {
   const cwd = context.session.cwd;
@@ -54,52 +54,13 @@ function currentRepo(context: PluginActivationContext): string {
   return cwd;
 }
 
-function currentRepository(
-  cwd: string,
-): RepositoryIdentity | undefined {
-  const result = spawnSync(
-    "git",
-    ["remote", "get-url", "origin"],
-    {
-      cwd,
-      encoding: "utf8",
-      timeout: 5_000,
-      stdio: ["ignore", "pipe", "ignore"],
-    },
-  );
-  if (result.error || result.status !== 0) return;
-  const remote = result.stdout?.toString().trim();
-  if (!remote) return;
-
-  let source: string;
-  let repository: string;
-  if (!remote.includes("://")) {
-    const match = remote.match(/^(?:[^@]+@)?([^:]+):(.+)$/);
-    if (!match) return;
-    source = match[1]!;
-    repository = match[2]!;
-  } else {
-    let url: URL;
-    try {
-      url = new URL(remote);
-    } catch {
-      return;
-    }
-    source = url.hostname;
-    repository = url.pathname.replace(/^\/+/, "");
-  }
-  repository = repository.replace(/\.git$/, "");
-  if (!source || !repository) return;
-  return Object.freeze({ source, repository });
-}
-
 export function createReqloopPackage(options: {
   reviewConnector?: PullRequestReviewConnector;
   requirementConnector?: RequirementConnector;
   requirementConnectors?: readonly RequirementConnector[];
   forgeConnectors?: readonly ForgeConnector[];
-  repositories?: readonly RepositoryIdentity[];
-  pullRequestDiscoverySources?: readonly PullRequestDiscoverySource[];
+  repositorySources?: readonly Source<RepositorySpec>[];
+  pullRequestSources?: readonly Source<PullRequestSpec>[];
 } = {}): PluginPackage {
   return Object.freeze({
     pluginId: REQLOOP_PLUGIN_ID,
@@ -126,26 +87,12 @@ export function createReqloopPackage(options: {
       const forgeConnectors =
         options.forgeConnectors ?? createForgeConnectors();
       const cwd = currentRepo(context);
-      const currentRepositoryIdentity = currentRepository(cwd);
-      const repositories =
-        options.repositories ??
-        [
-          currentRepositoryIdentity,
-        ].filter(
-          (
-            repository,
-          ): repository is RepositoryIdentity =>
-            repository !== undefined,
-        );
-      const pullRequestDiscoverySources =
-        options.pullRequestDiscoverySources ??
-        (currentRepositoryIdentity
-          ? [
-            new DevloopPullRequestSource(cwd, currentRepositoryIdentity, {
-              logger: context.logger,
-            }),
-          ]
-          : []);
+      const repositorySources =
+        options.repositorySources ??
+        [new DevloopRepositorySource(cwd)];
+      const pullRequestSources =
+        options.pullRequestSources ??
+        [new DevloopPullRequestSource(cwd)];
       const reviewConnector =
         options.reviewConnector ??
         new DevloopReviewConnector(cwd);
@@ -158,19 +105,16 @@ export function createReqloopPackage(options: {
           context.resources,
           forgeConnectors,
           reviewConnector,
+          pullRequestSources,
         ),
       );
       context.registerController(
         createRepositoryController(
           context.resources,
           forgeConnectors,
-          pullRequestDiscoverySources,
-          context.logger,
+          repositorySources,
         ),
       );
-      for (const repository of repositories) {
-        ensureRepositoryResource(context.resources, repository);
-      }
     },
   });
 }
@@ -183,6 +127,7 @@ export * from "./repositories/controller.ts";
 export * from "./repositories/protocol.ts";
 export * from "./repositories/resource.ts";
 export * from "./repositories/sources/devloop.ts";
+export * from "./pull-requests/sources/devloop.ts";
 export * from "./pull-requests/connectors/config.ts";
 export * from "./pull-requests/connectors/devloop-review.ts";
 export * from "./pull-requests/connectors/github.ts";
