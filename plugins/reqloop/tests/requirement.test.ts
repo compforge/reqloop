@@ -209,6 +209,82 @@ describe("Requirement Resource", () => {
     ).toEqual([]);
   });
 
+  test("maps PullRequest association changes to Requirement requests", () => {
+    const resources = resourceClient();
+    const requirement = upsertRequirement(resources.client, {
+      source: "meego",
+      category: "story",
+      id: "REQ-WATCH",
+      title: "Watch linked pull requests",
+      state: "in_progress",
+    });
+    const pullRequest = resources.client.create<
+      PullRequestSpec,
+      PullRequestStatus
+    >(PULL_REQUEST_RESOURCE_TYPE, {
+      name: "pr_watch",
+      spec: {
+        identity: {
+          source: "github.com",
+          repository: "owner/repo",
+          number: 11,
+        },
+      },
+    });
+    const linked = resources.client.patchStatus(pullRequest, {
+      requirementAssociation: {
+        state: "linked",
+        requirement: {
+          ...REQUIREMENT_RESOURCE_TYPE,
+          namespace: requirement.metadata.namespace,
+          name: requirement.metadata.name,
+          uid: requirement.metadata.uid,
+        },
+      },
+    });
+    const moved = {
+      ...linked,
+      metadata: {
+        ...linked.metadata,
+        resourceVersion: "3",
+      },
+      status: {
+        ...linked.status,
+        requirementAssociation: {
+          state: "linked" as const,
+          requirement: {
+            ...REQUIREMENT_RESOURCE_TYPE,
+            namespace: requirement.metadata.namespace,
+            name: "req_other",
+            uid: "uid-req_other",
+          },
+        },
+      },
+    };
+    const controller = createRequirementController(resources.client);
+    const watch = controller.watches?.[0];
+
+    expect(watch?.resourceType).toBe(PULL_REQUEST_RESOURCE_TYPE);
+    expect(watch?.handler.create({ object: pullRequest })).toEqual([]);
+    expect(watch?.handler.update({
+      oldObject: pullRequest,
+      newObject: linked,
+    })).toEqual([{ name: requirement.metadata.name }]);
+    expect(watch?.handler.create({ object: linked })).toEqual([
+      { name: requirement.metadata.name },
+    ]);
+    expect(watch?.handler.update({
+      oldObject: linked,
+      newObject: moved,
+    })).toEqual([
+      { name: requirement.metadata.name },
+      { name: "req_other" },
+    ]);
+    expect(watch?.handler.delete({ object: moved })).toEqual([
+      { name: "req_other" },
+    ]);
+  });
+
   test("refreshes external state and reminds once when linked PRs are done", async () => {
     const resources = resourceClient();
     const requirement = upsertRequirement(resources.client, {
@@ -241,9 +317,11 @@ describe("Requirement Resource", () => {
           ...REQUIREMENT_RESOURCE_TYPE,
           namespace: requirement.metadata.namespace,
           name: requirement.metadata.name,
+          uid: requirement.metadata.uid,
         },
       },
     });
+    let observationCalls = 0;
     const connector: RequirementConnector = {
       source: "meego",
       provider: "meego",
@@ -251,6 +329,7 @@ describe("Requirement Resource", () => {
         return [];
       },
       async get(identity) {
+        observationCalls += 1;
         return {
           ...identity,
           title: "Close completed requirement",
@@ -349,6 +428,7 @@ describe("Requirement Resource", () => {
 
     await controller.reconcile({} as never, resources.current()!);
     expect(toasts).toHaveLength(1);
+    expect(observationCalls).toBe(1);
   });
 
   test("records a failed Requirement observation before retrying", async () => {
@@ -359,6 +439,32 @@ describe("Requirement Resource", () => {
       id: "REQ-FAILED",
       title: "Unavailable requirement",
       state: "in_progress",
+    });
+    const pullRequest = resources.client.create<
+      PullRequestSpec,
+      PullRequestStatus
+    >(PULL_REQUEST_RESOURCE_TYPE, {
+      name: "pr_observation_failed",
+      spec: {
+        identity: {
+          source: "github.com",
+          repository: "owner/repo",
+          number: 19,
+        },
+      },
+    });
+    resources.client.patchStatus(pullRequest, {
+      lifecycle: "open",
+      reviewThreads: "resolved",
+      requirementAssociation: {
+        state: "linked",
+        requirement: {
+          ...REQUIREMENT_RESOURCE_TYPE,
+          namespace: requirement.metadata.namespace,
+          name: requirement.metadata.name,
+          uid: requirement.metadata.uid,
+        },
+      },
     });
     const connector: RequirementConnector = {
       source: "meego",
@@ -387,6 +493,57 @@ describe("Requirement Resource", () => {
       status: "False",
       reason: "ObservationFailed",
     });
+    expect(resources.current()?.status.linkedPullRequests).toEqual({
+      total: 1,
+      open: 1,
+      merged: 0,
+      conflicted: 0,
+      unresolvedReviewThreads: 0,
+    });
+  });
+
+  test("does not inherit PullRequests linked to a replaced Requirement", async () => {
+    const resources = resourceClient();
+    const requirement = upsertRequirement(resources.client, {
+      source: "meego",
+      category: "story",
+      id: "REQ-REPLACED",
+      title: "Replacement requirement",
+      state: "in_progress",
+    });
+    const pullRequest = resources.client.create<
+      PullRequestSpec,
+      PullRequestStatus
+    >(PULL_REQUEST_RESOURCE_TYPE, {
+      name: "pr_old_requirement",
+      spec: {
+        identity: {
+          source: "github.com",
+          repository: "owner/repo",
+          number: 20,
+        },
+      },
+    });
+    resources.client.patchStatus(pullRequest, {
+      lifecycle: "merged",
+      reviewThreads: "resolved",
+      requirementAssociation: {
+        state: "linked",
+        requirement: {
+          ...REQUIREMENT_RESOURCE_TYPE,
+          namespace: requirement.metadata.namespace,
+          name: requirement.metadata.name,
+          uid: "uid-deleted-requirement",
+        },
+      },
+    });
+
+    await createRequirementController(resources.client).reconcile(
+      {} as never,
+      requirement,
+    );
+
+    expect(resources.current()?.status.linkedPullRequests?.total).toBe(0);
   });
 
   test("ignores linked closed PullRequests in the Requirement projection", async () => {
@@ -420,6 +577,7 @@ describe("Requirement Resource", () => {
           ...REQUIREMENT_RESOURCE_TYPE,
           namespace: requirement.metadata.namespace,
           name: requirement.metadata.name,
+          uid: requirement.metadata.uid,
         },
       },
     });

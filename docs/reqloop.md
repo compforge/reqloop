@@ -114,9 +114,9 @@ cwd”的稳定语义，不持久化机器相关的绝对路径；发现结果�
 
 Workspace 仍配置 `WorkspaceSource`，但 Source 不拥有扫描事实。它在激活时贡献单例 Workspace，
 并监听根目录、一级候选目录以及已知 `.devloop/pr.json` 的变化；变化发生时只重新 emit 同一份
-Workspace spec，把事件转换成 wake。`WorkspaceController` 被唤醒后重新读取文件系统，确保
-对应 Repository 和活跃 PullRequest Resource 存在，再更新 Workspace status。因此遗漏或合并
-文件事件不会破坏正确性，固定周期的 cron Source 仍作为完整性兜底。
+Workspace spec，使主 Resource 进入 keyed reconcile queue。`WorkspaceController` 随后重新读取
+文件系统，确保对应 Repository 和活跃 PullRequest Resource 存在，再更新 Workspace status。
+因此遗漏或合并文件事件不会破坏正确性，固定周期的 cron Source 仍作为完整性兜底。
 
 首版扫描必须有界：只检查 workspace 根目录自身，以及一级子目录和一级符号链接指向的目录，
 不做无上限递归。WorkspaceSource 提供低延迟感知，不是语义上的必需依赖；即使 watcher 不可用，
@@ -141,6 +141,9 @@ Repository
 稳定 identity 幂等确保 Repository；未来 Requirement 支持 `repositoryRefs` 后，用户确认仓库
 目标的入口同样负责确保对应 Repository 存在。多个 Workspace 路径或 Requirement 指向同一仓库
 时复用同一 Resource；发现 PR/MR 或创建 Requirement 本身都不是新建 Repository 的理由。
+RepositoryController Watches Workspace 的旧、新成员引用；默认 Workspace 入口不再引用某个
+Repository 时，将其标记为离开观察范围、停止外部轮询并从 Board 隐藏，重新进入时复用原 Resource
+并恢复观察。
 
 WorkspaceController 读取各仓库的 `.devloop/pr.json` 作为活跃 PullRequest 的本地快速发现入口。
 缺失或单仓读取失败不阻塞其它仓库。RepositoryController 独立通过 `ForgeConnector.list()` 兜底
@@ -180,9 +183,19 @@ PR/MR 的小闭环；reqloop 用独立 Resource 观察需求级收尾条件。�
 
 一份 PullRequest 最多关联一个 Requirement，也可以保持独立。关联只以
 `PullRequest.status.requirementAssociation` 为事实源；Requirement 不反向保存列表，需要汇总时
-由 reqloop 扫描或建立派生索引。关联问题只询问一次：字段缺失表示尚未询问，`prompted` 表示已经
-询问，`linked` 保存 Requirement ResourceRef，`standalone` 表示用户明确选择独立跟踪。即使
-Interaction 被取消，持久的 `prompted` 也阻止系统在每次 reconcile 时重复打扰用户。
+由 Requirement reconcile 扫描当前 PullRequest Resources。Requirement Controller 在 PullRequest
+上声明 Watches，EventHandler 把 create / update / delete 映射为关联 Requirement 的
+`ReconcileRequest`；update 同时映射 old / new 关联，因此改挂时两边都能重新汇总，delete 使用
+最后一份快照移除旧汇总。Watch 只负责路由，不成为关联事实或派生索引。关联保存包含
+`namespace/name/uid` 的完整 ResourceRef，Requirement 重建后不会继承旧 incarnation 的 PR。
+关联问题只询问一次：
+字段缺失表示 status 尚无归属决定，Controller 仍会先检查 Baton 的 durable Interaction；
+`prompted` 保留取消或恢复中的 decision key，`linked` 保存 Requirement ResourceRef，
+`standalone` 表示用户明确选择独立跟踪。即使
+Interaction 被取消，Baton 的持久决议和随后写入的 `prompted` 也会阻止系统重复打扰用户。
+Controller 只有看到 Baton 已持久化的 Interaction snapshot 后才写最终决定；如果 status 已是
+`prompted` 但 Interaction 尚未落盘，则幂等返回同一 `decisionKey`，避免崩溃窗口丢失问题。
+PullRequestController 还 Watches Requirement 从非活跃变为活跃，把尚待关联的开放 PR 重新入队。
 
 Board 展示活跃 Requirement，也单独展示孤立的活跃 PullRequest。PullRequest 关联 Requirement
 后仍保持独立 Resource 和生命周期，但 Board 以 Requirement 为主，不再重复生成 PR 卡片；
@@ -199,10 +212,10 @@ reqloop 的第一阶段不是追求无人值守，而是先把自动化所需的
 外部变化 / 人的操作 / Harness 结果
               │
               ▼
-       Signal 只负责唤醒
+ Source emit / Watch 只负责 enqueue
               │
               ▼
- Connector 重新读取外部事实
+ 必要时由 Connector 重新读取外部事实
               │
               ▼
  Resource status（事实 + 持久决定）
@@ -211,7 +224,7 @@ reqloop 的第一阶段不是追求无人值守，而是先把自动化所需的
  Reconcile 计算差距并选择动作
 ```
 
-Signal、cron 和事件不直接表示事实。例如“收到 review webhook”只说明 PR 可能变化；
+Source、Watch、cron 和事件不直接表示事实。例如“收到 review webhook”只说明 PR 可能变化；
 Controller 仍须读取 Forge，更新 `reviewThreads` 和 `reviewActivityKey`。后者是外部 review
 thread/comment 集合的稳定指纹：即使状态一直是 `unresolved`，新评论或解决状态变化仍会产生
 新的活动 key，让后续自动化能够区分一次新的外部事件。
@@ -232,19 +245,23 @@ Interaction 询问一次，回答写回 `requirementAssociation`。系统事实�
 自动化提升的是某一类动作在明确范围内的信任等级，不是绕过状态模型的一键开关。每次执行仍要
 保留意图、结果和最新外部观测；副作用不确定时先重新观察，不能盲目重试。
 
-集合发现有两条并行入口：WorkspaceSource 监听本地变化并唤醒 WorkspaceController，后者重扫
+集合发现有两条并行入口：WorkspaceSource 监听本地变化并重新 emit Workspace，后者重扫
 workspace 与 `.devloop/pr.json`，缩短本地发现路径；RepositoryController 通过
 `ForgeConnector.list()` 兜底外部集合完整性，为尚未发现的 identity 创建缺失 Resource，并安排
 下一次扫描。PullRequest 创建后由 Baton 自动入队，逐 Resource 的 PullRequestController 再通过
 `ForgeConnector.get()` 刷新状态。merged 保留为 Requirement 收尾证据，并在 review 状态为
 unknown 或 unresolved 时继续观察；closed 和 review 已收敛的 merged 不再轮询，closed 也不会
-被发现。未来其它发现手段仍应确保同一
+被发现。PullRequest 的关联或观察 status 改变后，Requirement 的 Watch 将 create / update /
+delete 事件映射到关联 Requirement；Requirement reconcile 再读取最新 PullRequest 集合更新
+完成条件；本地派生汇总不依赖 Requirement 平台本次观察成功，外部观察使用独立 freshness
+节奏。未来其它发现手段仍应确保同一
 Repository 或落成同一种 PullRequest，再复用既有 reconcile 路径。
 
 ### RequirementController
 
-`RequirementController` 管理 Requirement Resource。Resource 变化、Harness 结果、启动恢复、
-Controller cron Source 和 `requeueAfter` 到期都只负责让某个 Requirement 重新进入 reconcile；Controller 读取
+`RequirementController` 管理 Requirement Resource。Requirement 自身变化、PullRequest Watch
+映射出的 `ReconcileRequest`、Harness 结果、启动恢复、Controller cron Source 和
+`requeueAfter` 到期都只负责让某个 Requirement 重新进入 reconcile；Controller 读取
 最新 `spec/status` 和必要的外部状态，再决定当前是否需要：
 
 - 更新 `status`，并通过 `present(resource)` 生成 Board presentation；
@@ -252,6 +269,11 @@ Controller cron Source 和 `requeueAfter` 到期都只负责让某个 Requiremen
 - 返回一份 `kind: "interaction"` 的 Plugin Output，请用户作出由当前 Resource 消费的决定；
 - 返回一份 `kind: "proposed-input"` 的 Plugin Output，建议用户审核后交给 Harness；
 - 没有下一步时等待新事实，或用 `requeueAfter` 安排下一次检查。
+
+Requirement 外部观察和 PullRequest 派生投影共享一个 Controller owner，但不共享可用性：
+`lastObservedAt` 控制 Connector freshness，PullRequest Watch 触发的 reconcile 可以直接使用
+本地 Resources 更新 `linkedPullRequests` 和 `ReadyToClose`；即使外部观察失败，也先完成本地
+投影，再保留失败 condition 并交给 Baton 重试。
 
 当前实现中，Connector 成功或失败分别把 `Observed` 更新为 `True` 或 `False`。
 `ReadyToClose` 在没有关联 PR、存在未合并 PR、冲突或未解决 review thread 时为 `False`；
@@ -421,7 +443,8 @@ reqloop 只消费 Baton 归一后的 `harness.delivery.ready`、`harness.develop
 方式；未来其他 agent-loop 规范工具也可以产生同一 DevelopmentOutcome。
 
 review 完成提醒是首个渐进落地的例外适配：devloop 仍在 Harness 内触发 review，并把终态追加到
-自己的 `review-history.jsonl`；reqloop 内部的 `DevloopReviewConnector` 将这份外部 ledger
+各 checkout 自己的 `review-history.jsonl`；reqloop 内部的 Workspace-aware
+`DevloopReviewConnector` 遍历当前 Workspace 发现的 checkout，将这些外部 ledger
 映射为带完整 `source + repository + number` identity 的 PullRequest review observation，
 PullRequestController 通过固定 cron Source 定时重读，并把 review key/status/sha/counts
 持久化到同一个 PullRequest Resource；有 findings、文件失败或 review error 时，先返回
@@ -447,8 +470,8 @@ Harness Work 类型；Harness 的路由、成本、并发、取消和可靠投�
 ## 6. 用户主流程
 
 1. 用户安装并启用 reqloop，配置需求与部署平台。
-2. reqloop 激活时识别当前 checkout 的仓库，并创建或恢复共享的 Repository；其
-   Reconciler 持续发现 PullRequest。
+2. reqloop 激活时从 Workspace 识别一个或多个 checkout 的仓库，并创建或恢复共享的
+   Repository；其 Reconciler 持续发现 PullRequest。
 3. 用户通过 `/requirements` 选择需求，或直接粘贴、输入一项需求；reqloop 创建或恢复
    Requirement Resource，将目标和验收条件写入 `spec`，并展示到 Board。
 4. RequirementController 返回“根据需求完成开发并提交 PR”的 `proposed-input` Output，Board 展示这段
@@ -462,6 +485,8 @@ Harness Work 类型；Harness 的路由、成本、并发、取消和可靠投�
 6. PullRequestController 观察 review thread、merge conflict 与 open / merged / closed；
    当前由 devloop 触发的 review 完成后，`DevloopReviewConnector + cron Source` 也可观察其终态；
    后续由 reqloop 自己发起的远端 review 仍可由 EvaluationConnector 配合 `requeueAfter` 查询。
+   PullRequest 的 create / update / delete 同时由 Requirement Watch 映射到关联 Requirement，
+   update 在改挂时会同时 reconcile 旧、新两侧。
 7. review 要求修改时，Controller 让用户 accept 或 ignore；两种选择都写入 PullRequest status
    且只提醒一次。accept 返回包含 review 意见的修复 `proposed-input`，用户审核后再次驱动 Harness。
 8. 首期 Completion Policy 在至少存在一个关联 PR、所有关联 PR 已 merged 且 review thread

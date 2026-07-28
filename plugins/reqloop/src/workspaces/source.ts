@@ -34,21 +34,21 @@ export class WorkspaceSource implements Source<WorkspaceSpec> {
 
   start(context: SourceContext<WorkspaceSpec>): void {
     if (context.signal.aborted) return;
-    const wake = (): void => this.refresh(context, wake);
+    const onChange = (): void => this.refresh(context, onChange);
     context.signal.addEventListener(
       "abort",
-      () => this.stop(wake),
+      () => this.stop(onChange),
       { once: true },
     );
-    this.refresh(context, wake);
+    this.refresh(context, onChange);
   }
 
   private refresh(
     context: SourceContext<WorkspaceSpec>,
-    wake: () => void,
+    onChange: () => void,
   ): void {
     try {
-      this.syncWatchers(wake);
+      this.syncWatchers(onChange);
       this.lastFailureKey = undefined;
     } catch (error) {
       const key = errorKey(error);
@@ -66,7 +66,7 @@ export class WorkspaceSource implements Source<WorkspaceSpec> {
     });
   }
 
-  private syncWatchers(wake: () => void): void {
+  private syncWatchers(onChange: () => void): void {
     const targets = new Set<string>();
     for (const candidate of workspaceCandidates(this.root)) {
       targets.add(candidate.path);
@@ -79,7 +79,7 @@ export class WorkspaceSource implements Source<WorkspaceSpec> {
 
     for (const path of this.watchers.keys()) {
       if (targets.has(path)) continue;
-      unwatchFile(path, wake);
+      unwatchFile(path, onChange);
       this.watchers.delete(path);
     }
     for (const path of targets) {
@@ -87,14 +87,14 @@ export class WorkspaceSource implements Source<WorkspaceSpec> {
       watchFile(path, {
         interval: this.watchIntervalMs,
         persistent: false,
-      }, wake);
-      this.watchers.set(path, wake);
+      }, onChange);
+      this.watchers.set(path, onChange);
     }
   }
 
-  private stop(wake: () => void): void {
+  private stop(onChange: () => void): void {
     for (const path of this.watchers.keys()) {
-      unwatchFile(path, wake);
+      unwatchFile(path, onChange);
     }
     this.watchers.clear();
   }

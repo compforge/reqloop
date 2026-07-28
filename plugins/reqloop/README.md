@@ -83,71 +83,36 @@ default to GitLab. `api_host` points an origin alias at the real API host.
 Tokens use `GITHUB_TOKEN`, then `GH_TOKEN`, for GitHub and `GITLAB_TOKEN` for
 GitLab; a per-forge `token` field is the fallback.
 
-ReqLoop also observes devloop's append-only review ledger. When the current
-checkout's review completes with findings, file failures, or an error, it first
-asks the user to accept or ignore the result. The choice is persisted once per
-review observation; only `accept` produces a Harness follow-up that evaluates
-and fixes real findings.
+## Resources and flow
 
-ReqLoop owns provider-neutral `Workspace`, `Repository`, and `PullRequest`
-Resources for GitHub and GitLab. The session-scoped Workspace uses the
-BatonSession `cwd` as its root and discovers repositories from the root itself
-plus direct child directories and directory symlinks. `WorkspaceSource`
-contributes the singleton and converts filesystem changes into wakeups;
-`WorkspaceController` performs the authoritative rescan, materializes
-Repository Resources, and reads each repository's `.devloop/pr.json` as the
-low-latency PullRequest discovery path. A malformed cache in one repository is
-reported on Workspace status without blocking other repositories. One
-`Repository` is shared by every Workspace path or Requirement that targets the
-same `source + repository`; it is not created once per Requirement. The
-Repository reconciler independently calls `ForgeConnector.list()` as the
-complete fallback, materializes any missing PullRequest Resources, records the
-latest scan, and schedules the next scan. PullRequest reconciliation then calls
-`get()` to refresh lifecycle, review-thread state and activity, mergeability,
-and observation time. A fixed Workspace cron rescan preserves correctness when
-filesystem watcher events are missed.
-`GitHubForgeConnector` and `GitLabForgeConnector` provide both operations.
-Selecting `/requirements` materializes a stable `Requirement` Resource. An open PullRequest is
-shown on the Board while standalone. Linking it to a Requirement keeps the
-PullRequest Resource independent but presents the Requirement as the primary
-Board item. Merged PullRequests leave the Board and
-keep polling only while review state is unresolved or unavailable. Closed and
-review-settled merged PullRequests stop polling; closed PullRequests are not
-discovered.
-Requirement cards summarize linked PR lifecycle, conflicts, and unresolved
-review threads. Review-thread lookup degrades to `unknown` when an instance or
-token does not expose that API, and ordinary conversation comments are never
-treated as unresolved review threads.
+ReqLoop owns four provider-neutral Resources:
 
-`RequirementController` refreshes active Requirements from their configured
-Connector. `status.conditions` records `Observed` for Connector freshness and
-`ReadyToClose` for the current completion predicate. The latter is `Unknown`
-when review-thread state is unavailable, `False` while linked PullRequests
-still block completion, and `True` only when at least one linked PullRequest
-exists, all are merged, and every review-thread state is `none` or `resolved`.
-That `True` transition drives a deduplicated toast asking the user to close the
-Requirement in its source platform. ReqLoop does not mutate external
-Requirement state yet.
+- `Workspace` — the BatonSession working directory and its discovered checkouts.
+- `Repository` — one external repository currently in the observation scope.
+- `PullRequest` — a GitHub PR or GitLab MR and its delivery/review state.
+- `Requirement` — a selected requirement and the aggregate progress of its
+  associated PullRequests.
+
+The main data flow is:
 
 ```text
-devloop review-history.jsonl
-  → DevloopReviewConnector
-  → matching PullRequest status + Controller
-  → durable Interaction
-  → user chooses accept or ignore once
-  → proposed-input
-  → current Harness evaluates and fixes real review comments
+BatonSession cwd → Workspace → Repository → PullRequest
+/requirements   → Requirement ← associated PullRequests
+Forge/devloop   → latest observations → Resource status → Board / context
 ```
 
-The Controller periodically rereads the authoritative ledger through its
-Connector. Devloop writes the full `source + repository + number` identity;
-the same PullRequest status persists the observed review key for restart-safe
-deduplication. Results from another worktree, an older commit, or a local
-review without an open PR/MR are ignored.
+Controllers keep these Resources aligned with the filesystem, Forge,
+requirement platform, and devloop review ledger. When user judgment is needed,
+ReqLoop opens a durable Interaction; an accepted review can become a
+`proposed-input` for the current Harness. ReqLoop does not directly drive a
+Harness or mutate external Requirement state.
+
+See [the Requirement Loop design](../../docs/reqloop.md) for lifecycle,
+reconciliation, and recovery details.
 
 ```text
 pluginId: qiankunli/reqloop
-version:  0.1.15
+version:  0.1.17
 ```
 
 Install this Marketplace in Baton, install `qiankunli/reqloop`, then enable it
@@ -155,53 +120,22 @@ for the BatonSession that owns the repository.
 
 ---
 
-ReqLoop 在 Baton core 之外拥有需求级闭环。`/requirements` 通过
-`RequirementConnector` 展示平台无关的需求列表，选中后读取归一化详情；首个具体平台将接
-Meego。代码平台按同样边界接 `ForgeConnector`，参考 devloop 的 provider-neutral Forge 模型，
-但不导入其实现。reqloop 以 BatonSession `cwd` 创建 session-scoped `Workspace`，扫描根目录
-自身、一级子目录和一级目录符号链接。`WorkspaceSource` 贡献这个单例并把文件变化转换成 wake；
-`WorkspaceController` 负责权威重扫，按 `source + repository` 幂等创建 `Repository` Resource，
-并读取每个仓库的 `.devloop/pr.json` 作为活跃 PR/MR 的低延迟发现入口。单仓缓存异常只记录到
-Workspace status，不阻塞其它仓库。多个 Workspace 路径或 Requirement 指向同一仓库时复用同一
-Repository，不按需求重复创建。RepositoryController 仍通过 Connector `list()` 兜底完整性，
-创建尚未发现的 PullRequest Resource、记录扫描结果并安排下一次扫描；固定 cron 在 watcher
-漏事件时重扫 Workspace。逐 PullRequest reconcile 再调用 `get()` 刷新生命周期、review thread、
-merge conflict 和 review activity fingerprint。`/requirements` 选中的需求会物化为稳定的
-`Requirement` Resource。孤立且活跃的 PullRequest 会单独显示在 Board；关联
-Requirement 后仍保留独立 Resource，但 Board 以 Requirement 为主展示。merged 后生命周期
-结束后仅在 review 状态未收敛时继续轮询；closed 和 review 已收敛的 merged PullRequest
-不再轮询，closed PullRequest 也不再发现。Requirement 卡片会汇总关联 PR 的生命周期、
-merge conflict 和 unresolved review thread。devloop review 也通过完整 PullRequest identity
-汇入同一个 Resource。
+ReqLoop 在 Baton core 之外拥有需求级闭环，核心有四种 Resource：
 
-RequirementController 会通过配置的 Connector 定时刷新活跃需求，并在
-`status.conditions` 中维护外部观测 `Observed` 与收尾谓词 `ReadyToClose`。review thread
-不可观察时后者为 `Unknown`，仍有 PR 阻塞时为 `False`；只有至少存在一个关联 PR、所有关联 PR
-都已 merged，且 review thread 状态均为 none 或 resolved 时才为 `True`，并去重吐出 toast
-提醒用户前往需求平台关闭需求。当前阶段不会代用户修改外部需求状态。
+- `Workspace`：当前 BatonSession 的工作目录及其中发现的 checkout；
+- `Repository`：进入当前观察范围的外部仓库；
+- `PullRequest`：GitHub PR / GitLab MR 及其交付、review 状态；
+- `Requirement`：用户选择的需求，以及关联 PullRequest 的聚合进度。
 
-`/requirements` Picker 带搜索框；Baton 对输入做防抖并丢弃过期响应，reqloop 将最新查询词
-交给每个 RequirementConnector。当前使用有界结果集，不做分页；零结果仍保持
-Picker 打开，方便继续修改查询。
+整体数据流与控制流如下：
 
-已选择并物化的活跃 Requirement 也会出现在 Baton 的 `@` 补全中，分组为
-`reqloop@requirement`。搜索只读取当前 BatonSession 的 Requirement Resource，不会随输入调用
-Meego 或其它外部平台；选中后只向本次 Harness turn 注入归一化的需求上下文。
+```text
+BatonSession cwd → Workspace → Repository → PullRequest
+/requirements   → Requirement ← 关联的 PullRequests
+Forge / devloop / 需求平台 → 最新观察 → Resource status → Board / context
+需要用户判断 → durable Interaction → proposed-input → 当前 Harness
+```
 
-`requirements` 是以 source 为 key 的具名 Connector 集合，存在即生效，允许同时配置多个需求
-平台或同一平台的多个实例。Meego 的 `story`、`issue` 等分类由 Connector 填入 `category`。
-reqloop 使用 `source` 路由，并将 `category + id` 原样交回 Connector，不根据分类分支。Meego
-Connector 通过公开发布的 Meegle CLI 读取需求；OAuth token 由 CLI 的系统钥匙串/profile
-管理，不进入 reqloop 配置、PluginPackage 或公开仓。`~/.baton/plugins/reqloop.json` 只保存
-source 对应的 `projectKey`、可选 profile 和 category 列表。`forges` 以 host/source 为 key，
-支持显式 `type` 与 SSH alias 对应的 `api_host`；GitHub 优先读取 `GITHUB_TOKEN` / `GH_TOKEN`，
-GitLab 优先读取 `GITLAB_TOKEN`，配置内 `token` 仅作为 fallback。
-
-现有 review 能力会观察 devloop 的追加式 review ledger；
-当前 checkout 的 review 出现 finding、文件失败或 error 时，它先发起持久
-`interaction` 让用户选择 accept 或 ignore；选择按 review identity 写入 PullRequest status，
-无论哪种选择都不再重复提醒。只有 accept 才生成 `proposed-input`，让当前 Harness 判断并修复
-真实问题。
-
-Controller 由 cron Source 定时唤醒，并通过 Connector 重读权威 ledger；Resource status 持久记录已观察 review
-identity，因此重启后仍能去重；其他 worktree 或旧 commit 的结果不会串入当前会话。
+Controller 负责让本地 Resource 与文件系统、代码平台、需求平台及 devloop review 结果持续收敛。
+ReqLoop 不直接驱动 Harness，也暂不代用户修改外部 Requirement。生命周期、reconcile 与恢复细节
+见 [Requirement Loop 设计](../../docs/reqloop.md)。

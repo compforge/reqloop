@@ -1,8 +1,9 @@
-import type {
-  Controller,
-  Resource,
-  ResourceClient,
-  ToastSink,
+import {
+  enqueueRequestsFromMapFunc,
+  type Controller,
+  type Resource,
+  type ResourceClient,
+  type ToastSink,
 } from "@qiankun01/baton-plugin";
 
 import type {
@@ -29,6 +30,7 @@ import {
 } from "./conditions.ts";
 
 const REQUIREMENT_POLL_CRON = "0 * * * * *";
+const REQUIREMENT_POLL_INTERVAL_MS = 60_000;
 
 function sameIdentity(
   left: RequirementIdentity,
@@ -48,9 +50,35 @@ function isTerminal(status: RequirementStatus): boolean {
   );
 }
 
+function observationDue(observedAt: string | undefined): boolean {
+  if (!observedAt) return true;
+  const elapsed = Date.now() - Date.parse(observedAt);
+  return !Number.isFinite(elapsed) ||
+    elapsed >= REQUIREMENT_POLL_INTERVAL_MS;
+}
+
+// The association is owned by PullRequest status. Mapping old and new snapshots
+// keeps both Requirement projections correct if that single owner changes.
+const enqueueLinkedRequirement = enqueueRequestsFromMapFunc<
+  PullRequestSpec,
+  PullRequestStatus
+>((pullRequest) => {
+  const association = pullRequest.status.requirementAssociation;
+  if (
+    association?.state !== "linked" ||
+    association.requirement.apiVersion !==
+      REQUIREMENT_RESOURCE_TYPE.apiVersion ||
+    association.requirement.kind !== REQUIREMENT_RESOURCE_TYPE.kind ||
+    association.requirement.namespace !== pullRequest.metadata.namespace
+  ) {
+    return [];
+  }
+  return [{ name: association.requirement.name }];
+});
+
 function linkedPullRequests(
   resources: ResourceClient,
-  requirementName: string,
+  requirement: Readonly<Resource<RequirementSpec, RequirementStatus>>,
 ): readonly Readonly<Resource<PullRequestSpec, PullRequestStatus>>[] {
   return resources
     .list<PullRequestSpec, PullRequestStatus>(
@@ -62,7 +90,12 @@ function linkedPullRequests(
         REQUIREMENT_RESOURCE_TYPE.apiVersion &&
       status.requirementAssociation.requirement.kind ===
         REQUIREMENT_RESOURCE_TYPE.kind &&
-      status.requirementAssociation.requirement.name === requirementName &&
+      status.requirementAssociation.requirement.namespace ===
+        requirement.metadata.namespace &&
+      status.requirementAssociation.requirement.name ===
+        requirement.metadata.name &&
+      status.requirementAssociation.requirement.uid ===
+        requirement.metadata.uid &&
       status.lifecycle !== "closed"
     );
 }
@@ -180,6 +213,10 @@ export function createRequirementController(
 
   return {
     resourceType: REQUIREMENT_RESOURCE_TYPE,
+    watches: [{
+      resourceType: PULL_REQUEST_RESOURCE_TYPE,
+      handler: enqueueLinkedRequirement,
+    }],
     maxConcurrency: 2,
     ...(resources && connectors.length > 0
       ? {
@@ -197,7 +234,8 @@ export function createRequirementController(
       const connector = connectorsBySource.get(
         resource.spec.identity.source,
       );
-      if (connector) {
+      let observationError: unknown;
+      if (connector && observationDue(current.status.lastObservedAt)) {
         try {
           const observation: Requirement = await connector.get(
             resource.spec.identity,
@@ -208,8 +246,11 @@ export function createRequirementController(
             );
           }
           current = upsertRequirement(resources, observation);
+          current = resources.patchStatus(current, {
+            lastObservedAt: new Date().toISOString(),
+          });
         } catch (error) {
-          resources.patchStatus(current, {
+          current = resources.patchStatus(current, {
             conditions: setStatusCondition(current.status.conditions, {
               type: REQUIREMENT_CONDITION.observed,
               status: "False",
@@ -219,14 +260,17 @@ export function createRequirementController(
                 `Requirement observation from ${resource.spec.identity.source} failed.`,
             }),
           });
-          throw error;
+          observationError = error;
         }
       }
-      if (isTerminal(current.status)) return;
+      if (isTerminal(current.status)) {
+        if (observationError) throw observationError;
+        return;
+      }
 
       const pullRequests = linkedPullRequests(
         resources,
-        current.metadata.name,
+        current,
       );
       const readyToClose = readyToCloseCondition(
         pullRequests,
@@ -243,22 +287,24 @@ export function createRequirementController(
         ? closeReminderKey(pullRequests)
         : undefined;
       if (
-        !reminderKey ||
-        current.status.closeReminderKey === reminderKey ||
-        !toast
+        reminderKey &&
+        current.status.closeReminderKey !== reminderKey &&
+        toast
       ) {
-        return;
+        const target = current.status.url
+          ? ` at ${current.status.url}`
+          : ` in ${current.spec.identity.source}`;
+        toast.show({
+          text:
+            `Requirement "${current.spec.title}" looks ready to close. ` +
+            `Please close it${target}.`,
+          tone: "info",
+        });
+        current = resources.patchStatus(current, {
+          closeReminderKey: reminderKey,
+        });
       }
-      const target = current.status.url
-        ? ` at ${current.status.url}`
-        : ` in ${current.spec.identity.source}`;
-      toast.show({
-        text:
-          `Requirement "${current.spec.title}" looks ready to close. ` +
-          `Please close it${target}.`,
-        tone: "info",
-      });
-      resources.patchStatus(current, { closeReminderKey: reminderKey });
+      if (observationError) throw observationError;
     },
     present(resource) {
       const state = resource.status.externalState;

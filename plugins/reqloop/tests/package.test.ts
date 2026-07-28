@@ -81,6 +81,32 @@ function initializeRepository(root: string): void {
   }
 }
 
+function commitRepository(root: string): string {
+  const commit = Bun.spawnSync([
+    "git",
+    "-c",
+    "user.name=ReqLoop Test",
+    "-c",
+    "user.email=reqloop@example.com",
+    "commit",
+    "--allow-empty",
+    "-m",
+    "initial",
+  ], {
+    cwd: root,
+    stdout: "ignore",
+    stderr: "pipe",
+  });
+  if (commit.exitCode !== 0) throw new Error(commit.stderr.toString());
+  const head = Bun.spawnSync(["git", "rev-parse", "HEAD"], {
+    cwd: root,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (head.exitCode !== 0) throw new Error(head.stderr.toString());
+  return head.stdout.toString().trim();
+}
+
 async function waitFor(predicate: () => boolean): Promise<void> {
   const deadline = Date.now() + 1_000;
   while (!predicate()) {
@@ -175,7 +201,7 @@ describe("ReqLoop PluginPackage", () => {
       checkout: () => ({ headSha: "current-head", branch: "feature" }),
     });
 
-    expect(connector.latest()).toMatchObject({
+    expect(connector.listLatest()[0]).toMatchObject({
       identity: {
         source: "github.com",
         repository: "owner/repo",
@@ -190,6 +216,63 @@ describe("ReqLoop PluginPackage", () => {
         },
       ],
     });
+  });
+
+  test("reads review observations from every Workspace checkout", () => {
+    const root = testRoot();
+    const first = join(root, "repo-a");
+    const second = join(root, "repo-b");
+    mkdirSync(first);
+    mkdirSync(second);
+    initializeRepository(first);
+    initializeRepository(second);
+    const firstHead = commitRepository(first);
+    const secondHead = commitRepository(second);
+    appendReview(historyPath(first), {
+      status: "success",
+      sha: firstHead,
+      count: 1,
+      failed: 0,
+      pull_request: {
+        source: "github.com",
+        repository: "owner/repo-a",
+        number: 7,
+      },
+    });
+    appendReview(historyPath(second), {
+      status: "success",
+      sha: secondHead,
+      count: 2,
+      failed: 0,
+      pull_request: {
+        source: "github.com",
+        repository: "owner/repo-b",
+        number: 8,
+      },
+    });
+    const connector = new DevloopReviewConnector(root, {
+      workspaceCheckouts: () => [
+        {
+          path: first,
+          source: "github.com",
+          repository: "owner/repo-a",
+        },
+        {
+          path: second,
+          source: "github.com",
+          repository: "owner/repo-b",
+        },
+      ],
+    });
+
+    expect(
+      connector.listLatest().map(({ identity }) => identity.repository),
+    ).toEqual(["owner/repo-a", "owner/repo-b"]);
+    expect(connector.latest({
+      source: "github.com",
+      repository: "owner/repo-b",
+      number: 8,
+    })?.count).toBe(2);
   });
 
   test("contributes the current checkout as a Repository", () => {
@@ -629,7 +712,7 @@ describe("ReqLoop PluginPackage", () => {
     ]);
   });
 
-  test("registers Sources on their Resource owners", async () => {
+  test("registers Sources and Watches on their Resource owners", async () => {
     const workspaceSource: Source<WorkspaceSpec> = {
       type: "resource",
       sourceId: "workspace-test",
@@ -669,7 +752,10 @@ describe("ReqLoop PluginPackage", () => {
       workspaceSources: [workspaceSource],
       repositorySources: [repositorySource],
       pullRequestSources: [pullRequestSource],
-      reviewConnector: { latest: () => undefined },
+      reviewConnector: {
+        listLatest: () => [],
+        latest: () => undefined,
+      },
     }).activate(context);
 
     expect(controllers.get(REPOSITORY_RESOURCE_TYPE.kind)?.sources).toEqual([
@@ -687,6 +773,21 @@ describe("ReqLoop PluginPackage", () => {
         timeZone: "UTC",
       },
     ]);
+    expect(
+      controllers.get(REQUIREMENT_RESOURCE_TYPE.kind)?.watches?.map(
+        ({ resourceType }) => resourceType,
+      ),
+    ).toEqual([PULL_REQUEST_RESOURCE_TYPE]);
+    expect(
+      controllers.get(PULL_REQUEST_RESOURCE_TYPE.kind)?.watches?.map(
+        ({ resourceType }) => resourceType,
+      ),
+    ).toEqual([REQUIREMENT_RESOURCE_TYPE]);
+    expect(
+      controllers.get(REPOSITORY_RESOURCE_TYPE.kind)?.watches?.map(
+        ({ resourceType }) => resourceType,
+      ),
+    ).toEqual([WORKSPACE_RESOURCE_TYPE]);
   });
 
   test("persists the activation baseline and proposes actionable follow-up", async () => {

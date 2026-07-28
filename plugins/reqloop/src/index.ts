@@ -37,11 +37,12 @@ import type {
 } from "./pull-requests/protocol.ts";
 import { upsertPullRequestReview } from "./pull-requests/resource.ts";
 import { createWorkspaceController } from "./workspaces/controller.ts";
+import { discoverWorkspaceRepositories } from "./workspaces/discovery.ts";
 import type { WorkspaceSpec } from "./workspaces/protocol.ts";
 import { WorkspaceSource } from "./workspaces/source.ts";
 
 export const REQLOOP_PLUGIN_ID = "qiankunli/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.1.15";
+export const REQLOOP_PACKAGE_VERSION = "0.1.17";
 
 function currentRepo(context: PluginActivationContext): string {
   const cwd = context.session.cwd;
@@ -91,9 +92,14 @@ export function createReqloopPackage(options: {
         options.workspaceSources ?? [new WorkspaceSource(cwd)];
       const reviewConnector =
         options.reviewConnector ??
-        new DevloopReviewConnector(cwd);
-      const reviewBaseline = reviewConnector.latest();
-      if (reviewBaseline) {
+        new DevloopReviewConnector(cwd, {
+          workspaceCheckouts: () =>
+            discoverWorkspaceRepositories(cwd).map(({ path, identity }) => ({
+              path,
+              ...identity,
+            })),
+        });
+      for (const reviewBaseline of reviewConnector.listLatest()) {
         upsertPullRequestReview(context.resources, reviewBaseline);
       }
       context.registerController(

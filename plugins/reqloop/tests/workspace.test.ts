@@ -266,7 +266,7 @@ describe("Workspace Resource", () => {
     ).toBe(resourceVersion);
   });
 
-  test("emits the singleton initially and wakes when direct children change", async () => {
+  test("re-emits the singleton when direct children change", async () => {
     const root = testRoot();
     const emitted: Parameters<
       SourceContext<WorkspaceSpec>["emit"]
