@@ -112,7 +112,7 @@ reconciliation, and recovery details.
 
 ```text
 pluginId: qiankunli/reqloop
-version:  0.1.17
+version:  0.1.18
 ```
 
 Install this Marketplace in Baton, install `qiankunli/reqloop`, then enable it

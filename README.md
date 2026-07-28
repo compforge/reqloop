@@ -49,7 +49,7 @@ external devloop review state.
 Register this Git repository as a Marketplace and install the Package you need:
 
 ```bash
-baton plugins marketplace add https://github.com/qiankunli/reqloop.git
+baton plugins marketplace add https://github.com/compforge/reqloop.git
 baton plugins install qiankunli/turn-coach --marketplace reqloop
 baton plugins install qiankunli/reqloop --marketplace reqloop
 baton plugins list
@@ -93,7 +93,7 @@ Proposal contracts.
 - [Turn Coach](./plugins/turn-coach/README.md) — an end-to-end canary for
   Baton-owned Resource replay, persistent state, and proposed input.
 - [ReqLoop](./plugins/reqloop/README.md) — requirement-level coordination;
-  `0.1.17` connects Workspace, Repository, PullRequest, and Requirement
+  `0.1.18` connects Workspace, Repository, PullRequest, and Requirement
   Resources, exposes active requirements as Harness context, and aggregates
   delivery and review progress on the Board.
 
