@@ -40,6 +40,9 @@ import reqloop, {
   type RepositorySpec,
   type RequirementConnector,
   REQUIREMENT_RESOURCE_TYPE,
+  type WorkspaceSpec,
+  WorkspaceSource,
+  WORKSPACE_RESOURCE_TYPE,
 } from "../src/index.ts";
 
 const roots: string[] = [];
@@ -300,6 +303,7 @@ describe("ReqLoop PluginPackage", () => {
     let command: Command | undefined;
     let contextProvider: ContextProvider | undefined;
     const resourceTypes: { apiVersion: string; kind: string }[] = [];
+    let workspaceController: Controller<unknown, unknown> | undefined;
     const context = {
       session: { batonSessionId: "bs_test", cwd: root },
       registerCommand(contribution: Command) {
@@ -309,9 +313,12 @@ describe("ReqLoop PluginPackage", () => {
         contextProvider = provider;
       },
       registerController(
-        controller: { resourceType: { apiVersion: string; kind: string } },
+        controller: Controller<unknown, unknown>,
       ) {
         resourceTypes.push(controller.resourceType);
+        if (controller.resourceType.kind === WORKSPACE_RESOURCE_TYPE.kind) {
+          workspaceController = controller;
+        }
       },
     } as unknown as PluginActivationContext;
 
@@ -324,7 +331,11 @@ describe("ReqLoop PluginPackage", () => {
       REQUIREMENT_RESOURCE_TYPE,
       PULL_REQUEST_RESOURCE_TYPE,
       REPOSITORY_RESOURCE_TYPE,
+      WORKSPACE_RESOURCE_TYPE,
     ]);
+    expect(workspaceController?.sources?.[0]).toBeInstanceOf(
+      WorkspaceSource,
+    );
     expect(contextProvider?.kind).toBe("requirement");
     expect(await command!.execute({ argument: "intake" })).toMatchObject({
       kind: "picker",
@@ -618,7 +629,12 @@ describe("ReqLoop PluginPackage", () => {
     ]);
   });
 
-  test("registers Repository and PullRequest Sources on their owners", async () => {
+  test("registers Sources on their Resource owners", async () => {
+    const workspaceSource: Source<WorkspaceSpec> = {
+      type: "resource",
+      sourceId: "workspace-test",
+      start() {},
+    };
     const repositorySource: Source<RepositorySpec> = {
       type: "resource",
       sourceId: "repository-test",
@@ -650,6 +666,7 @@ describe("ReqLoop PluginPackage", () => {
     await createReqloopPackage({
       requirementConnectors: [],
       forgeConnectors: [],
+      workspaceSources: [workspaceSource],
       repositorySources: [repositorySource],
       pullRequestSources: [pullRequestSource],
       reviewConnector: { latest: () => undefined },
@@ -661,6 +678,15 @@ describe("ReqLoop PluginPackage", () => {
     expect(
       controllers.get(PULL_REQUEST_RESOURCE_TYPE.kind)?.sources?.[0],
     ).toBe(pullRequestSource);
+    expect(controllers.get(WORKSPACE_RESOURCE_TYPE.kind)?.sources).toEqual([
+      workspaceSource,
+      {
+        type: "cron",
+        sourceId: "workspace-resync",
+        cron: "*/30 * * * * *",
+        timeZone: "UTC",
+      },
+    ]);
   });
 
   test("persists the activation baseline and proposes actionable follow-up", async () => {
@@ -771,7 +797,6 @@ describe("ReqLoop PluginPackage", () => {
     expect(resource?.status.review?.sha).toBe("baseline");
     expect(controller?.resourceType).toBe(PULL_REQUEST_RESOURCE_TYPE);
     expect(controller?.sources).toEqual([
-      expect.any(DevloopPullRequestSource),
       {
         type: "cron",
         sourceId: "pull-request-poll",

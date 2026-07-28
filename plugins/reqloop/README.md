@@ -89,20 +89,23 @@ asks the user to accept or ignore the result. The choice is persisted once per
 review observation; only `accept` produces a Harness follow-up that evaluates
 and fixes real findings.
 
-ReqLoop owns provider-neutral `Repository` and `PullRequest` Resources for
-GitHub and GitLab. A repository enters observation scope when the plugin is
-activated for a checkout whose `origin` can be identified.
-`DevloopRepositorySource` contributes that Repository directly to the
-Repository Controller. One `Repository` is shared by every
-Requirement that targets the same `source + repository`; it is not created once
-per Requirement. `DevloopPullRequestSource` watches the current repository's
-`.devloop/pr.json` and contributes open PullRequest Resources directly to the
-PullRequest Controller for low-latency discovery. Missing or malformed devloop
-state never blocks the loop. The Repository reconciler independently calls
-`ForgeConnector.list()` as the complete fallback, materializes any missing
-PullRequest Resources, records the latest scan, and schedules the next scan.
-PullRequest reconciliation then calls `get()` to refresh lifecycle,
-review-thread state and activity, mergeability, and observation time.
+ReqLoop owns provider-neutral `Workspace`, `Repository`, and `PullRequest`
+Resources for GitHub and GitLab. The session-scoped Workspace uses the
+BatonSession `cwd` as its root and discovers repositories from the root itself
+plus direct child directories and directory symlinks. `WorkspaceSource`
+contributes the singleton and converts filesystem changes into wakeups;
+`WorkspaceController` performs the authoritative rescan, materializes
+Repository Resources, and reads each repository's `.devloop/pr.json` as the
+low-latency PullRequest discovery path. A malformed cache in one repository is
+reported on Workspace status without blocking other repositories. One
+`Repository` is shared by every Workspace path or Requirement that targets the
+same `source + repository`; it is not created once per Requirement. The
+Repository reconciler independently calls `ForgeConnector.list()` as the
+complete fallback, materializes any missing PullRequest Resources, records the
+latest scan, and schedules the next scan. PullRequest reconciliation then calls
+`get()` to refresh lifecycle, review-thread state and activity, mergeability,
+and observation time. A fixed Workspace cron rescan preserves correctness when
+filesystem watcher events are missed.
 `GitHubForgeConnector` and `GitLabForgeConnector` provide both operations.
 Selecting `/requirements` materializes a stable `Requirement` Resource. An open PullRequest is
 shown on the Board while standalone. Linking it to a Requirement keeps the
@@ -144,7 +147,7 @@ review without an open PR/MR are ignored.
 
 ```text
 pluginId: qiankunli/reqloop
-version:  0.1.14
+version:  0.1.15
 ```
 
 Install this Marketplace in Baton, install `qiankunli/reqloop`, then enable it
@@ -155,13 +158,14 @@ for the BatonSession that owns the repository.
 ReqLoop 在 Baton core 之外拥有需求级闭环。`/requirements` 通过
 `RequirementConnector` 展示平台无关的需求列表，选中后读取归一化详情；首个具体平台将接
 Meego。代码平台按同样边界接 `ForgeConnector`，参考 devloop 的 provider-neutral Forge 模型，
-但不导入其实现。仓库进入观察范围时，reqloop 按 `source + repository` 幂等创建一份
-`Repository` Resource；`DevloopRepositorySource` 在 Plugin 激活后识别 BatonSession `cwd`
-的 `origin`，并把 Repository 直接贡献给 RepositoryController。多个 Requirement 指向同一仓库时
-复用它，不按需求重复创建。`DevloopPullRequestSource` 监听当前仓库 `.devloop/pr.json`，把其中
-活跃 PR/MR 直接贡献给 PullRequestController 做低延迟发现；缺文件或异常不会阻塞闭环。
-RepositoryController 仍通过 Connector `list()` 兜底完整性，创建尚未发现的 PullRequest
-Resource、记录扫描结果并安排下一次扫描；逐 PullRequest reconcile 再调用 `get()` 刷新生命周期、review thread、
+但不导入其实现。reqloop 以 BatonSession `cwd` 创建 session-scoped `Workspace`，扫描根目录
+自身、一级子目录和一级目录符号链接。`WorkspaceSource` 贡献这个单例并把文件变化转换成 wake；
+`WorkspaceController` 负责权威重扫，按 `source + repository` 幂等创建 `Repository` Resource，
+并读取每个仓库的 `.devloop/pr.json` 作为活跃 PR/MR 的低延迟发现入口。单仓缓存异常只记录到
+Workspace status，不阻塞其它仓库。多个 Workspace 路径或 Requirement 指向同一仓库时复用同一
+Repository，不按需求重复创建。RepositoryController 仍通过 Connector `list()` 兜底完整性，
+创建尚未发现的 PullRequest Resource、记录扫描结果并安排下一次扫描；固定 cron 在 watcher
+漏事件时重扫 Workspace。逐 PullRequest reconcile 再调用 `get()` 刷新生命周期、review thread、
 merge conflict 和 review activity fingerprint。`/requirements` 选中的需求会物化为稳定的
 `Requirement` Resource。孤立且活跃的 PullRequest 会单独显示在 Board；关联
 Requirement 后仍保留独立 Resource，但 Board 以 Requirement 为主展示。merged 后生命周期

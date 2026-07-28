@@ -1,13 +1,15 @@
 import { spawnSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 
 import type { RepositoryIdentity } from "./protocol.ts";
 
-export function currentRepositoryIdentity(
+function gitOutput(
   cwd: string,
-): RepositoryIdentity | undefined {
+  args: readonly string[],
+): string | undefined {
   const result = spawnSync(
     "git",
-    ["remote", "get-url", "origin"],
+    args,
     {
       cwd,
       encoding: "utf8",
@@ -16,7 +18,24 @@ export function currentRepositoryIdentity(
     },
   );
   if (result.error || result.status !== 0) return;
-  const remote = result.stdout?.toString().trim();
+  const output = result.stdout?.toString().trim();
+  return output || undefined;
+}
+
+export function isRepositoryRoot(cwd: string): boolean {
+  const topLevel = gitOutput(cwd, ["rev-parse", "--show-toplevel"]);
+  if (!topLevel) return false;
+  try {
+    return realpathSync(cwd) === realpathSync(topLevel);
+  } catch {
+    return false;
+  }
+}
+
+export function currentRepositoryIdentity(
+  cwd: string,
+): RepositoryIdentity | undefined {
+  const remote = gitOutput(cwd, ["remote", "get-url", "origin"]);
   if (!remote) return;
 
   let source: string;
