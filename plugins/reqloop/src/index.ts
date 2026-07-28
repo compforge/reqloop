@@ -8,11 +8,15 @@ import {
   createRepositoryController,
 } from "./repositories/controller.ts";
 import type {
+  PullRequestDiscoverySource,
   RepositoryIdentity,
 } from "./repositories/protocol.ts";
 import {
   ensureRepositoryResource,
 } from "./repositories/resource.ts";
+import {
+  DevloopPullRequestSource,
+} from "./repositories/sources/devloop.ts";
 import {
   DevloopReviewConnector,
 } from "./pull-requests/connectors/devloop-review.ts";
@@ -95,6 +99,7 @@ export function createReqloopPackage(options: {
   requirementConnectors?: readonly RequirementConnector[];
   forgeConnectors?: readonly ForgeConnector[];
   repositories?: readonly RepositoryIdentity[];
+  pullRequestDiscoverySources?: readonly PullRequestDiscoverySource[];
 } = {}): PluginPackage {
   return Object.freeze({
     pluginId: REQLOOP_PLUGIN_ID,
@@ -120,19 +125,30 @@ export function createReqloopPackage(options: {
       );
       const forgeConnectors =
         options.forgeConnectors ?? createForgeConnectors();
+      const cwd = currentRepo(context);
+      const currentRepositoryIdentity = currentRepository(cwd);
       const repositories =
         options.repositories ??
         [
-          currentRepository(currentRepo(context)),
+          currentRepositoryIdentity,
         ].filter(
           (
             repository,
           ): repository is RepositoryIdentity =>
             repository !== undefined,
         );
+      const pullRequestDiscoverySources =
+        options.pullRequestDiscoverySources ??
+        (currentRepositoryIdentity
+          ? [
+            new DevloopPullRequestSource(cwd, currentRepositoryIdentity, {
+              logger: context.logger,
+            }),
+          ]
+          : []);
       const reviewConnector =
         options.reviewConnector ??
-        new DevloopReviewConnector(currentRepo(context));
+        new DevloopReviewConnector(cwd);
       const reviewBaseline = reviewConnector.latest();
       if (reviewBaseline) {
         upsertPullRequestReview(context.resources, reviewBaseline);
@@ -148,6 +164,8 @@ export function createReqloopPackage(options: {
         createRepositoryController(
           context.resources,
           forgeConnectors,
+          pullRequestDiscoverySources,
+          context.logger,
         ),
       );
       for (const repository of repositories) {
@@ -164,6 +182,7 @@ export * from "./config.ts";
 export * from "./repositories/controller.ts";
 export * from "./repositories/protocol.ts";
 export * from "./repositories/resource.ts";
+export * from "./repositories/sources/devloop.ts";
 export * from "./pull-requests/connectors/config.ts";
 export * from "./pull-requests/connectors/devloop-review.ts";
 export * from "./pull-requests/connectors/github.ts";
