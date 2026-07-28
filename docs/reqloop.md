@@ -1,7 +1,7 @@
 # reqloop：Requirement Loop Plugin 设计
 
-> 状态：讨论草案。reqloop 是 Baton 随产品交付的首个官方场景 Plugin，用一条开箱可理解的
-> Requirement Loop 展示 Baton 能做什么。本文只描述 reqloop 的领域与内部边界；Baton 的通用
+> 状态：讨论草案。reqloop 是独立交付的 Requirement Loop Marketplace / Plugin。本文只描述
+> reqloop 的领域与内部边界；Baton 的通用
 > Plugin、Resource 和 Reconcile 契约见
 > [Baton Plugin 设计](https://github.com/qiankunli/baton/blob/main/docs/plugin.md)，整体控制面
 > 见 [Loop Engineering](https://github.com/qiankunli/baton/blob/main/docs/loop-engineering.md)。
@@ -14,7 +14,7 @@ reqloop 把一项需求从选择、开发、部署、review、修复推进到验
 Requirement
     → Development
     → Deployment
-    → Verdict
+    → Evaluation
     → Repair ─┐
          ▲    │
          └────┘
@@ -62,7 +62,7 @@ Requirement
     ├── externalState     外部需求系统的当前观测
     ├── deliveries        artifact 等其它实际交付
     ├── deployments
-    ├── verdicts          review / e2e / eval / perf
+    ├── evaluations       review / e2e / eval / perf
     ├── harnessResults
     ├── linkedPullRequests 关联 PR 的 Board 汇总
     ├── conditions
@@ -91,6 +91,37 @@ PR/MR 不写入 Requirement `spec`：它们是否出现、关联到哪个 Requir
 不再阻塞收尾；初始状态同样没有 PR/MR，因此仍须与开发结果、验收等条件组合，不能单独让新建
 Requirement 立即进入可关闭状态。
 
+### Workspace
+
+`Workspace` 是 reqloop 在一个 BatonSession 内的本地观察边界。它以 Baton 启动目录为根，
+负责发现进入当前 session 观察范围的仓库；它不是 Git 仓库本身，也不把 workspace 或 repository
+概念下沉到 Baton core。
+
+```text
+Workspace
+├── spec
+│   └── root              session-cwd
+└── status
+    ├── repositories      Repository ResourceRef + 相对路径
+    ├── observedAt
+    └── discoveryErrors
+```
+
+Workspace 在 PluginInstance namespace 内是单例。`spec.root` 表达“使用当前 BatonSession
+cwd”的稳定语义，不持久化机器相关的绝对路径；发现结果只保存相对路径和 ResourceRef。同一模型
+同时覆盖两种启动方式：在单仓根目录启动时发现根仓库，在聚合目录启动时发现其一级子目录中的多个
+仓库。
+
+Workspace 仍配置 `WorkspaceSource`，但 Source 不拥有扫描事实。它在激活时贡献单例 Workspace，
+并监听根目录、一级候选目录以及已知 `.devloop/pr.json` 的变化；变化发生时只重新 emit 同一份
+Workspace spec，把事件转换成 wake。`WorkspaceController` 被唤醒后重新读取文件系统，确保
+对应 Repository 和活跃 PullRequest Resource 存在，再更新 Workspace status。因此遗漏或合并
+文件事件不会破坏正确性，固定周期的 cron Source 仍作为完整性兜底。
+
+首版扫描必须有界：只检查 workspace 根目录自身，以及一级子目录和一级符号链接指向的目录，
+不做无上限递归。WorkspaceSource 提供低延迟感知，不是语义上的必需依赖；即使 watcher 不可用，
+Controller 仍可依靠首次 reconcile 和 cron 重扫收敛，只是发现延迟更高。
+
 ### Repository
 
 `Repository` 是 PR/MR 集合发现的长期 owner。它按 `source + repository` 唯一标识一个
@@ -106,17 +137,15 @@ Repository
     └── lastScanAt
 ```
 
-创建条件是“仓库进入 reqloop 的观察范围”。当前 `DevloopRepositorySource` 在 Plugin 激活后从
-BatonSession `cwd` 的 `origin` 识别默认仓库，并通过 Baton `SourceContext.emit()` 按稳定
-identity 幂等贡献 Repository。未来 Requirement 支持 `repositoryRefs` 后，用户确认仓库目标的入口同样负责确保对应
-Repository 存在。多个 Requirement 引用同一仓库时复用同一 Resource；发现 PR/MR 或创建
-Requirement 本身都不是新建 Repository 的理由。
+创建条件是“仓库进入 reqloop 的观察范围”。WorkspaceController 从 Workspace 中识别仓库并按
+稳定 identity 幂等确保 Repository；未来 Requirement 支持 `repositoryRefs` 后，用户确认仓库
+目标的入口同样负责确保对应 Repository 存在。多个 Workspace 路径或 Requirement 指向同一仓库
+时复用同一 Resource；发现 PR/MR 或创建 Requirement 本身都不是新建 Repository 的理由。
 
-`DevloopPullRequestSource` 直接挂在 PullRequestController：它先读取并继续监听当前仓库的
-`.devloop/pr.json`，通过 `SourceContext.emit()` 贡献其中活跃的 PullRequest Resource。缺失、
-读取失败或格式异常都降级为空发现，不阻塞其它 Source 或已知 Resource 的 reconcile。
-RepositoryController 独立通过 `ForgeConnector.list()` 兜底集合完整性，再用 `requeueAfter`
-安排下一次扫描；逐 PullRequest 的外部状态仍由 PullRequestController 通过 `get()` 收敛。
+WorkspaceController 读取各仓库的 `.devloop/pr.json` 作为活跃 PullRequest 的本地快速发现入口。
+缺失或单仓读取失败不阻塞其它仓库。RepositoryController 独立通过 `ForgeConnector.list()` 兜底
+集合完整性，再用 `requeueAfter` 安排下一次扫描；逐 PullRequest 的外部状态仍由
+PullRequestController 通过 `get()` 收敛。
 
 ### PullRequest
 
@@ -203,10 +232,10 @@ Interaction 询问一次，回答写回 `requirementAssociation`。系统事实�
 自动化提升的是某一类动作在明确范围内的信任等级，不是绕过状态模型的一键开关。每次执行仍要
 保留意图、结果和最新外部观测；副作用不确定时先重新观察，不能盲目重试。
 
-集合发现有两条并行入口：`DevloopPullRequestSource` 监听本地状态并直接贡献 Resource，缩短
-发现路径；RepositoryController 通过 `ForgeConnector.list()` 兜底完整性，为尚未发现的 identity
-创建缺失 Resource，并安排下一次扫描。PullRequest
-创建后由 Baton 自动入队，逐 Resource 的 PullRequestController 再通过
+集合发现有两条并行入口：WorkspaceSource 监听本地变化并唤醒 WorkspaceController，后者重扫
+workspace 与 `.devloop/pr.json`，缩短本地发现路径；RepositoryController 通过
+`ForgeConnector.list()` 兜底外部集合完整性，为尚未发现的 identity 创建缺失 Resource，并安排
+下一次扫描。PullRequest 创建后由 Baton 自动入队，逐 Resource 的 PullRequestController 再通过
 `ForgeConnector.get()` 刷新状态。merged 保留为 Requirement 收尾证据，并在 review 状态为
 unknown 或 unresolved 时继续观察；closed 和 review 已收敛的 merged 不再轮询，closed 也不会
 被发现。未来其它发现手段仍应确保同一
@@ -242,9 +271,9 @@ Deployment 表示“将某个 Delivery 投放到目标环境的一次尝试”�
 部署成功只是事实，不自动意味着 Requirement 完成；是否继续 review、修复或收尾由
 Completion Policy 决定。
 
-### Verdict
+### Evaluation
 
-Verdict 表示对某个 Delivery 或 Deployment 的结构化判断，例如 passed、changes requested、
+Evaluation 表示对某个 Delivery 或 Deployment 的结构化评估，例如 passed、changes requested、
 blocked 或 inconclusive，并携带证据引用。review、e2e、eval 和 perf 可以有不同 payload，
 但都能驱动“继续、修复、确认或终止”的决策。
 
@@ -261,7 +290,7 @@ Baton runtime 中的独立组件。
 │          internal Connector ports                     │
 │       ┌────────────┼─────────────┬─────────────┐       │
 │       ▼            ▼             ▼             ▼       │
-│ Requirement      Forge       Deployment      Verdict   │
+│ Requirement      Forge       Deployment     Evaluation  │
 │ Connector      Connector     Connector       Connector  │
 └───────┬────────────┬─────────────┬─────────────┬───────┘
         ▼            ▼             ▼             ▼
@@ -273,7 +302,7 @@ Baton runtime 中的独立组件。
 - **RequirementConnector**：查询、读取、更新和关闭 Requirement，观察需求变化；
 - **ForgeConnector**：列出和读取 PR/MR，观察生命周期、review thread 与 merge conflict；
 - **DeploymentConnector**：创建部署、读取状态、取消或重试，观察部署结果；
-- **VerdictConnector**：发起或读取 review/eval，观察 verdict 变化。
+- **EvaluationConnector**：发起或读取 review/eval，观察 evaluation 变化。
 
 Connector 只做三件事：
 
@@ -310,7 +339,7 @@ Discussions API，并只把 `resolvable` discussion 当作 review thread。相�
 ### 配置与多实例
 
 一个 reqloop PluginInstance 可以配置多个具名 Connector，例如多个需求源、dev/test/prod
-部署目标和多个 verdict source。配置 schema 和使用方式由 reqloop 定义；Credential 当前随
+部署目标和多个 evaluation source。配置 schema 和使用方式由 reqloop 定义；Credential 当前随
 具名 Connector 存在本机配置中，后续再迁移到 Baton 的 secret binding。
 
 首版用户级连接配置临时独立存放在 `~/.baton/plugins/reqloop.json`，以 source 为 key
@@ -353,10 +382,10 @@ manifest 已声明、当前 `spec` 已授权的范围内直接调用 Connector�
 ```text
 Requirement.spec 要求 review
   → RequirementController.reconcile
-  → VerdictConnector.start(stable operation key)
+  → EvaluationConnector.start(stable operation key)
   → patch status.review = running
   → requeueAfter
-  → VerdictConnector.get
+  → EvaluationConnector.get
   → patch status.review = completed
 ```
 
@@ -417,7 +446,7 @@ Harness Work 类型；Harness 的路由、成本、并发、取消和可靠投�
 
 ## 6. 用户主流程
 
-1. 用户首次运行 Baton 时看到 Requirement Loop quickstart；配置 reqloop 的需求与部署平台。
+1. 用户安装并启用 reqloop，配置需求与部署平台。
 2. reqloop 激活时识别当前 checkout 的仓库，并创建或恢复共享的 Repository；其
    Reconciler 持续发现 PullRequest。
 3. 用户通过 `/requirements` 选择需求，或直接粘贴、输入一项需求；reqloop 创建或恢复
@@ -432,7 +461,7 @@ Harness Work 类型；Harness 的路由、成本、并发、取消和可靠投�
    `PullRequest.status.requirementAssociation`，不根据匹配猜测自动关联，也不重复询问。
 6. PullRequestController 观察 review thread、merge conflict 与 open / merged / closed；
    当前由 devloop 触发的 review 完成后，`DevloopReviewConnector + cron Source` 也可观察其终态；
-   后续由 reqloop 自己发起的远端 review 仍可由 VerdictConnector 配合 `requeueAfter` 查询。
+   后续由 reqloop 自己发起的远端 review 仍可由 EvaluationConnector 配合 `requeueAfter` 查询。
 7. review 要求修改时，Controller 让用户 accept 或 ignore；两种选择都写入 PullRequest status
    且只提醒一次。accept 返回包含 review 意见的修复 `proposed-input`，用户审核后再次驱动 Harness。
 8. 首期 Completion Policy 在至少存在一个关联 PR、所有关联 PR 已 merged 且 review thread
@@ -454,7 +483,7 @@ Harness turn 停止、Board 更新或 Context 可用都不自动代表下一步�
 
 - 用户通过 BoardView 观察 Requirement Loop 的目标、进度、结果、blocker 和待处理请求；
 - ContextComposer 从 Requirement 与 Board snapshot 选择和当前 Harness、session、turn 有关的信息；
-- reqloop 从 Requirement 生成 Deployment、Verdict 等结构化摘要，也可以读取同
+- reqloop 从 Requirement 生成 Deployment、Evaluation 等结构化摘要，也可以读取同
   scope 的 Baton 和 Harness observation，决定下一步如何收敛；
 - Baton 并行驱动多个 Harness 时，各 Harness 的进度、交付物和交接状态经 Baton 展示到 Board，
   再按目标 Harness 编译成 context，实现受控的状态共享。
@@ -517,21 +546,9 @@ RequirementController 可以调用自己拥有的 Connector，但外部写入使
 重启后恢复到期检查。Board 仍是跨参与者共享的协调读模型，不取代 Requirement 或外部系统的事实
 来源。
 
-## 9. Bundled Plugin 的产品形态
+## 9. 关键不变量
 
-Baton 作为通用产品需要一个清晰的默认故事。reqloop 随 Baton 发行并出现在 onboarding、
-`/help` 和 Plugin 列表中：
-
-- 未配置：展示可接入的平台和最小配置路径；
-- 已配置：`/requirements` 直接进入需求选择；
-- 不需要：用户可以禁用 reqloop，只使用 Baton 的 Harness 接力或安装其他 loop Plugin。
-
-“随 Baton 交付”不等于“写进 Baton core”。Baton 的默认 UX 可以优先展示 reqloop，但 UI 仍
-通过 slash command、Board presentation 和 Plugin metadata 渲染，不读取 reqloop 私有状态。
-
-## 10. 关键不变量
-
-1. Requirement、PullRequest、Deployment 和 Verdict 只属于 reqloop，不进入 Baton core。
+1. Requirement、PullRequest、Deployment 和 Evaluation 只属于 reqloop，不进入 Baton core。
 2. Connector 只属于 reqloop 内部，不成为 Baton Plugin API 或 runtime identity。
 3. Controller 可以调用 reqloop Connector，但只能收敛已授权 spec，并对不确定外部写入先观察
    后重试。
@@ -559,7 +576,7 @@ Baton 作为通用产品需要一个清晰的默认故事。reqloop 随 Baton �
 14. Event、webhook、cron 和 timer 只表示“事实可能变化”；状态转换必须以重新观察后的 Resource
     status 为依据。人的 durable decision 与外部 observation 分字段持久化。
 
-## 11. 待继续讨论
+## 10. 待继续讨论
 
 1. 除“不存在活跃 PR/MR”外，Completion Policy 还需要哪些默认条件，才能区分初始无 PR 与
    开发完成后无 PR？

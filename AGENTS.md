@@ -7,7 +7,7 @@ Marketplace 索引、跨 Plugin 约定和开发工具；`plugins/` 下每个子�
 版本化和启用的 Baton Plugin。
 
 reqloop 中的 Plugin 可以分别处理需求、交付、部署、评测或其他长期闭环，但 Requirement、
-Deployment、Verdict 等领域类型仍归拥有它们的 Plugin，不进入 Baton core。Plugin 只依赖
+Deployment、Evaluation 等领域类型仍归拥有它们的 Plugin，不进入 Baton core。Plugin 只依赖
 Baton 发布的公共 Plugin API，不能相对路径导入 Baton 源码或持有其内部 Store、Controller、
 Harness runtime。
 
