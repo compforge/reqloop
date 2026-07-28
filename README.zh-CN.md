@@ -43,7 +43,7 @@ devloop review 状态。
 将本 Git 仓库注册为 Marketplace，并安装所需 Package：
 
 ```bash
-baton plugins marketplace add https://github.com/qiankunli/reqloop.git
+baton plugins marketplace add https://github.com/compforge/reqloop.git
 baton plugins install qiankunli/turn-coach --marketplace reqloop
 baton plugins install qiankunli/reqloop --marketplace reqloop
 baton plugins list
@@ -83,7 +83,7 @@ Binding、Resource/Controller 和 Proposal 契约。
   `baton.turn` Controller 的组合。
 - [Turn Coach](./plugins/turn-coach/README.md) — 验证 Baton-owned Resource replay、持久状态和
   proposed input 的端到端 canary。
-- [ReqLoop](./plugins/reqloop/README.md) — 需求级闭环协调；`0.1.10` 物化 Requirement
+- [ReqLoop](./plugins/reqloop/README.md) — 需求级闭环协调；`0.1.18` 物化 Requirement
   Resource，将活跃 Requirement 暴露为可搜索的 Harness context、通过 Repository
   Resource 发现 PullRequest，并只询问一次 PullRequest 是否关联 Requirement。
 

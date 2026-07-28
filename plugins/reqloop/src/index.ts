@@ -42,7 +42,7 @@ import type { WorkspaceSpec } from "./workspaces/protocol.ts";
 import { WorkspaceSource } from "./workspaces/source.ts";
 
 export const REQLOOP_PLUGIN_ID = "qiankunli/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.1.17";
+export const REQLOOP_PACKAGE_VERSION = "0.1.18";
 
 function currentRepo(context: PluginActivationContext): string {
   const cwd = context.session.cwd;
