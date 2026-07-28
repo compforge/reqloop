@@ -91,6 +91,37 @@ PR/MR 不写入 Requirement `spec`：它们是否出现、关联到哪个 Requir
 不再阻塞收尾；初始状态同样没有 PR/MR，因此仍须与开发结果、验收等条件组合，不能单独让新建
 Requirement 立即进入可关闭状态。
 
+### Workspace
+
+`Workspace` 是 reqloop 在一个 BatonSession 内的本地观察边界。它以 Baton 启动目录为根，
+负责发现进入当前 session 观察范围的仓库；它不是 Git 仓库本身，也不把 workspace 或 repository
+概念下沉到 Baton core。
+
+```text
+Workspace
+├── spec
+│   └── root              session-cwd
+└── status
+    ├── repositories      Repository ResourceRef + 相对路径
+    ├── observedAt
+    └── discoveryErrors
+```
+
+Workspace 在 PluginInstance namespace 内是单例。`spec.root` 表达“使用当前 BatonSession
+cwd”的稳定语义，不持久化机器相关的绝对路径；发现结果只保存相对路径和 ResourceRef。同一模型
+同时覆盖两种启动方式：在单仓根目录启动时发现根仓库，在聚合目录启动时发现其一级子目录中的多个
+仓库。
+
+Workspace 仍配置 `WorkspaceSource`，但 Source 不拥有扫描事实。它在激活时贡献单例 Workspace，
+并监听根目录、一级候选目录以及已知 `.devloop/pr.json` 的变化；变化发生时只重新 emit 同一份
+Workspace spec，把事件转换成 wake。`WorkspaceController` 被唤醒后重新读取文件系统，确保
+对应 Repository 和活跃 PullRequest Resource 存在，再更新 Workspace status。因此遗漏或合并
+文件事件不会破坏正确性，固定周期的 cron Source 仍作为完整性兜底。
+
+首版扫描必须有界：只检查 workspace 根目录自身，以及一级子目录和一级符号链接指向的目录，
+不做无上限递归。WorkspaceSource 提供低延迟感知，不是语义上的必需依赖；即使 watcher 不可用，
+Controller 仍可依靠首次 reconcile 和 cron 重扫收敛，只是发现延迟更高。
+
 ### Repository
 
 `Repository` 是 PR/MR 集合发现的长期 owner。它按 `source + repository` 唯一标识一个
@@ -106,17 +137,15 @@ Repository
     └── lastScanAt
 ```
 
-创建条件是“仓库进入 reqloop 的观察范围”。当前 `DevloopRepositorySource` 在 Plugin 激活后从
-BatonSession `cwd` 的 `origin` 识别默认仓库，并通过 Baton `SourceContext.emit()` 按稳定
-identity 幂等贡献 Repository。未来 Requirement 支持 `repositoryRefs` 后，用户确认仓库目标的入口同样负责确保对应
-Repository 存在。多个 Requirement 引用同一仓库时复用同一 Resource；发现 PR/MR 或创建
-Requirement 本身都不是新建 Repository 的理由。
+创建条件是“仓库进入 reqloop 的观察范围”。WorkspaceController 从 Workspace 中识别仓库并按
+稳定 identity 幂等确保 Repository；未来 Requirement 支持 `repositoryRefs` 后，用户确认仓库
+目标的入口同样负责确保对应 Repository 存在。多个 Workspace 路径或 Requirement 指向同一仓库
+时复用同一 Resource；发现 PR/MR 或创建 Requirement 本身都不是新建 Repository 的理由。
 
-`DevloopPullRequestSource` 直接挂在 PullRequestController：它先读取并继续监听当前仓库的
-`.devloop/pr.json`，通过 `SourceContext.emit()` 贡献其中活跃的 PullRequest Resource。缺失、
-读取失败或格式异常都降级为空发现，不阻塞其它 Source 或已知 Resource 的 reconcile。
-RepositoryController 独立通过 `ForgeConnector.list()` 兜底集合完整性，再用 `requeueAfter`
-安排下一次扫描；逐 PullRequest 的外部状态仍由 PullRequestController 通过 `get()` 收敛。
+WorkspaceController 读取各仓库的 `.devloop/pr.json` 作为活跃 PullRequest 的本地快速发现入口。
+缺失或单仓读取失败不阻塞其它仓库。RepositoryController 独立通过 `ForgeConnector.list()` 兜底
+集合完整性，再用 `requeueAfter` 安排下一次扫描；逐 PullRequest 的外部状态仍由
+PullRequestController 通过 `get()` 收敛。
 
 ### PullRequest
 
@@ -203,10 +232,10 @@ Interaction 询问一次，回答写回 `requirementAssociation`。系统事实�
 自动化提升的是某一类动作在明确范围内的信任等级，不是绕过状态模型的一键开关。每次执行仍要
 保留意图、结果和最新外部观测；副作用不确定时先重新观察，不能盲目重试。
 
-集合发现有两条并行入口：`DevloopPullRequestSource` 监听本地状态并直接贡献 Resource，缩短
-发现路径；RepositoryController 通过 `ForgeConnector.list()` 兜底完整性，为尚未发现的 identity
-创建缺失 Resource，并安排下一次扫描。PullRequest
-创建后由 Baton 自动入队，逐 Resource 的 PullRequestController 再通过
+集合发现有两条并行入口：WorkspaceSource 监听本地变化并唤醒 WorkspaceController，后者重扫
+workspace 与 `.devloop/pr.json`，缩短本地发现路径；RepositoryController 通过
+`ForgeConnector.list()` 兜底外部集合完整性，为尚未发现的 identity 创建缺失 Resource，并安排
+下一次扫描。PullRequest 创建后由 Baton 自动入队，逐 Resource 的 PullRequestController 再通过
 `ForgeConnector.get()` 刷新状态。merged 保留为 Requirement 收尾证据，并在 review 状态为
 unknown 或 unresolved 时继续观察；closed 和 review 已收敛的 merged 不再轮询，closed 也不会
 被发现。未来其它发现手段仍应确保同一
