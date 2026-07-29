@@ -582,6 +582,33 @@ describe("PullRequest Resource", () => {
     expect(calls).toBe(0);
   });
 
+  test("does not poll a stale PullRequest without write-heavy activity", async () => {
+    const resources = resourceClient();
+    const current = await materializePullRequest(resources, observation);
+    let calls = 0;
+    const forge: ForgeConnector = {
+      source: "github-primary",
+      provider: "github",
+      async list() {
+        return [];
+      },
+      async get() {
+        calls += 1;
+        return observation;
+      },
+    };
+
+    await createPullRequestController(
+      resources.client,
+      [forge],
+      undefined,
+      [],
+      async () => false,
+    ).reconcile(batonSnapshot(), current);
+
+    expect(calls).toBe(0);
+  });
+
   test("records an ignored review decision and does not remind again", async () => {
     const resources = resourceClient();
     const pullRequest = await materializePullRequest(

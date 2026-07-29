@@ -146,10 +146,15 @@ RepositoryController Watches Workspace 的旧、新成员引用；默认 Workspa
 Repository 时，将其标记为离开观察范围，重新进入时复用原 Resource。Workspace 与 Repository
 都是内部观察和聚合 Resource，`present()` 固定返回空，不进入 Board。
 
-`DevloopPullRequestSource` 读取 `.devloop/pr.json`，作为当前 PR 的本地低延迟入口；
-`ForgePullRequestSource` 周期性调用 `ForgeConnector.list()`，按自己的有界准入策略贡献近期开放
-PR/MR。RepositoryController 只汇总已经存在的 PullRequest，不调用 Connector 扩张集合；逐
-PullRequest 的外部状态仍由 PullRequestController 通过 `get()` 收敛。
+`DevloopPullRequestSource` 读取 `.devloop/pr.json`，作为当前 PR 的本地低延迟入口。
+Devloop 还在每个 repo 的 `.devloop/tool-calls.jsonl` 暴露最近一小时原始 tool-call 时间线；
+ReqLoop 只统计 `phase=started`，并由自己把明确的文件读取和文件写入工具分类。当写调用多于
+读调用时，`ForgePullRequestSource` 才调用 `ForgeConnector.list()` 准入近期开放 PR/MR，
+`PullRequestController` 才通过 `get()` 刷新已有对象。未知工具和 Bash/exec 命令信封不被猜成
+写入；没有时间线或以读取为主时保持本地观察，不发 Forge 请求。
+
+RepositoryController 只汇总已经存在的 PullRequest，不调用 Connector 扩张集合。活动时间线只
+决定何时值得查询外部 PR，不参与 devloop 的 validation gate，也不改变 PullRequest 的持久身份。
 
 ### PullRequest
 
@@ -202,7 +207,8 @@ Board 当前只展示活跃 Requirement 和孤立的活跃 PullRequest。PullReq
 后仍保持独立 Resource 和生命周期，但 Board 以 Requirement 为主，不再重复生成 PR 卡片；
 Requirement status 汇总关联 PR 的 lifecycle、merge conflict 和 unresolved review thread。
 merged 和 closed 的 PullRequest 都从 Board 消失；closed 与 review 状态已收敛的 merged
-PullRequest 停止轮询，review 状态尚未满足 Requirement 收尾条件的 merged PullRequest 继续观察。
+PullRequest 停止轮询，review 状态尚未满足 Requirement 收尾条件的 merged PullRequest 仅在
+对应 repo 最近一小时仍是写密集活动时继续观察。
 
 ### Resource 的创建、保留与销毁（当前阶段）
 
@@ -302,8 +308,9 @@ Interaction 询问一次，回答写回 `requirementAssociation`。系统事实�
 保留意图、结果和最新外部观测；副作用不确定时先重新观察，不能盲目重试。
 
 集合发现有两条并行入口：DevloopPullRequestSource 监听本地状态，缩短当前 PR 的发现路径；
-ForgePullRequestSource 通过 `ForgeConnector.list()` 周期性读取外部候选，并独立决定哪些
-identity 应成为 Resource。Connector 只提供外部查询能力，不能创建或删除 Resource。
+ForgePullRequestSource 在 devloop 最近一小时工具时间线呈现写密集活动时，通过
+`ForgeConnector.list()` 读取外部候选，并独立决定哪些 identity 应成为 Resource。Connector
+只提供外部查询能力，不能创建或删除 Resource。
 PullRequest 创建后由 Baton 自动入队，逐 Resource 的 PullRequestController 再通过
 `ForgeConnector.get()` 刷新状态。merged 保留为 Requirement 收尾证据，并在 review 状态为
 unknown 或 unresolved 时继续观察；closed 和 review 已收敛的 merged 不再轮询，closed 也不会
@@ -415,6 +422,12 @@ adapter。reqloop 复用这套模型原则，但不导入 devloop 的实现或�
 `reviewThreads` 观察 review thread；`GitLabForgeConnector` 使用 Merge Request 与
 Discussions API，并只把 `resolvable` discussion 当作 review thread。相关 API 不可用时状态
 保持 `unknown`，普通 conversation comment 不参与完成条件。
+
+HTTP adapter 对 429、GitHub 的 rate-limit 403 以及 GraphQL rate-limit errors 使用显式的
+`ForgeRateLimitError`。它优先采用 `Retry-After` / `X-RateLimit-Reset`，否则短暂本地退避；
+退避期内请求在 Connector 内直接拒绝，不继续访问 URL。普通权限不足的 review-thread 端点仍
+降级为 `reviewThreads=unknown`，但限流不能被这个兼容分支吞掉。5xx、超时、非法 JSON 保持
+失败并交给 Source/Controller 的既有错误报告和重试调度，不在 Connector 内立即放大重试。
 
 ### 配置与多实例
 

@@ -7,6 +7,7 @@ import type {
   PullRequest,
   PullRequestReviewThreads,
 } from "../protocol.ts";
+import { isForgeRateLimitError } from "../protocol.ts";
 import type { ForgeConfig } from "./config.ts";
 import {
   JsonHttpClient,
@@ -156,7 +157,8 @@ export class GitHubForgeConnector implements ForgeConnector {
       const observation = await this.#reviewThreads(identity);
       reviewThreads = observation.state;
       reviewActivity = observation.activityKey;
-    } catch {
+    } catch (error) {
+      if (isForgeRateLimitError(error)) throw error;
       // Review thread support varies across GitHub Enterprise versions. A
       // partial observation is safer than treating ordinary comments as gates.
     }
@@ -229,6 +231,12 @@ export class GitHubForgeConnector implements ForgeConnector {
       );
       const root = record("GitHub GraphQL response", data);
       if (Array.isArray(root.errors) && root.errors.length > 0) {
+        const detail = JSON.stringify(root.errors);
+        if (/rate.?limit/i.test(detail)) {
+          throw this.#http.rateLimit(
+            "GitHub GraphQL rate limit exceeded",
+          );
+        }
         throw new Error("GitHub GraphQL returned errors");
       }
       const graph = record("GitHub GraphQL data", root.data);

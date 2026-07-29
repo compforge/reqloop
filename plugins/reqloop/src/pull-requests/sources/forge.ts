@@ -4,11 +4,13 @@ import type {
 } from "@compforge/baton-plugin";
 
 import { discoverWorkspaceRepositories } from "../../workspaces/discovery.ts";
+import type { WorkspaceRepositoryCheckout } from "../../workspaces/discovery.ts";
 import type {
   ForgeConnector,
   PullRequestIdentity,
   PullRequestSpec,
 } from "../protocol.ts";
+import { isForgeRateLimitError } from "../protocol.ts";
 import { pullRequestResourceId } from "../resource.ts";
 
 const DEFAULT_MAX_PER_REPOSITORY = 5;
@@ -19,6 +21,9 @@ interface ForgePullRequestSourceOptions {
   readonly maxPerRepository?: number;
   readonly maxResources?: number;
   readonly resyncIntervalMs?: number;
+  readonly shouldTrack?: (
+    checkout: WorkspaceRepositoryCheckout,
+  ) => Promise<boolean>;
 }
 
 function positiveInteger(name: string, value: number): number {
@@ -41,6 +46,9 @@ export class ForgePullRequestSource implements Source<PullRequestSpec> {
   private readonly maxPerRepository: number;
   private readonly maxResources: number;
   private readonly resyncIntervalMs: number;
+  private readonly shouldTrack: (
+    checkout: WorkspaceRepositoryCheckout,
+  ) => Promise<boolean>;
   private readonly failureKeys = new Map<string, string>();
   private refreshing?: Promise<void>;
 
@@ -67,6 +75,7 @@ export class ForgePullRequestSource implements Source<PullRequestSpec> {
       "ForgePullRequestSource resyncIntervalMs",
       options.resyncIntervalMs ?? DEFAULT_RESYNC_INTERVAL_MS,
     );
+    this.shouldTrack = options.shouldTrack ?? (async () => true);
   }
 
   async start(context: SourceContext<PullRequestSpec>): Promise<void> {
@@ -98,29 +107,36 @@ export class ForgePullRequestSource implements Source<PullRequestSpec> {
   private async refresh(
     context: SourceContext<PullRequestSpec>,
   ): Promise<void> {
-    const checkouts = await discoverWorkspaceRepositories(this.root);
-    const batches = await Promise.all(checkouts.map(async ({ identity }) => {
+    const pullRequests: PullRequestIdentity[] = [];
+    const rateLimitedSources = new Set<string>();
+    for (const checkout of await discoverWorkspaceRepositories(this.root)) {
+      if (context.signal.aborted) return;
+      if (!(await this.shouldTrack(checkout))) continue;
+      const { identity } = checkout;
+      if (rateLimitedSources.has(identity.source)) continue;
       const connector = this.connectors.get(identity.source);
-      if (!connector) return [];
+      if (!connector) continue;
       try {
-        const pullRequests = await connector.list(identity.repository, {
+        const observations = await connector.list(identity.repository, {
           state: "open",
           limit: this.maxPerRepository,
         });
         this.failureKeys.delete(
           `${identity.source}/${identity.repository}`,
         );
-        return pullRequests.map((pullRequest) => {
+        pullRequests.push(...observations.map((pullRequest) => {
           this.assertWithinRepository(pullRequest, identity);
           return pullRequest;
-        });
+        }));
       } catch (error) {
         this.reportFailure(context, identity, error);
-        return [];
+        if (isForgeRateLimitError(error)) {
+          rateLimitedSources.add(identity.source);
+        }
       }
-    }));
+    }
 
-    for (const identity of batches.flat().slice(0, this.maxResources)) {
+    for (const identity of pullRequests.slice(0, this.maxResources)) {
       if (context.signal.aborted) return;
       await context.emit({
         name: pullRequestResourceId(identity),

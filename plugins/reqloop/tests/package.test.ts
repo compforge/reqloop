@@ -31,9 +31,11 @@ import reqloop, {
   DevloopPullRequestSource,
   DevloopRepositorySource,
   DevloopReviewConnector,
+  DevloopToolActivityPolicy,
   type ForgeConnector,
   ForgePullRequestSource,
   ForgeRepositorySource,
+  interpretToolActivity,
   REPOSITORY_RESOURCE_TYPE,
   loadMeegoRequirementConfigs,
   MeegleCliRequirementConnector,
@@ -382,6 +384,93 @@ describe("ReqLoop PluginPackage", () => {
         },
       },
     }]);
+  });
+
+  test("interprets only recent started tool calls and requires write dominance", () => {
+    const now = Date.parse("2026-07-29T10:00:00.000Z");
+    const event = (
+      tool: string,
+      ageMinutes: number,
+      phase = "started",
+    ) => JSON.stringify({
+      schema: "devloop.tool-call/v1",
+      kind: "tool_call",
+      phase,
+      ts: (now - ageMinutes * 60_000) / 1_000,
+      tool,
+    });
+
+    expect(interpretToolActivity([
+      event("Read", 5),
+      event("apply_patch", 4),
+      event("Write", 3),
+      event("Write", 2, "finished"),
+      event("Edit", 65),
+      "{broken",
+    ].join("\n"), now)).toEqual({
+      started: 3,
+      reads: 1,
+      writes: 2,
+      callsPerMinute: 0.05,
+      trackPullRequests: true,
+    });
+    expect(interpretToolActivity([
+      event("Read", 5),
+      event("Grep", 4),
+      event("Edit", 3),
+    ].join("\n"), now).trackPullRequests).toBe(false);
+  });
+
+  test("reads the current checkout's rolling devloop activity file", async () => {
+    const root = testRoot();
+    initializeRepository(root);
+    const directory = join(root, ".devloop");
+    mkdirSync(directory);
+    writeFileSync(join(directory, "tool-calls.jsonl"), [
+      {
+        schema: "devloop.tool-call/v1",
+        kind: "tool_call",
+        phase: "started",
+        ts: Date.now() / 1_000,
+        tool: "apply_patch",
+      },
+    ].map((event) => JSON.stringify(event)).join("\n"));
+
+    const policy = new DevloopToolActivityPolicy(root);
+    await expect(policy.shouldTrackCheckout(root)).resolves.toBe(true);
+    await expect(policy.shouldTrackIdentity({
+      source: "github.com",
+      repository: "compforge/reqloop",
+    })).resolves.toBe(true);
+  });
+
+  test("does not query Forge for a checkout rejected by tool activity", async () => {
+    const root = testRoot();
+    initializeRepository(root);
+    let calls = 0;
+    const forge: ForgeConnector = {
+      source: "github.com",
+      provider: "github",
+      async list() {
+        calls += 1;
+        return [];
+      },
+      async get() {
+        throw new Error("not used");
+      },
+    };
+    const abort = new AbortController();
+    const source = new ForgePullRequestSource(root, [forge], {
+      resyncIntervalMs: 60_000,
+      shouldTrack: async () => false,
+    });
+    await source.start({
+      signal: abort.signal,
+      async emit() {},
+      reportError() {},
+    });
+    abort.abort();
+    expect(calls).toBe(0);
   });
 
   test("contributes open PullRequests and watches devloop state", async () => {
