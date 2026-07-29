@@ -737,7 +737,7 @@ describe("ReqLoop PluginPackage", () => {
     ]);
   });
 
-  test("optionally filters Meegle queries by current participant", async () => {
+  test("optionally filters Meegle queries by participant", async () => {
     const mqls: string[] = [];
     const connector = (userKey?: string) =>
       new MeegleCliRequirementConnector(
@@ -760,7 +760,10 @@ describe("ReqLoop PluginPackage", () => {
 
     expect(mqls[0]).not.toContain("participate_persons()");
     expect(mqls[1]).toContain(
-      "WHERE array_contains(participate_persons(), '<id:owner''key>')",
+      "WHERE array_contains(all_participate_persons(), '<id:owner''key>')",
+    );
+    expect(mqls[1]).not.toContain(
+      "array_contains(participate_persons(),",
     );
   });
 

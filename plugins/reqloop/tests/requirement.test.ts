@@ -162,16 +162,28 @@ describe("Requirement Resource", () => {
       observedGeneration: requirement.metadata.generation,
       reason: "ObservationSucceeded",
     });
-    expect(
-      await createRequirementController().present?.(requirement),
-    ).toEqual({
+    const controller = createRequirementController();
+    const presentation = await controller.present?.(requirement);
+    expect(presentation).toEqual({
       title: "REQ-7",
       url: "https://meego.example/story/REQ-7",
       status: "in_progress",
       detail: "Requirement intake",
-      priority: 0,
+      priority: expect.any(Number),
       tone: "default",
     });
+    expect(presentation?.priority).toBeGreaterThan(0);
+    expect(presentation?.priority).toBeLessThan(1);
+    const newerPresentation = await controller.present?.({
+      ...requirement,
+      metadata: {
+        ...requirement.metadata,
+        creationTimestamp: "2026-07-27T00:00:00.000Z",
+      },
+    });
+    expect(newerPresentation?.priority).toBeGreaterThan(
+      presentation?.priority ?? Number.POSITIVE_INFINITY,
+    );
     expect(resources.current()).toEqual(requirement);
   });
 
@@ -409,11 +421,13 @@ describe("Requirement Resource", () => {
       reviewThreads: "unresolved",
     });
     await controller.reconcile(batonSnapshot(), resources.current()!);
-    expect(
-      await controller.present?.(resources.current()!),
-    ).toMatchObject({
+    const unresolvedPresentation = await controller.present?.(
+      resources.current()!,
+    );
+    expect(unresolvedPresentation?.priority).toBeGreaterThan(100);
+    expect(unresolvedPresentation?.priority).toBeLessThan(101);
+    expect(unresolvedPresentation).toMatchObject({
       status: "in_progress · 1 PR merged · 1 unresolved review",
-      priority: 100,
       tone: "warning",
     });
     expect(
@@ -432,11 +446,13 @@ describe("Requirement Resource", () => {
       mergeability: "conflicted",
     });
     await controller.reconcile(batonSnapshot(), resources.current()!);
-    expect(
-      await controller.present?.(resources.current()!),
-    ).toMatchObject({
+    const conflictedPresentation = await controller.present?.(
+      resources.current()!,
+    );
+    expect(conflictedPresentation?.priority).toBeGreaterThan(200);
+    expect(conflictedPresentation?.priority).toBeLessThan(201);
+    expect(conflictedPresentation).toMatchObject({
       status: "in_progress · 1 PR merged · 1 merge conflict",
-      priority: 200,
       tone: "error",
     });
 
