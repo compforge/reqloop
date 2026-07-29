@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import {
   jsonObject,
   loadReqloopConfig,
-  REQLOOP_CONFIG_PATH,
+  type ReqloopConfigPaths,
 } from "../../config.ts";
 import type {
   Requirement,
@@ -83,13 +83,13 @@ function commandIdentifier(name: string, value: string): string {
 }
 
 /**
- * Reads the temporary standalone reqloop config. Meegle owns OAuth tokens in
- * its keychain-backed profile; reqloop stores only connector routing fields.
+ * Reads scoped reqloop config. Meegle owns OAuth tokens in its
+ * keychain-backed profile; reqloop stores only connector routing fields.
  */
 export function loadMeegoRequirementConfigs(
-  path: string = REQLOOP_CONFIG_PATH,
+  paths: ReqloopConfigPaths,
 ): readonly MeegoRequirementConfig[] {
-  const config = loadReqloopConfig(path);
+  const config = loadReqloopConfig(paths);
   if (!config) return [];
   const requirements = config.requirements === undefined
     ? {}
@@ -543,10 +543,10 @@ export class MeegleCliRequirementConnector
 }
 
 export function createMeegoRequirementConnectors(
-  path: string = REQLOOP_CONFIG_PATH,
+  paths: ReqloopConfigPaths,
   run?: MeegleCliRunner,
 ): readonly RequirementConnector[] {
-  return loadMeegoRequirementConfigs(path).map(
+  return loadMeegoRequirementConfigs(paths).map(
     (config) => new MeegleCliRequirementConnector(config, run),
   );
 }

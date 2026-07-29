@@ -122,19 +122,8 @@ export function createRepositoryController(
         });
       }
     },
-    async present(resource) {
-      if (resource.status.inScope === false) return undefined;
-      const { source, repository } = resource.spec.identity;
-      return {
-        title: repository,
-        status: resource.status.connectorAvailable === false
-          ? "Forge connector unavailable"
-          : `${resource.status.discoveredPullRequests ?? 0} tracked PR/MR`,
-        detail: source,
-        tone: resource.status.connectorAvailable === false
-          ? "warning"
-          : "muted",
-      };
+    async present() {
+      return undefined;
     },
   };
 }

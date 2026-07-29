@@ -1,15 +1,11 @@
 import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 
-export const REQLOOP_CONFIG_PATH = join(
-  homedir(),
-  ".baton",
-  "plugins",
-  "reqloop.json",
-);
+import type { PluginDataDirectories } from "@compforge/baton-plugin";
 
+export const REQLOOP_CONFIG_FILE = "config.json";
 export type JsonObject = Readonly<Record<string, unknown>>;
+export type ReqloopConfigPaths = string | readonly string[];
 
 export function jsonObject(name: string, value: unknown): JsonObject {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -24,21 +20,59 @@ function isMissingFile(error: unknown): boolean {
     error.code === "ENOENT";
 }
 
-/** Reads the temporary standalone config shared by reqloop Connectors. */
+function mergeJsonObjects(
+  broader: JsonObject,
+  narrower: JsonObject,
+): JsonObject {
+  const merged: Record<string, unknown> = { ...broader };
+  for (const [key, value] of Object.entries(narrower)) {
+    const existing = merged[key];
+    merged[key] =
+      existing && typeof existing === "object" && !Array.isArray(existing) &&
+        value && typeof value === "object" && !Array.isArray(value)
+        ? mergeJsonObjects(
+          existing as JsonObject,
+          value as JsonObject,
+        )
+        : value;
+  }
+  return Object.freeze(merged);
+}
+
+/** Returns reqloop's configuration files from broadest to narrowest scope. */
+export function reqloopConfigPaths(
+  dataDirs: Pick<
+    PluginDataDirectories,
+    "global" | "project" | "session"
+  >,
+): readonly string[] {
+  return Object.freeze([
+    join(dataDirs.global, REQLOOP_CONFIG_FILE),
+    join(dataDirs.project, REQLOOP_CONFIG_FILE),
+    join(dataDirs.session, REQLOOP_CONFIG_FILE),
+  ]);
+}
+
+/** Reads and overlays reqloop Connector configuration by scope order. */
 export function loadReqloopConfig(
-  path: string = REQLOOP_CONFIG_PATH,
+  paths: ReqloopConfigPaths,
 ): JsonObject | undefined {
-  let root: unknown;
-  try {
-    root = JSON.parse(readFileSync(path, "utf8")) as unknown;
-  } catch (error) {
-    if (isMissingFile(error)) return undefined;
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`could not read reqloop config ${path}: ${detail}`);
+  const orderedPaths = typeof paths === "string" ? [paths] : paths;
+  let result: JsonObject | undefined;
+  for (const path of orderedPaths) {
+    let root: unknown;
+    try {
+      root = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    } catch (error) {
+      if (isMissingFile(error)) continue;
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`could not read reqloop config ${path}: ${detail}`);
+    }
+    const config = jsonObject(`reqloop config ${path}`, root);
+    if (config.version !== 1) {
+      throw new Error(`reqloop config version must be 1: ${path}`);
+    }
+    result = result ? mergeJsonObjects(result, config) : config;
   }
-  const config = jsonObject("reqloop config", root);
-  if (config.version !== 1) {
-    throw new Error("reqloop config version must be 1");
-  }
-  return config;
+  return result;
 }

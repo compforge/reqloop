@@ -39,7 +39,10 @@ meegle auth login --host <your-meegle-host>
 ```
 
 OAuth tokens stay in the Meegle CLI's keychain-backed profile. ReqLoop reads
-only source routing from `~/.baton/plugins/reqloop.json`:
+Connector configuration from `config.json` under the Plugin's global, Project,
+and Session data directories. The narrower scope recursively overrides the
+broader scope; Instance data does not carry configuration. A typical global
+file is `~/.baton/plugins/compforge%2Freqloop/config.json`:
 
 ```json
 {
@@ -75,8 +78,8 @@ only source routing from `~/.baton/plugins/reqloop.json`:
 }
 ```
 
-`categories` defaults to `["story", "issue"]`. This temporary standalone file
-is not part of the PluginPackage and must not be committed to this repository.
+`categories` defaults to `["story", "issue"]`. Configuration is runtime data,
+not part of the PluginPackage, and must not be committed to this repository.
 The `forges` shape follows devloop: its map key is the PullRequest `source`,
 explicit `type` wins, `github.com` and `github.*` infer GitHub, and other hosts
 default to GitLab. `api_host` points an origin alias at the real API host.
@@ -105,14 +108,16 @@ Controllers keep these Resources aligned with the filesystem, Forge,
 requirement platform, and devloop review ledger. When user judgment is needed,
 ReqLoop opens a durable Interaction; an accepted review can become a
 `proposed-input` for the current Harness. ReqLoop does not directly drive a
-Harness or mutate external Requirement state.
+Harness or mutate external Requirement state. The Board currently presents
+only active Requirements and standalone active PullRequests; Workspace and
+Repository remain internal observation Resources.
 
 See [the Requirement Loop design](../../docs/reqloop.md) for lifecycle,
 reconciliation, and recovery details.
 
 ```text
 pluginId: compforge/reqloop
-version:  0.2.1
+version:  0.2.2
 ```
 
 Install this Marketplace in Baton, install `compforge/reqloop`, then enable it

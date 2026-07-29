@@ -732,6 +732,9 @@ describe("PullRequest Resource", () => {
       connectorAvailable: true,
       discoveredPullRequests: 1,
     });
+    expect(
+      await controller.present?.(resources.repositoryCurrent()!),
+    ).toBeUndefined();
     expect(result).toBeUndefined();
     const replay = await controller.reconcile(
       {} as never,

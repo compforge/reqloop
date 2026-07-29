@@ -46,7 +46,7 @@ afterEach(() => {
 
 describe("Forge config", () => {
   test("uses host-keyed providers and devloop token precedence", () => {
-    const path = join(testRoot(), "reqloop.json");
+    const path = join(testRoot(), "config.json");
     writeFileSync(path, JSON.stringify({
       version: 1,
       forges: {
@@ -82,7 +82,7 @@ describe("Forge config", () => {
   });
 
   test("creates only authenticated Forge connectors", () => {
-    const path = join(testRoot(), "reqloop.json");
+    const path = join(testRoot(), "config.json");
     writeFileSync(path, JSON.stringify({
       version: 1,
       forges: {

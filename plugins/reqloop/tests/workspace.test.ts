@@ -291,12 +291,7 @@ describe("Workspace Resource", () => {
       repository: "owner/repo-a",
       number: 7,
     }]);
-    expect(await controller.present?.(workspace)).toEqual({
-      title: "Workspace",
-      status: "2 repositories · 1 open PR/MR",
-      detail: "BatonSession cwd",
-      tone: "muted",
-    });
+    expect(await controller.present?.(workspace)).toBeUndefined();
 
     const resourceVersion = workspace.metadata.resourceVersion;
     await controller.reconcile(batonSnapshot(root), workspace);
