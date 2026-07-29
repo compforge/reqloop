@@ -148,6 +148,7 @@ describe("Requirement Resource", () => {
       title: "Requirement intake",
       status: "in_progress",
       detail: "Create a durable Requirement Resource.",
+      priority: 0,
       tone: "default",
     });
     expect(resources.current()).toEqual(requirement);
@@ -392,6 +393,7 @@ describe("Requirement Resource", () => {
       await controller.present?.(resources.current()!),
     ).toMatchObject({
       status: "in_progress · 1 PR merged · 1 unresolved review",
+      priority: 100,
       tone: "warning",
     });
     expect(
@@ -407,6 +409,19 @@ describe("Requirement Resource", () => {
 
     linkedPullRequest = await resources.client.patchStatus(linkedPullRequest, {
       reviewThreads: "resolved",
+      mergeability: "conflicted",
+    });
+    await controller.reconcile({} as never, resources.current()!);
+    expect(
+      await controller.present?.(resources.current()!),
+    ).toMatchObject({
+      status: "in_progress · 1 PR merged · 1 merge conflict",
+      priority: 200,
+      tone: "error",
+    });
+
+    linkedPullRequest = await resources.client.patchStatus(linkedPullRequest, {
+      mergeability: "ready",
     });
     await controller.reconcile({} as never, resources.current()!);
     expect(

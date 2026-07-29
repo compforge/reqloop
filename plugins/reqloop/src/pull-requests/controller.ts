@@ -33,7 +33,8 @@ import {
 } from "./review.ts";
 
 const PULL_REQUEST_POLL_CRON = "*/30 * * * * *";
-const PULL_REQUEST_POLL_INTERVAL_MS = 30_000;
+const PULL_REQUEST_ACTIVE_POLL_INTERVAL_MS = 30_000;
+const PULL_REQUEST_IDLE_POLL_INTERVAL_MS = 5 * 60_000;
 const REVIEW_ACTION_ACCEPT = "accept";
 const REVIEW_ACTION_IGNORE = "ignore";
 const ASSOCIATION_STANDALONE = "standalone";
@@ -170,11 +171,14 @@ function observationComplete(
         status.reviewThreads === "resolved"));
 }
 
-function observationDue(observedAt: string | undefined): boolean {
+function observationDue(
+  observedAt: string | undefined,
+  intervalMs: number,
+): boolean {
   if (!observedAt) return true;
   const elapsed = Date.now() - Date.parse(observedAt);
   return !Number.isFinite(elapsed) ||
-    elapsed >= PULL_REQUEST_POLL_INTERVAL_MS;
+    elapsed >= intervalMs;
 }
 
 export function createPullRequestController(
@@ -182,7 +186,7 @@ export function createPullRequestController(
   connectors: readonly ForgeConnector[] = [],
   reviewConnector?: PullRequestReviewConnector,
   sources: readonly Source<PullRequestSpec>[] = [],
-  shouldObserve: (
+  hasRecentWriteActivity: (
     identity: PullRequestIdentity,
   ) => Promise<boolean> = async () => true,
 ): Controller<
@@ -254,16 +258,17 @@ export function createPullRequestController(
       if (observationComplete(current.status)) return;
       const { identity } = current.spec;
       const connector = connectorsBySource.get(identity.source);
-      if (
-        connector &&
-        observationDue(current.status.observedAt) &&
-        await shouldObserve(identity)
-      ) {
-        const observation = await connector.get(identity);
-        if (!sameIdentity(observation.identity, identity)) {
-          throw new Error("ForgeConnector returned a different PullRequest");
+      if (connector) {
+        const pollIntervalMs = await hasRecentWriteActivity(identity)
+          ? PULL_REQUEST_ACTIVE_POLL_INTERVAL_MS
+          : PULL_REQUEST_IDLE_POLL_INTERVAL_MS;
+        if (observationDue(current.status.observedAt, pollIntervalMs)) {
+          const observation = await connector.get(identity);
+          if (!sameIdentity(observation.identity, identity)) {
+            throw new Error("ForgeConnector returned a different PullRequest");
+          }
+          current = await updatePullRequestObservation(resources, observation);
         }
-        current = await updatePullRequestObservation(resources, observation);
       }
       if (
         current.status.lifecycle === "merged" ||

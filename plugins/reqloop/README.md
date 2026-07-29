@@ -116,17 +116,18 @@ Resources.
 
 Forge polling is activity-aware. Devloop records one rolling hour of raw
 tool-call events in each checkout's `.devloop/tool-calls.jsonl`; ReqLoop owns
-the interpretation and queries PR/MR APIs only while explicit file writes
-outnumber reads. Missing or read-heavy timelines make no Forge request.
-Rate-limit responses honor the provider retry window and pause locally instead
-of repeatedly consuming the same API.
+the interpretation. Explicit file-write dominance enables frequent discovery
+and 30-second observation. Missing or read-heavy timelines skip collection
+discovery while already admitted PullRequests continue converging every five
+minutes. Rate-limit responses honor the provider retry window and pause locally
+instead of repeatedly consuming the same API.
 
 See [the Requirement Loop design](../../docs/reqloop.md) for lifecycle,
 reconciliation, and recovery details.
 
 ```text
 pluginId: compforge/reqloop
-version:  0.2.3
+version:  0.2.4
 ```
 
 Install this Marketplace in Baton, install `compforge/reqloop`, then enable it
@@ -154,6 +155,7 @@ Controller 负责让本地 Resource 与文件系统、代码平台、需求平�
 ReqLoop 不直接驱动 Harness，也暂不代用户修改外部 Requirement。生命周期、reconcile 与恢复细节
 见 [Requirement Loop 设计](../../docs/reqloop.md)。
 
-Forge 观察会读取各 repo 的 `.devloop/tool-calls.jsonl` 最近一小时窗口：只有明确的文件写入次数
-多于读取次数时才查询 PR/MR API；无时间线或以读取为主时不请求外部 URL。Connector 遇到限流会
-按服务端 retry 窗口在本地退避。
+Forge 观察会读取各 repo 的 `.devloop/tool-calls.jsonl` 最近一小时窗口：明确的文件写入次数
+多于读取次数时，Source 才发现新的 PR/MR，已准入 PullRequest 每 30 秒观察一次；无时间线或
+以读取为主时不扩张集合，已有 PullRequest 降频为每 5 分钟观察一次。Connector 遇到限流会按
+服务端 retry 窗口在本地退避。

@@ -598,9 +598,39 @@ describe("PullRequest Resource", () => {
     expect(calls).toBe(0);
   });
 
-  test("does not poll a stale PullRequest without write-heavy activity", async () => {
+  test("polls an idle PullRequest at the lower observation cadence", async () => {
     const resources = resourceClient();
     const current = await materializePullRequest(resources, observation);
+    let calls = 0;
+    const forge: ForgeConnector = {
+      source: "github-primary",
+      provider: "github",
+      async list() {
+        return [];
+      },
+      async get() {
+        calls += 1;
+        return observation;
+      },
+    };
+
+    await createPullRequestController(
+      resources.client,
+      [forge],
+      undefined,
+      [],
+      async () => false,
+    ).reconcile(batonSnapshot(), current);
+
+    expect(calls).toBe(1);
+  });
+
+  test("does not poll an idle PullRequest before its lower cadence is due", async () => {
+    const resources = resourceClient();
+    const current = await materializePullRequest(resources, {
+      ...observation,
+      observedAt: new Date(Date.now() - 60_000).toISOString(),
+    });
     let calls = 0;
     const forge: ForgeConnector = {
       source: "github-primary",

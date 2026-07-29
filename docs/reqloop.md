@@ -150,8 +150,9 @@ Repository 时，将其标记为离开观察范围，重新进入时复用原 Re
 Devloop 还在每个 repo 的 `.devloop/tool-calls.jsonl` 暴露最近一小时原始 tool-call 时间线；
 ReqLoop 只统计 `phase=started`，并由自己把明确的文件读取和文件写入工具分类。当写调用多于
 读调用时，`ForgePullRequestSource` 才调用 `ForgeConnector.list()` 准入近期开放 PR/MR，
-`PullRequestController` 才通过 `get()` 刷新已有对象。未知工具和 Bash/exec 命令信封不被猜成
-写入；没有时间线或以读取为主时保持本地观察，不发 Forge 请求。
+`PullRequestController` 每 30 秒通过 `get()` 刷新已有对象。未知工具和 Bash/exec 命令信封
+不被猜成写入；没有时间线或以读取为主时不扩张集合，已有 PullRequest 降频为每 5 分钟观察，
+保证已准入 Resource 最终收敛。
 
 RepositoryController 只汇总已经存在的 PullRequest，不调用 Connector 扩张集合。活动时间线只
 决定何时值得查询外部 PR，不参与 devloop 的 validation gate，也不改变 PullRequest 的持久身份。
@@ -211,8 +212,9 @@ PullRequest 卡片用 Resource Type 的首个 `shortNames` 别名 `pr` 作为分
 repository/number 与状态，第二行展示 Forge title；title 超出 Sidecar 横向空间时才滚动。
 卡片 title 是指向 Forge `url` 的终端原生超链接。
 merged 和 closed 的 PullRequest 都从 Board 消失；closed 与 review 状态已收敛的 merged
-PullRequest 停止轮询，review 状态尚未满足 Requirement 收尾条件的 merged PullRequest 仅在
-对应 repo 最近一小时仍是写密集活动时继续观察。
+PullRequest 停止轮询，review 状态尚未满足 Requirement 收尾条件的 merged PullRequest 继续
+按 repo 活跃度选择 30 秒或 5 分钟观察频率。Requirement 从关联 PullRequest 聚合 blocker，
+merge conflict 和 unresolved review 会提高其 Board priority。
 
 ### Resource 的创建、保留与销毁（当前阶段）
 
@@ -316,9 +318,10 @@ ForgePullRequestSource 在 devloop 最近一小时工具时间线呈现写密集
 `ForgeConnector.list()` 读取外部候选，并独立决定哪些 identity 应成为 Resource。Connector
 只提供外部查询能力，不能创建或删除 Resource。
 PullRequest 创建后由 Baton 自动入队，逐 Resource 的 PullRequestController 再通过
-`ForgeConnector.get()` 刷新状态。merged 保留为 Requirement 收尾证据，并在 review 状态为
-unknown 或 unresolved 时继续观察；closed 和 review 已收敛的 merged 不再轮询，closed 也不会
-被发现。PullRequest 的关联或观察 status 改变后，Requirement 的 Watch 将 create / update /
+`ForgeConnector.get()` 刷新状态；写密集 repo 每 30 秒观察，非活跃 repo 每 5 分钟观察。
+merged 保留为 Requirement 收尾证据，并在 review 状态为 unknown 或 unresolved 时继续观察；
+closed 和 review 已收敛的 merged 不再轮询，closed 也不会被发现。PullRequest 的关联或观察
+status 改变后，Requirement 的 Watch 将 create / update /
 delete 事件映射到关联 Requirement；Requirement reconcile 再读取最新 PullRequest 集合更新
 完成条件；本地派生汇总不依赖 Requirement 平台本次观察成功，外部观察使用独立 freshness
 节奏。未来其它发现手段仍应确保同一
