@@ -5,33 +5,33 @@
     "": {
       "name": "reqloop-marketplace",
       "devDependencies": {
-        "@qiankun01/baton-plugin": "0.1.14",
+        "@compforge/baton-plugin": "0.2.0",
         "@types/bun": "^1.3.0",
         "typescript": "^5.9.0",
       },
     },
     "plugins/hello": {
       "name": "@qiankunli/baton-plugin-hello",
-      "version": "0.0.1",
+      "version": "0.1.0",
     },
     "plugins/hello-counter": {
       "name": "@qiankunli/baton-plugin-hello-counter",
-      "version": "0.0.5",
+      "version": "0.1.0",
     },
     "plugins/reqloop": {
       "name": "@qiankunli/baton-plugin-reqloop",
-      "version": "0.1.17",
+      "version": "0.2.0",
       "peerDependencies": {
-        "@qiankun01/baton-plugin": ">=0.1.14",
+        "@compforge/baton-plugin": "^0.2.0",
       },
     },
     "plugins/turn-coach": {
       "name": "@qiankunli/baton-plugin-turn-coach",
-      "version": "0.0.3",
+      "version": "0.1.0",
     },
   },
   "packages": {
-    "@qiankun01/baton-plugin": ["@qiankun01/baton-plugin@0.1.14", "", {}, "sha512-3m7ZFA+EO66cJF8at4Llxneu1Mv57ECZBS6HPf4P7fsmpkvbR0c2nUMgMBhMJ783m5veNsRiG+28h3rNpci0qw=="],
+    "@compforge/baton-plugin": ["@compforge/baton-plugin@0.2.0", "", {}, "sha512-ELrUjQ0qGiMm+oRCeRvIlfyki68M7P0wIxPZrK3zwL3uZ5Pz9RafpCKN6Ojhs3S08wpYc3y8y8WDdICwNr2z5w=="],
 
     "@qiankunli/baton-plugin-hello": ["@qiankunli/baton-plugin-hello@workspace:plugins/hello"],
 
