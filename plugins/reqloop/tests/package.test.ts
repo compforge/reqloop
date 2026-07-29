@@ -712,6 +712,7 @@ describe("ReqLoop PluginPackage", () => {
             provider: "meego",
             projectKey: "secondary-project",
             profile: "secondary-profile",
+            userKey: "ou_owner",
             categories: ["story"],
           },
         },
@@ -730,9 +731,37 @@ describe("ReqLoop PluginPackage", () => {
         provider: "meego",
         projectKey: "secondary-project",
         profile: "secondary-profile",
+        userKey: "ou_owner",
         categories: ["story"],
       },
     ]);
+  });
+
+  test("optionally filters Meegle queries by current participant", async () => {
+    const mqls: string[] = [];
+    const connector = (userKey?: string) =>
+      new MeegleCliRequirementConnector(
+        {
+          source: "llmops",
+          provider: "meego",
+          projectKey: "llmops",
+          ...(userKey ? { userKey } : {}),
+          categories: ["story"],
+        },
+        async (args) => {
+          const mqlIndex = args.indexOf("--mql");
+          mqls.push(args[mqlIndex + 1]!);
+          return [];
+        },
+      );
+
+    await connector().list();
+    await connector("owner'key").list();
+
+    expect(mqls[0]).not.toContain("participate_persons()");
+    expect(mqls[1]).toContain(
+      "WHERE array_contains(participate_persons(), '<id:owner''key>')",
+    );
   });
 
   test("maps Meegle CLI query and detail output to requirements", async () => {
