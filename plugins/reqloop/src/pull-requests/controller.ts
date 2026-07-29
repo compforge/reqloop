@@ -14,6 +14,9 @@ import type {
   RequirementSpec,
   RequirementStatus,
 } from "../requirements/protocol.ts";
+import {
+  isRequirementActive,
+} from "../requirements/conditions.ts";
 import { REQUIREMENT_RESOURCE_TYPE } from "../requirements/resource.ts";
 import type {
   ForgeConnector,
@@ -67,8 +70,7 @@ async function activeRequirements(
     .list<RequirementSpec, RequirementStatus>(REQUIREMENT_RESOURCE_TYPE))
     .filter(({ status }) =>
       status.externalState !== undefined &&
-      status.externalState !== "completed" &&
-      status.externalState !== "closed"
+      isRequirementActive(status)
     );
 }
 
@@ -78,8 +80,7 @@ function activeRequirement(resource: EventResource): boolean {
   >;
   return (
     requirement.status.externalState !== undefined &&
-    requirement.status.externalState !== "completed" &&
-    requirement.status.externalState !== "closed"
+    isRequirementActive(requirement.status)
   );
 }
 

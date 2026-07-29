@@ -78,7 +78,8 @@ ContextProvider 只搜索当前 BatonSession 已物化且仍活跃的 Requiremen
 `proposed-input`。Baton 持久化决定并负责 composer、Input、Attempt 与 Harness 路由。
 ReqLoop 不持有 Harness 进程、SDK 句柄或原生 session，也不会在无人输入时启动 Harness。
 
-RequirementController 当前只观察、汇总并发送 ReadyToClose toast。外部 Requirement 写入、
+RequirementController 当前只观察、汇总，并在 ReadyToClose 后让用户确认是否结束本地跟踪；
+确认结果以 `ClosureRequested` Condition 持久化并发送 toast。外部 Requirement 写入、
 PR 合并、部署和主动 Harness 调用都不在现有 Connector 接口或 manifest 权限内。
 
 ## 权限与失败

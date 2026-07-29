@@ -23,6 +23,7 @@ import {
   type PullRequestReviewConnector,
   type PullRequestSpec,
   type PullRequestStatus,
+  REQUIREMENT_CONDITION,
   REQUIREMENT_RESOURCE_TYPE,
   type RequirementSpec,
   type RequirementStatus,
@@ -40,7 +41,10 @@ function resourceClient(): {
   readonly repositoryCurrent: () => Readonly<
     Resource<RepositorySpec, RepositoryStatus>
   > | undefined;
-  readonly addRequirement: (name?: string) => void;
+  readonly addRequirement: (
+    name?: string,
+    status?: RequirementStatus,
+  ) => void;
   readonly observeRepository: (
     repository: Readonly<Resource<RepositorySpec, RepositoryStatus>>,
   ) => void;
@@ -147,7 +151,10 @@ function resourceClient(): {
     current: () => resource,
     repositoryCurrent: () => repository,
     workspaceCurrent: () => workspace,
-    addRequirement(name = "req_active") {
+    addRequirement(
+      name = "req_active",
+      status: RequirementStatus = { externalState: "in_progress" },
+    ) {
       requirement = {
         ...REQUIREMENT_RESOURCE_TYPE,
         metadata: {
@@ -166,7 +173,7 @@ function resourceClient(): {
           },
           title: "Requirement intake",
         },
-        status: { externalState: "in_progress" },
+        status,
       };
     },
     observeRepository(observed) {
@@ -466,6 +473,37 @@ describe("PullRequest Resource", () => {
     });
     expect(
       await controller.present?.(resources.current()!),
+    ).toBeUndefined();
+  });
+
+  test("does not offer a Requirement closed locally by the user", async () => {
+    const resources = resourceClient();
+    resources.addRequirement("req_closed", {
+      externalState: "in_progress",
+      conditions: [{
+        type: REQUIREMENT_CONDITION.closureRequested,
+        status: "True",
+        observedGeneration: 1,
+        lastTransitionTime: "2026-07-26T12:00:00.000Z",
+        reason: "UserConfirmed",
+        message: "The user asked reqloop to stop tracking this Requirement.",
+      }],
+    });
+    const pullRequest = await materializePullRequest(
+      resources,
+      observation,
+    );
+    const controller = createPullRequestController(resources.client);
+    const requirement = (await resources.client.list<
+      RequirementSpec,
+      RequirementStatus
+    >(REQUIREMENT_RESOURCE_TYPE))[0]!;
+
+    expect(
+      await controller.watches?.[0]?.handler.create({ object: requirement }),
+    ).toEqual([]);
+    expect(
+      await controller.reconcile(batonSnapshot(), pullRequest),
     ).toBeUndefined();
   });
 

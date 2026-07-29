@@ -1,8 +1,11 @@
 import type { ResourceCondition } from "@compforge/baton-plugin";
 
+import type { RequirementStatus } from "./protocol.ts";
+
 export const REQUIREMENT_CONDITION = Object.freeze({
   observed: "Observed",
   readyToClose: "ReadyToClose",
+  closureRequested: "ClosureRequested",
 } as const);
 
 export type StatusConditionUpdate = Omit<
@@ -63,4 +66,16 @@ export function getStatusCondition(
   type: string,
 ): ResourceCondition | undefined {
   return conditions?.find((condition) => condition.type === type);
+}
+
+/** Local closure is terminal for reqloop without claiming the provider closed. */
+export function isRequirementActive(status: RequirementStatus): boolean {
+  return (
+    status.externalState !== "completed" &&
+    status.externalState !== "closed" &&
+    getStatusCondition(
+      status.conditions,
+      REQUIREMENT_CONDITION.closureRequested,
+    )?.status !== "True"
+  );
 }

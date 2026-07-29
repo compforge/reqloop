@@ -56,17 +56,19 @@ Requirement `spec` 保存用户选中时认可的标题、描述和验收标准�
 状态、关联 PR 汇总和条件。PullRequest `spec` 只保存不可变外部身份；Forge 观测、归属决定和
 devloop review 结果都进入不同的 status 字段，互不覆盖。
 
-Requirement 当前使用两个 condition：
+Requirement 当前使用三个 condition：
 
 - `Observed`：最近一次 RequirementConnector 观察是否成功；
-- `ReadyToClose`：关联 PR 是否满足当前收尾条件。
+- `ReadyToClose`：关联 PR 是否满足当前收尾条件；
+- `ClosureRequested`：用户是否确认结束 reqloop 对该 Requirement 的本地跟踪。
 
 Conditions 是当前谓词，不是事件历史。只有 `True / False / Unknown` 迁移才更新 transition
 time；reason、message 或 observed generation 的刷新不伪造状态迁移。
 
 当前 `ReadyToClose` 规则要求至少有一份关联 PR，且全部已 merged、没有 merge conflict，
 review thread 均为 none 或 resolved。无法观察 review thread 时为 `Unknown`，不能乐观关闭。
-RequirementController 只给出一次去重提醒，不修改外部需求状态。
+达到该条件后，RequirementController 通过 durable Interaction 询问用户；确认会写入
+`ClosureRequested=True` 并给出 toast，但不修改外部需求状态。
 
 ## Board 投影
 
@@ -77,5 +79,6 @@ merge conflict 和 unresolved review 是当前 blocker：它们影响卡片 tone
 priority，使阻塞项优先进入 Baton 的有限展示集合。具体分值属于当前实现细节，以 Controller
 及其测试为准。
 
-Board 隐藏只影响展示。merged/closed、Requirement completed/closed、Repository 离开范围，
-都不会因此删除对应 Resource。
+Board 隐藏只影响展示。merged/closed、Requirement completed/closed、用户确认本地关闭、
+Repository 离开范围，都不会因此删除对应 Resource。`ClosureRequested` 还会让 Requirement
+退出 Context 搜索和后续 PR 关联候选，避免已经结束的本地生命周期再次进入工作流。

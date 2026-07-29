@@ -85,8 +85,10 @@ PullRequest 的 create、update 和 delete 通过 Watch 映射到关联 Requirem
 old/new snapshot，因此 PR 改挂时旧、新两侧都重新汇总。RequirementController 扫描指向当前
 Requirement uid 且未 closed 的 PullRequest，更新汇总和 `ReadyToClose`。
 
-本地 PR 投影不依赖本次需求平台观察成功。达到 ReadyToClose 时 Controller 发送一次按 PR
-revision 集合去重的 toast；当前不会关闭外部 Requirement，也不会返回开发任务的
+本地 PR 投影不依赖本次需求平台观察成功。达到 ReadyToClose 时 Controller 以当前 PR
+revision 集合作为 decision key，返回 durable Interaction 询问用户是否结束本地跟踪。
+用户确认后写入 `ClosureRequested=True` 并发送成功 toast；Requirement 随即退出 Board、
+Context 搜索和 PR 关联候选。当前不会关闭外部 Requirement，也不会返回开发任务的
 `proposed-input`。
 
 ## 保留、删除与恢复

@@ -108,10 +108,13 @@ Controllers keep these Resources aligned with the filesystem, Forge,
 requirement platform, and devloop review ledger. When user judgment is needed,
 ReqLoop opens a durable Interaction; an accepted review can become a
 `proposed-input` for the current Harness. ReqLoop does not directly drive a
-Harness or mutate external Requirement state. The Board currently presents
-only active Requirements and unlinked active PullRequests; PullRequest cards
-and Requirement cards link to their external source and show the external title
-on a single marquee line only when it overflows. Workspace and Repository
+Harness or mutate external Requirement state. Once linked PullRequests settle,
+ReqLoop asks whether to stop tracking the Requirement locally; confirmation
+hides it from active views while preserving the Resource and its external
+state. The Board currently presents only active Requirements and unlinked
+active PullRequests; PullRequest and Requirement cards link to their external
+source and show the external title on a single marquee line only when it
+overflows. Workspace and Repository
 remain internal observation Resources.
 
 Forge admission and observation are activity-aware. ReqLoop interprets
@@ -147,12 +150,13 @@ ReqLoop 在 Baton core 之外拥有需求级闭环，核心有四种 Resource：
 BatonSession cwd → Workspace → Repository → PullRequest
 /requirements   → Requirement ← 关联的 PullRequests
 Forge / devloop / 需求平台 → 最新观察 → Resource status → Board / context
-需要用户判断 → durable Interaction → proposed-input → 当前 Harness
+需要用户判断 → durable Interaction → Resource status / proposed-input
 ```
 
 Controller 负责让本地 Resource 与文件系统、代码平台、需求平台及 devloop review 结果持续收敛。
 ReqLoop 不直接驱动 Harness，也暂不代用户修改外部 Requirement。领域模型、reconcile、集成
-边界与长期方向见 [ReqLoop 架构索引](./AGENTS.md)。
+边界与长期方向见 [ReqLoop 架构索引](./AGENTS.md)。关联 PR 收敛后，ReqLoop 会询问是否结束
+本地跟踪；用户确认后 Requirement 退出活跃视图，但 Resource 与外部状态仍保留。
 
 Forge 准入与观察会使用 ReqLoop 对 devloop 原始工具活动的解释：明确的文件写入占优时，
 Source 才扩张 PR/MR 集合并提高观察频率；无活动或以读取为主时不扩张集合，已有
