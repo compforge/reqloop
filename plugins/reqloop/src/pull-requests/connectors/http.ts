@@ -163,6 +163,13 @@ export function records(name: string, value: unknown): Record<string, unknown>[]
   return value.map((item, index) => record(`${name}[${index}]`, item));
 }
 
+export function nonEmptyString(name: string, value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${name} must be a non-empty string`);
+  }
+  return value;
+}
+
 export function positiveLimit(limit: number | undefined): number {
   if (limit === undefined) return 30;
   if (!Number.isSafeInteger(limit) || limit < 1) {

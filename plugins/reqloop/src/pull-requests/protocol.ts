@@ -40,6 +40,8 @@ export type PullRequestRequirementAssociation =
 
 /** Empty status means the external PR/MR has not been observed yet. */
 export interface PullRequestStatus {
+  readonly title?: string;
+  readonly url?: string;
   readonly lifecycle?: PullRequestLifecycle;
   readonly reviewThreads?: PullRequestReviewThreads;
   /** Opaque Forge-derived fingerprint; a change means review activity changed. */
@@ -62,6 +64,8 @@ export interface PullRequestStatus {
 
 export interface PullRequest {
   readonly identity: PullRequestIdentity;
+  readonly title: string;
+  readonly url: string;
   readonly lifecycle: PullRequestLifecycle;
   readonly reviewThreads: PullRequestReviewThreads;
   readonly reviewActivityKey?: string;

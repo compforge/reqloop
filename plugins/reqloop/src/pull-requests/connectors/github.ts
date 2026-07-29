@@ -11,6 +11,7 @@ import { isForgeRateLimitError } from "../protocol.ts";
 import type { ForgeConfig } from "./config.ts";
 import {
   JsonHttpClient,
+  nonEmptyString,
   positiveLimit,
   record,
   records,
@@ -164,6 +165,8 @@ export class GitHubForgeConnector implements ForgeConnector {
     }
     return {
       identity,
+      title: nonEmptyString("GitHub PullRequest.title", pullRequest.title),
+      url: nonEmptyString("GitHub PullRequest.html_url", pullRequest.html_url),
       lifecycle: lifecycle(pullRequest),
       reviewThreads,
       ...(reviewActivity ? { reviewActivityKey: reviewActivity } : {}),

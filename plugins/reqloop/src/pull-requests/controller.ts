@@ -416,12 +416,18 @@ export function createPullRequestController(
         title:
           `${resource.spec.identity.repository} #` +
           resource.spec.identity.number,
+        ...(resource.status.url ? { url: resource.status.url } : {}),
         status: blockers.length > 0 ? blockers.join(" · ") : "Open",
-        detail: resource.status.requirementAssociation?.state === "prompted"
-          ? "Waiting for Requirement association"
-          : resource.status.requirementAssociation?.state === "standalone"
-          ? "Standalone PullRequest"
-          : "Unassociated PullRequest",
+        ...(resource.status.title
+          ? {
+              detail: resource.status.title,
+            }
+          : {}),
+        priority: resource.status.mergeability === "conflicted"
+          ? 200
+          : resource.status.reviewThreads === "unresolved"
+          ? 100
+          : 0,
         tone: resource.status.mergeability === "conflicted"
           ? "error"
           : resource.status.reviewThreads === "unresolved"

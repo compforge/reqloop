@@ -16,6 +16,7 @@ import type {
 export const PULL_REQUEST_RESOURCE_TYPE = Object.freeze({
   apiVersion: "reqloop.baton.dev/v1alpha1",
   kind: "PullRequest",
+  shortNames: ["pr"],
 } as const);
 
 function normalizedIdentity(
@@ -73,6 +74,8 @@ export async function updatePullRequestObservation(
     observation.identity,
   );
   return await resources.patchStatus(resource, {
+    title: observation.title,
+    url: observation.url,
     lifecycle: observation.lifecycle,
     reviewThreads: observation.reviewThreads,
     reviewActivityKey:

@@ -109,8 +109,10 @@ requirement platform, and devloop review ledger. When user judgment is needed,
 ReqLoop opens a durable Interaction; an accepted review can become a
 `proposed-input` for the current Harness. ReqLoop does not directly drive a
 Harness or mutate external Requirement state. The Board currently presents
-only active Requirements and standalone active PullRequests; Workspace and
-Repository remain internal observation Resources.
+only active Requirements and unlinked active PullRequests; PullRequest cards
+link to the Forge and show the external title on a single marquee line only
+when it overflows. Workspace and Repository remain internal observation
+Resources.
 
 Forge polling is activity-aware. Devloop records one rolling hour of raw
 tool-call events in each checkout's `.devloop/tool-calls.jsonl`; ReqLoop owns
