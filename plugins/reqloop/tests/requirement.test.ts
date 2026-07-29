@@ -5,6 +5,7 @@ import {
 } from "bun:test";
 
 import type {
+  BatonSnapshot,
   Resource,
   ResourceClient,
   ToastMessage,
@@ -109,6 +110,24 @@ function resourceClient(): {
     },
   } as unknown as ResourceClient;
   return { client, current: () => resource };
+}
+
+function batonSnapshot(
+  pluginInteractions: BatonSnapshot["pluginInteractions"] = [],
+): BatonSnapshot {
+  return {
+    session: {
+      batonSessionId: "bs_test",
+      runState: "idle",
+      revision: 0,
+    },
+    activeTurns: [],
+    inputs: [],
+    harnessTargets: [],
+    pendingInteractions: [],
+    pluginInteractions,
+    turns: [],
+  };
 }
 
 describe("Requirement Resource", () => {
@@ -290,7 +309,7 @@ describe("Requirement Resource", () => {
     ]);
   });
 
-  test("refreshes external state and reminds once when linked PRs are done", async () => {
+  test("closes local tracking after the user confirms linked PRs are done", async () => {
     const resources = resourceClient();
     const requirement = await upsertRequirement(resources.client, {
       source: "meego",
@@ -357,7 +376,7 @@ describe("Requirement Resource", () => {
       cron: "0 * * * * *",
       timeZone: "UTC",
     }]);
-    await controller.reconcile({} as never, requirement);
+    await controller.reconcile(batonSnapshot(), requirement);
     expect(resources.current()?.status).toMatchObject({
       externalState: "in_progress",
       updatedAt: "2026-07-26T12:00:00.000Z",
@@ -375,7 +394,6 @@ describe("Requirement Resource", () => {
       status: "in_progress · 1 PR merged",
       tone: "default",
     });
-    expect(resources.current()?.status.closeReminderKey).toBeUndefined();
     expect(
       getStatusCondition(
         resources.current()?.status.conditions,
@@ -390,7 +408,7 @@ describe("Requirement Resource", () => {
     linkedPullRequest = await resources.client.patchStatus(linkedPullRequest, {
       reviewThreads: "unresolved",
     });
-    await controller.reconcile({} as never, resources.current()!);
+    await controller.reconcile(batonSnapshot(), resources.current()!);
     expect(
       await controller.present?.(resources.current()!),
     ).toMatchObject({
@@ -413,7 +431,7 @@ describe("Requirement Resource", () => {
       reviewThreads: "resolved",
       mergeability: "conflicted",
     });
-    await controller.reconcile({} as never, resources.current()!);
+    await controller.reconcile(batonSnapshot(), resources.current()!);
     expect(
       await controller.present?.(resources.current()!),
     ).toMatchObject({
@@ -425,7 +443,10 @@ describe("Requirement Resource", () => {
     linkedPullRequest = await resources.client.patchStatus(linkedPullRequest, {
       mergeability: "ready",
     });
-    await controller.reconcile({} as never, resources.current()!);
+    const prompted = await controller.reconcile(
+      batonSnapshot(),
+      resources.current()!,
+    );
     expect(
       await controller.present?.(resources.current()!),
     ).toMatchObject({
@@ -441,17 +462,87 @@ describe("Requirement Resource", () => {
       status: "True",
       reason: "PullRequestsSettled",
     });
+    expect(prompted?.output).toMatchObject({
+      kind: "interaction",
+      title: "Close requirement",
+      options: [
+        {
+          optionId: "confirm",
+          label: "Close in reqloop",
+        },
+        {
+          optionId: "keep-open",
+          label: "Keep open",
+          role: "reject",
+        },
+      ],
+    });
+    expect(toasts).toHaveLength(0);
+    if (prompted?.output?.kind !== "interaction") {
+      throw new Error("expected closure Interaction");
+    }
+
+    let current = resources.current()!;
+    const interactionResource = {
+      ...REQUIREMENT_RESOURCE_TYPE,
+      namespace: current.metadata.namespace,
+      name: current.metadata.name,
+    };
+    await controller.reconcile(
+      batonSnapshot([{
+        interactionId: "ix_close_requirement",
+        decisionKey: prompted.output.decisionKey,
+        resource: interactionResource,
+      }]),
+      current,
+    );
     expect(
-      typeof resources.current()?.status.closeReminderKey,
-    ).toBe("string");
+      getStatusCondition(
+        resources.current()?.status.conditions,
+        REQUIREMENT_CONDITION.closureRequested,
+      ),
+    ).toBeUndefined();
+    expect(
+      await controller.present?.(resources.current()!),
+    ).toBeDefined();
+    expect(toasts).toHaveLength(0);
+
+    current = resources.current()!;
+    await controller.reconcile(
+      batonSnapshot([{
+        interactionId: "ix_close_requirement",
+        decisionKey: prompted.output.decisionKey,
+        resource: interactionResource,
+        outcome: { kind: "answered", values: ["confirm"] },
+      }]),
+      current,
+    );
+
+    expect(resources.current()?.status.externalState).toBe("in_progress");
+    expect(
+      getStatusCondition(
+        resources.current()?.status.conditions,
+        REQUIREMENT_CONDITION.closureRequested,
+      ),
+    ).toMatchObject({
+      status: "True",
+      reason: "UserConfirmed",
+      lastTransitionTime: expect.any(String),
+    });
+    expect(
+      await controller.present?.(resources.current()!),
+    ).toBeUndefined();
+    expect(
+      await createRequirementContextProvider(resources.client).search(""),
+    ).toEqual([]);
     expect(toasts).toEqual([{
       text:
-        "Requirement \"Close completed requirement\" looks ready to close. " +
-        "Please close it at https://meego.example/story/REQ-9.",
-      tone: "info",
+        "Requirement \"Close completed requirement\" was closed in reqloop. " +
+        "The external requirement was not changed.",
+      tone: "success",
     }]);
 
-    await controller.reconcile({} as never, resources.current()!);
+    await controller.reconcile(batonSnapshot(), resources.current()!);
     expect(toasts).toHaveLength(1);
     expect(observationCalls).toBe(1);
   });

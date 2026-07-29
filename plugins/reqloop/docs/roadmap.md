@@ -30,7 +30,7 @@ ReqLoop。Harness 负责智能执行，devloop 约束 Harness 内的开发小闭
 
 - Requirement、Workspace、Repository、PullRequest 四种 Resource；
 - 需求选择、Forge/devloop 观察、PR 与 Requirement 的持久关联；
-- review 决定、修复建议、Board/Context 投影和关闭提醒；
+- review 决定、修复建议、Board/Context 投影和本地关闭确认；
 - 用户显式删除期限与重启恢复。
 
 当前未落地：

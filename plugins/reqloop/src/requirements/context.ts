@@ -8,18 +8,14 @@ import type {
   RequirementSpec,
   RequirementStatus,
 } from "./protocol.ts";
+import {
+  isRequirementActive,
+} from "./conditions.ts";
 import { REQUIREMENT_RESOURCE_TYPE } from "./resource.ts";
 
 type RequirementResource = Readonly<
   Resource<RequirementSpec, RequirementStatus>
 >;
-
-function isActive(resource: RequirementResource): boolean {
-  return (
-    resource.status.externalState !== "completed" &&
-    resource.status.externalState !== "closed"
-  );
-}
 
 function searchableText(resource: RequirementResource): string {
   return [
@@ -89,7 +85,7 @@ export function createRequirementContextProvider(
       return (await resources.list<RequirementSpec, RequirementStatus>(
         REQUIREMENT_RESOURCE_TYPE,
       ))
-        .filter(isActive)
+        .filter((resource) => isRequirementActive(resource.status))
         .filter((resource) =>
           !normalizedQuery ||
           searchableText(resource).includes(normalizedQuery)

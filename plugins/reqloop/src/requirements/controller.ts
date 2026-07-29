@@ -1,4 +1,5 @@
 import type {
+  BatonSnapshot,
   Controller,
   Resource,
   ResourceClient,
@@ -24,6 +25,7 @@ import {
 } from "./resource.ts";
 import {
   getStatusCondition,
+  isRequirementActive,
   REQUIREMENT_CONDITION,
   setStatusCondition,
   type StatusConditionUpdate,
@@ -31,6 +33,8 @@ import {
 
 const REQUIREMENT_POLL_CRON = "0 * * * * *";
 const REQUIREMENT_POLL_INTERVAL_MS = 60_000;
+const CLOSURE_ACTION_CONFIRM = "confirm";
+const CLOSURE_ACTION_KEEP_OPEN = "keep-open";
 
 function sameIdentity(
   left: RequirementIdentity,
@@ -40,13 +44,6 @@ function sameIdentity(
     left.source === right.source &&
     left.category === right.category &&
     left.id === right.id
-  );
-}
-
-function isTerminal(status: RequirementStatus): boolean {
-  return (
-    status.externalState === "completed" ||
-    status.externalState === "closed"
   );
 }
 
@@ -182,17 +179,28 @@ function readyToCloseCondition(
   };
 }
 
-function closeReminderKey(
+function closureDecisionKey(
+  requirementName: string,
   pullRequests: readonly Readonly<
     Resource<PullRequestSpec, PullRequestStatus>
   >[],
 ): string {
-  return pullRequests
+  const basis = pullRequests
     .map(({ metadata }) =>
       `${metadata.name}@${metadata.resourceVersion}`
     )
     .sort()
     .join(",");
+  return `close-requirement:${requirementName}:${basis}`;
+}
+
+function interactionDecision(
+  baton: Readonly<BatonSnapshot>,
+  decisionKey: string,
+): BatonSnapshot["pluginInteractions"][number] | undefined {
+  return baton.pluginInteractions.find(
+    (interaction) => interaction.decisionKey === decisionKey,
+  );
 }
 
 export function createRequirementController(
@@ -227,7 +235,7 @@ export function createRequirementController(
         }],
       }
       : {}),
-    async reconcile(_baton, resource) {
+    async reconcile(baton, resource) {
       if (!resources) return;
       let current = resource;
       const connector = connectorsBySource.get(
@@ -262,7 +270,7 @@ export function createRequirementController(
           observationError = error;
         }
       }
-      if (isTerminal(current.status)) {
+      if (!isRequirementActive(current.status)) {
         if (observationError) throw observationError;
         return;
       }
@@ -282,32 +290,67 @@ export function createRequirementController(
           readyToClose,
         ),
       });
-      const reminderKey = readyToClose.status === "True"
-        ? closeReminderKey(pullRequests)
-        : undefined;
-      if (
-        reminderKey &&
-        current.status.closeReminderKey !== reminderKey &&
-        toast
-      ) {
-        const target = current.status.url
-          ? ` at ${current.status.url}`
-          : ` in ${current.spec.identity.source}`;
-        toast.show({
-          text:
-            `Requirement "${current.spec.title}" looks ready to close. ` +
-            `Please close it${target}.`,
-          tone: "info",
-        });
+      if (readyToClose.status === "True") {
+        const decisionKey = closureDecisionKey(
+          current.metadata.name,
+          pullRequests,
+        );
+        const decision = interactionDecision(baton, decisionKey);
+        if (!decision) {
+          if (observationError) throw observationError;
+          return {
+            output: {
+              kind: "interaction",
+              decisionKey,
+              title: "Close requirement",
+              prompt:
+                `Requirement "${current.spec.title}" looks ready to close. ` +
+                "Stop tracking it in reqloop?",
+              options: [
+                {
+                  optionId: CLOSURE_ACTION_CONFIRM,
+                  label: "Close in reqloop",
+                  description:
+                    "Hide it locally without changing the external requirement.",
+                },
+                {
+                  optionId: CLOSURE_ACTION_KEEP_OPEN,
+                  label: "Keep open",
+                  role: "reject",
+                },
+              ],
+            },
+          };
+        }
+        if (
+          decision.outcome?.kind !== "answered" ||
+          decision.outcome.values[0] !== CLOSURE_ACTION_CONFIRM
+        ) {
+          if (observationError) throw observationError;
+          return;
+        }
         current = await resources.patchStatus(current, {
-          closeReminderKey: reminderKey,
+          conditions: setStatusCondition(current.status.conditions, {
+            type: REQUIREMENT_CONDITION.closureRequested,
+            status: "True",
+            observedGeneration: current.metadata.generation,
+            reason: "UserConfirmed",
+            message:
+              "The user asked reqloop to stop tracking this Requirement.",
+          }),
+        });
+        toast?.show({
+          text:
+            `Requirement "${current.spec.title}" was closed in reqloop. ` +
+            "The external requirement was not changed.",
+          tone: "success",
         });
       }
       if (observationError) throw observationError;
     },
     async present(resource) {
+      if (!isRequirementActive(resource.status)) return undefined;
       const state = resource.status.externalState;
-      if (state === "completed" || state === "closed") return undefined;
       const pullRequests = resource.status.linkedPullRequests;
       const readyToClose = getStatusCondition(
         resource.status.conditions,

@@ -112,13 +112,13 @@ Forge/devloop   → latest observations → Resource status → Board / context
 
 Controllers keep these Resources aligned with the filesystem, Forge,
 requirement platform, and devloop review ledger. When user judgment is needed,
-ReqLoop opens a durable Interaction; an accepted review can become a
+ReqLoop opens a durable Interaction; accepted decisions can become a
 `proposed-input` for the current Harness. ReqLoop does not directly drive a
-Harness or mutate external Requirement state. The Board currently presents
-only active Requirements and unlinked active PullRequests; PullRequest cards
-and Requirement cards link to their external source and show the external title
-on a single marquee line only when it overflows. Workspace and Repository
-remain internal observation Resources.
+Harness or mutate external Requirement state. The Board currently presents only
+active Requirements and unlinked active PullRequests; PullRequest and
+Requirement cards link to their external source and show the external title on
+a single marquee line only when it overflows. Workspace and Repository remain
+internal observation Resources.
 
 Forge admission and observation are activity-aware. ReqLoop interprets
 devloop's raw tool activity: explicit file-write dominance enables collection
@@ -153,7 +153,7 @@ ReqLoop 在 Baton core 之外拥有需求级闭环，核心有四种 Resource：
 BatonSession cwd → Workspace → Repository → PullRequest
 /requirements   → Requirement ← 关联的 PullRequests
 Forge / devloop / 需求平台 → 最新观察 → Resource status → Board / context
-需要用户判断 → durable Interaction → proposed-input → 当前 Harness
+需要用户判断 → durable Interaction → Resource status / proposed-input
 ```
 
 Controller 负责让本地 Resource 与文件系统、代码平台、需求平台及 devloop review 结果持续收敛。

@@ -74,11 +74,13 @@ ReqLoop 当前向 Baton 注册：
 ContextProvider 只搜索当前 BatonSession 已物化且仍活跃的 Requirement，不在用户输入 `@`
 时访问外部平台；选中后按 Baton 给出的字符预算向一次 Harness turn 注入内容。
 
-需要人的领域判断时，PullRequestController 返回 `interaction`；需要建议修复 review 时返回
-`proposed-input`。Baton 持久化决定并负责 composer、Input、Attempt 与 Harness 路由。
-ReqLoop 不持有 Harness 进程、SDK 句柄或原生 session，也不会在无人输入时启动 Harness。
+需要人的领域判断时，PullRequestController 返回 `interaction`；用户确认处理 merge conflict
+或 review 时返回对应的 `proposed-input`。Baton 持久化决定并负责 composer、Input、Attempt
+与 Harness 路由。ReqLoop 不持有 Harness 进程、SDK 句柄或原生 session，也不会在无人输入时
+启动 Harness。
 
-RequirementController 当前只观察、汇总并发送 ReadyToClose toast。外部 Requirement 写入、
+RequirementController 当前只观察、汇总，并在 ReadyToClose 后让用户确认是否结束本地跟踪；
+确认结果以 `ClosureRequested` Condition 持久化并发送 toast。外部 Requirement 写入、
 PR 合并、部署和主动 Harness 调用都不在现有 Connector 接口或 manifest 权限内。
 
 ## 权限与失败

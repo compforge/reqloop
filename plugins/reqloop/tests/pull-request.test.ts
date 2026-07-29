@@ -23,6 +23,7 @@ import {
   type PullRequestReviewConnector,
   type PullRequestSpec,
   type PullRequestStatus,
+  REQUIREMENT_CONDITION,
   REQUIREMENT_RESOURCE_TYPE,
   type RequirementSpec,
   type RequirementStatus,
@@ -40,7 +41,10 @@ function resourceClient(): {
   readonly repositoryCurrent: () => Readonly<
     Resource<RepositorySpec, RepositoryStatus>
   > | undefined;
-  readonly addRequirement: (name?: string) => void;
+  readonly addRequirement: (
+    name?: string,
+    status?: RequirementStatus,
+  ) => void;
   readonly observeRepository: (
     repository: Readonly<Resource<RepositorySpec, RepositoryStatus>>,
   ) => void;
@@ -147,7 +151,10 @@ function resourceClient(): {
     current: () => resource,
     repositoryCurrent: () => repository,
     workspaceCurrent: () => workspace,
-    addRequirement(name = "req_active") {
+    addRequirement(
+      name = "req_active",
+      status: RequirementStatus = { externalState: "in_progress" },
+    ) {
       requirement = {
         ...REQUIREMENT_RESOURCE_TYPE,
         metadata: {
@@ -166,7 +173,7 @@ function resourceClient(): {
           },
           title: "Requirement intake",
         },
-        status: { externalState: "in_progress" },
+        status,
       };
     },
     observeRepository(observed) {
@@ -467,6 +474,132 @@ describe("PullRequest Resource", () => {
     expect(
       await controller.present?.(resources.current()!),
     ).toBeUndefined();
+  });
+
+  test("does not offer a Requirement closed locally by the user", async () => {
+    const resources = resourceClient();
+    resources.addRequirement("req_closed", {
+      externalState: "in_progress",
+      conditions: [{
+        type: REQUIREMENT_CONDITION.closureRequested,
+        status: "True",
+        observedGeneration: 1,
+        lastTransitionTime: "2026-07-26T12:00:00.000Z",
+        reason: "UserConfirmed",
+        message: "The user asked reqloop to stop tracking this Requirement.",
+      }],
+    });
+    const pullRequest = await materializePullRequest(
+      resources,
+      observation,
+    );
+    const controller = createPullRequestController(resources.client);
+    const requirement = (await resources.client.list<
+      RequirementSpec,
+      RequirementStatus
+    >(REQUIREMENT_RESOURCE_TYPE))[0]!;
+
+    expect(
+      await controller.watches?.[0]?.handler.create({ object: requirement }),
+    ).toEqual([]);
+    expect(
+      await controller.reconcile(batonSnapshot(), pullRequest),
+    ).toBeUndefined();
+  });
+
+  test("proposes Harness follow-up once for each merge-conflict episode", async () => {
+    const resources = resourceClient();
+    const conflicted = await materializePullRequest(resources, {
+      ...observation,
+      reviewThreads: "resolved",
+      mergeability: "conflicted",
+    });
+    const controller = createPullRequestController(resources.client);
+
+    const prompted = await controller.reconcile(
+      batonSnapshot(),
+      conflicted,
+    );
+    expect(prompted?.output).toMatchObject({
+      kind: "interaction",
+      title: "Merge conflict found",
+      options: [
+        {
+          optionId: "accept",
+          label: "Accept",
+        },
+        {
+          optionId: "ignore",
+          label: "Ignore",
+          role: "reject",
+        },
+      ],
+    });
+    if (prompted?.output?.kind !== "interaction") {
+      throw new Error("expected merge-conflict Interaction");
+    }
+    expect(resources.current()?.status.mergeConflictDecision).toEqual({
+      decisionKey: prompted.output.decisionKey,
+    });
+
+    const accepted = await controller.reconcile(
+      batonSnapshot([{
+        interactionId: "ix_merge_conflict",
+        decisionKey: prompted.output.decisionKey,
+        resource: {
+          ...PULL_REQUEST_RESOURCE_TYPE,
+          namespace: conflicted.metadata.namespace,
+          name: conflicted.metadata.name,
+        },
+        outcome: { kind: "answered", values: ["accept"] },
+      }]),
+      resources.current()!,
+    );
+    expect(resources.current()?.status.mergeConflictDecision).toEqual({
+      decisionKey: prompted.output.decisionKey,
+      choice: "accept",
+    });
+    expect(accepted?.output).toMatchObject({
+      kind: "proposed-input",
+      text: expect.stringContaining(
+        "Resolve the merge conflicts for compforge/reqloop PR/MR 17",
+      ),
+    });
+    expect(
+      await controller.reconcile(batonSnapshot(), resources.current()!),
+    ).toBeUndefined();
+
+    const ready = await updatePullRequestObservation(resources.client, {
+      ...observation,
+      reviewThreads: "resolved",
+      observedAt: "2026-07-26T09:00:00.000Z",
+    });
+    await controller.reconcile(batonSnapshot(), ready);
+    expect(resources.current()?.status.mergeConflictDecision).toBeNull();
+
+    const conflictedAgain = await updatePullRequestObservation(
+      resources.client,
+      {
+        ...observation,
+        reviewThreads: "resolved",
+        mergeability: "conflicted",
+        observedAt: "2026-07-26T10:00:00.000Z",
+      },
+    );
+    const promptedAgain = await controller.reconcile(
+      batonSnapshot(),
+      conflictedAgain,
+    );
+    expect(promptedAgain?.output).toMatchObject({
+      kind: "interaction",
+      title: "Merge conflict found",
+    });
+    if (promptedAgain?.output?.kind !== "interaction") {
+      throw new Error("expected a new merge-conflict Interaction");
+    }
+    expect(promptedAgain.output.decisionKey).not.toBe(
+      prompted.output.decisionKey,
+    );
   });
 
   test("pins legacy Requirement associations to their current uid", async () => {

@@ -75,6 +75,10 @@ Controller 还读取最新 devloop review observation。新的 actionable review
 ignore，并按 review key 记录一次最终决定；accept 返回 `proposed-input`，由用户审核或编辑后
 再提交给当前 Harness，ignore 不驱动 Harness。
 
+开放 PR/MR 出现 merge conflict 时，Controller 同样返回 durable Interaction。每次连续冲突
+只询问一次；accept 返回解决冲突的 `proposed-input`，ignore 不驱动 Harness。冲突状态消失后
+结束本次 decision episode，未来再次冲突时使用新的 decision key 重新询问。
+
 ## Requirement
 
 RequirementController 定期用与 identity.source 匹配的 RequirementConnector 读取外部需求。
@@ -85,8 +89,10 @@ PullRequest 的 create、update 和 delete 通过 Watch 映射到关联 Requirem
 old/new snapshot，因此 PR 改挂时旧、新两侧都重新汇总。RequirementController 扫描指向当前
 Requirement uid 且未 closed 的 PullRequest，更新汇总和 `ReadyToClose`。
 
-本地 PR 投影不依赖本次需求平台观察成功。达到 ReadyToClose 时 Controller 发送一次按 PR
-revision 集合去重的 toast；当前不会关闭外部 Requirement，也不会返回开发任务的
+本地 PR 投影不依赖本次需求平台观察成功。达到 ReadyToClose 时 Controller 以当前 PR
+revision 集合作为 decision key，返回 durable Interaction 询问用户是否结束本地跟踪。
+用户确认后写入 `ClosureRequested=True` 并发送成功 toast；Requirement 随即退出 Board、
+Context 搜索和 PR 关联候选。当前不会关闭外部 Requirement，也不会返回开发任务的
 `proposed-input`。
 
 ## 保留、删除与恢复
