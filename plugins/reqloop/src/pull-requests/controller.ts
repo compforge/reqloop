@@ -270,12 +270,7 @@ export function createPullRequestController(
           current = await updatePullRequestObservation(resources, observation);
         }
       }
-      if (
-        current.status.lifecycle === "merged" ||
-        current.status.lifecycle === "closed"
-      ) {
-        return;
-      }
+      if (observationComplete(current.status)) return;
 
       if (current.status.lifecycle === "open") {
         const association = current.status.requirementAssociation;
