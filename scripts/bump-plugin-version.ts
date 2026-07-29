@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const PACKAGE_VERSION_PATTERNS = [
@@ -18,6 +18,17 @@ export function replacePackageVersion(
   throw new Error("Package version declaration not found");
 }
 
+export function replaceReleaseVersion(
+  source: string,
+  version: string,
+): string {
+  const pattern = /(^Current version:\s*`)[^`]+(`\s*$)/m;
+  if (!pattern.test(source)) {
+    throw new Error("Current release version not found");
+  }
+  return source.replace(pattern, `$1${version}$2`);
+}
+
 function main(): void {
   const [pluginName, version] = Bun.argv.slice(2);
 
@@ -32,7 +43,7 @@ function main(): void {
   const packageJsonPath = join(pluginDir, "package.json");
   const manifestPath = join(pluginDir, ".baton-plugin", "plugin.json");
   const entryPath = join(pluginDir, "src", "index.ts");
-  const readmePath = join(pluginDir, "README.md");
+  const releasePath = join(pluginDir, "RELEASE.md");
 
   const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
     version: string;
@@ -41,7 +52,9 @@ function main(): void {
     version: string;
   };
   const entry = readFileSync(entryPath, "utf8");
-  const readme = readFileSync(readmePath, "utf8");
+  const release = existsSync(releasePath)
+    ? readFileSync(releasePath, "utf8")
+    : undefined;
 
   let nextEntry: string;
   try {
@@ -51,13 +64,6 @@ function main(): void {
       cause,
     });
   }
-  const nextReadme = readme.replace(
-    /(^version:\s+)\S+/m,
-    `$1${version}`,
-  );
-  if (nextReadme === readme && !readme.includes(`version:  ${version}`)) {
-    throw new Error(`could not find documented version in ${readmePath}`);
-  }
 
   packageJson.version = version;
   manifest.version = version;
@@ -65,7 +71,9 @@ function main(): void {
   writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   writeFileSync(entryPath, nextEntry);
-  writeFileSync(readmePath, nextReadme);
+  if (release !== undefined) {
+    writeFileSync(releasePath, replaceReleaseVersion(release, version));
+  }
 
   console.log(`Bumped ${pluginName} to ${version}`);
 }

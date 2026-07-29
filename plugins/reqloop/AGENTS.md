@@ -39,6 +39,7 @@ plugins/reqloop/
 │   └── requirements/             # 需求选择、外部观察、Context 与完成条件
 ├── tests/                        # Resource、Controller、Source、Connector 契约测试
 ├── docs/                         # 当前设计细节与长期方向
+├── RELEASE.md                    # 当前版本与发布记录
 └── README.md                     # 安装、配置与用户使用方式
 ```
 
@@ -70,6 +71,7 @@ plugins/reqloop/
 ## References
 
 - `README.md` — 安装、配置和当前用户能力
+- `RELEASE.md` — 当前版本与发布记录
 - `docs/domain-model.md` — 四种 Resource 的身份、owner 与 Board 语义
 - `docs/reconcile.md` — Command/Source/Watch/Controller 流程、保留与恢复
 - `docs/integrations.md` — Requirement/Forge/devloop/Harness 集成边界
