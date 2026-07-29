@@ -9,10 +9,9 @@ import {
   mkdtempSync,
   rmSync,
   symlinkSync,
-  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 
 import type {
   BatonSnapshot,
@@ -26,9 +25,11 @@ import {
   createWorkspaceController,
   discoverWorkspaceRepositories,
   PULL_REQUEST_RESOURCE_TYPE,
+  pullRequestResourceId,
   type PullRequestSpec,
   type PullRequestStatus,
   REPOSITORY_RESOURCE_TYPE,
+  repositoryResourceName,
   type RepositorySpec,
   type RepositoryStatus,
   WORKSPACE_RESOURCE_NAME,
@@ -111,6 +112,44 @@ function memoryResourceClient(): {
     async delete(type: ResourceType, name: string) {
       resources.delete(key(type, name));
     },
+    async patchMetadata<TSpec, TStatus>(
+      current: Readonly<Resource<TSpec, TStatus>>,
+      patch: {
+        readonly labels?: Readonly<Record<string, string | null>>;
+        readonly annotations?: Readonly<Record<string, string | null>>;
+      },
+    ) {
+      const apply = (
+        existing: Readonly<Record<string, string>> | undefined,
+        changes: Readonly<Record<string, string | null>> | undefined,
+      ): Readonly<Record<string, string>> | undefined => {
+        if (changes === undefined) return existing;
+        const next = { ...existing };
+        for (const [name, value] of Object.entries(changes)) {
+          if (value === null) delete next[name];
+          else next[name] = value;
+        }
+        return Object.keys(next).length > 0 ? next : undefined;
+      };
+      const labels = apply(current.metadata.labels, patch.labels);
+      const annotations = apply(
+        current.metadata.annotations,
+        patch.annotations,
+      );
+      const resource = {
+        ...current,
+        metadata: {
+          ...current.metadata,
+          resourceVersion: String(
+            Number(current.metadata.resourceVersion) + 1,
+          ),
+          labels,
+          annotations,
+        },
+      };
+      resources.set(key(current, current.metadata.name), resource);
+      return resource;
+    },
     async patchStatus<TSpec, TStatus>(
       current: Readonly<Resource<TSpec, TStatus>>,
       patch: Partial<TStatus>,
@@ -185,7 +224,7 @@ describe("Workspace Resource", () => {
     }]);
   });
 
-  test("discovers direct repositories and symlinks without recursive failure coupling", async () => {
+  test("projects Source-materialized repositories and PullRequests", async () => {
     const root = testRoot();
     const direct = join(root, "repo-a");
     const target = testRoot();
@@ -193,18 +232,6 @@ describe("Workspace Resource", () => {
     initializeRepository(direct, "owner/repo-a");
     initializeRepository(target, "owner/repo-b");
     symlinkSync(target, linked, "dir");
-
-    const directState = join(direct, ".devloop", "pr.json");
-    mkdirSync(dirname(directState), { recursive: true });
-    writeFileSync(directState, JSON.stringify({
-      prs: [
-        { number: 7, state: "open" },
-        { number: 6, state: "merged" },
-      ],
-    }));
-    const linkedState = join(linked, ".devloop", "pr.json");
-    mkdirSync(dirname(linkedState), { recursive: true });
-    writeFileSync(linkedState, "{");
 
     const resources = memoryResourceClient();
     let workspace = await resources.client.create<
@@ -214,6 +241,28 @@ describe("Workspace Resource", () => {
       name: WORKSPACE_RESOURCE_NAME,
       spec: workspaceSpec(),
     });
+    for (const repository of ["owner/repo-a", "owner/repo-b"]) {
+      const identity = { source: "github.com", repository };
+      await resources.client.create<RepositorySpec, RepositoryStatus>(
+        REPOSITORY_RESOURCE_TYPE,
+        {
+          name: repositoryResourceName(identity),
+          spec: { identity },
+        },
+      );
+    }
+    const pullRequestIdentity = {
+      source: "github.com",
+      repository: "owner/repo-a",
+      number: 7,
+    };
+    await resources.client.create<PullRequestSpec, PullRequestStatus>(
+      PULL_REQUEST_RESOURCE_TYPE,
+      {
+        name: pullRequestResourceId(pullRequestIdentity),
+        spec: { identity: pullRequestIdentity },
+      },
+    );
     const controller = createWorkspaceController(resources.client, root);
 
     await controller.reconcile(batonSnapshot(root), workspace);
@@ -226,15 +275,7 @@ describe("Workspace Resource", () => {
       workspace.status.repositories?.map((item) => item.relativePath),
     ).toEqual(["repo-a", "repo-b"]);
     expect(workspace.status.openPullRequests).toBe(1);
-    expect(workspace.status.discoveryErrors).toEqual([{
-      relativePath: "repo-b",
-      message: expect.stringContaining(
-        "Could not parse devloop PR state",
-      ),
-    }]);
-    expect(workspace.status.discoveryErrors?.[0]?.message).not.toContain(
-      root,
-    );
+    expect(workspace.status.discoveryErrors).toEqual([]);
 
     expect(
       resources.list<RepositorySpec, RepositoryStatus>(
@@ -253,8 +294,8 @@ describe("Workspace Resource", () => {
     expect(await controller.present?.(workspace)).toEqual({
       title: "Workspace",
       status: "2 repositories · 1 open PR/MR",
-      detail: "1 discovery error(s)",
-      tone: "warning",
+      detail: "BatonSession cwd",
+      tone: "muted",
     });
 
     const resourceVersion = workspace.metadata.resourceVersion;

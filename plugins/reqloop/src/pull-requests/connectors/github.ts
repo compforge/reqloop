@@ -1,6 +1,7 @@
 import type {
   ForgeConnector,
   PullRequestIdentity,
+  PullRequestListQuery,
   PullRequestLifecycle,
   PullRequestMergeability,
   PullRequest,
@@ -83,16 +84,14 @@ export class GitHubForgeConnector implements ForgeConnector {
 
   async list(
     repository: string,
-    limit?: number,
+    query: PullRequestListQuery,
   ): Promise<readonly PullRequestIdentity[]> {
-    const recentMergedLimit = positiveLimit(limit);
-    const open = await this.#listByState(repository, "open");
-    const merged = await this.#listByState(
+    const limit = positiveLimit(query.limit);
+    return await this.#listByState(
       repository,
-      "closed",
-      recentMergedLimit,
+      query.state === "open" ? "open" : "closed",
+      limit,
     );
-    return [...open, ...merged];
   }
 
   async #listByState(
@@ -107,7 +106,8 @@ export class GitHubForgeConnector implements ForgeConnector {
         "GET",
         `${this.#restBase}/repos/${repositoryPath(repository)}` +
           `/pulls?state=${state}&sort=updated&direction=desc` +
-          `&per_page=${PULL_REQUEST_PAGE_SIZE}&page=${page}`,
+          `&per_page=${Math.min(PULL_REQUEST_PAGE_SIZE, limit ?? PULL_REQUEST_PAGE_SIZE)}` +
+          `&page=${page}`,
         { headers: this.#headers() },
       );
       const pullRequests = records("GitHub PullRequests", data);

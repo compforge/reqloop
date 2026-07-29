@@ -185,12 +185,20 @@ describe("GitHubForgeConnector", () => {
       mergeability: "conflicted",
       observedAt: "2026-07-26T08:00:00.000Z",
     });
-    await expect(connector.list("compforge/reqloop", 2)).resolves.toEqual([
+    await expect(connector.list("compforge/reqloop", {
+      state: "open",
+      limit: 2,
+    })).resolves.toEqual([
       {
         source: "github.com",
         repository: "compforge/reqloop",
         number: 17,
       },
+    ]);
+    await expect(connector.list("compforge/reqloop", {
+      state: "merged",
+      limit: 2,
+    })).resolves.toEqual([
       {
         source: "github.com",
         repository: "compforge/reqloop",
@@ -239,7 +247,7 @@ describe("GitHubForgeConnector", () => {
     });
   });
 
-  test("discovers every open PullRequest before adding recent merged entries", async () => {
+  test("applies the caller's PullRequest state and result limit", async () => {
     const pages: string[] = [];
     const fetch: Fetch = async (input) => {
       const url = new URL(String(input));
@@ -273,24 +281,27 @@ describe("GitHubForgeConnector", () => {
       token: "secret",
     }, { fetch });
 
-    await expect(connector.list("owner/repo", 1)).resolves.toEqual([
+    await expect(connector.list("owner/repo", {
+      state: "open",
+      limit: 1,
+    })).resolves.toEqual([
       {
         source: "github.com",
         repository: "owner/repo",
         number: 3,
       },
-      {
-        source: "github.com",
-        repository: "owner/repo",
-        number: 1,
-      },
+    ]);
+    await expect(connector.list("owner/repo", {
+      state: "merged",
+      limit: 1,
+    })).resolves.toEqual([
       {
         source: "github.com",
         repository: "owner/repo",
         number: 2,
       },
     ]);
-    expect(pages).toEqual(["open:1", "open:2", "closed:1"]);
+    expect(pages).toEqual(["open:1", "closed:1"]);
   });
 
   test("changes the activity key when a review comment changes", async () => {
@@ -417,13 +428,23 @@ describe("GitLabForgeConnector", () => {
       observedAt: "2026-07-26T09:00:00.000Z",
     });
     await expect(
-      connector.list("group/subgroup/repo", 3),
+      connector.list("group/subgroup/repo", {
+        state: "open",
+        limit: 3,
+      }),
     ).resolves.toEqual([
       {
         source: "gitlab.example.com",
         repository: "group/subgroup/repo",
         number: 9,
       },
+    ]);
+    await expect(
+      connector.list("group/subgroup/repo", {
+        state: "merged",
+        limit: 3,
+      }),
+    ).resolves.toEqual([
       {
         source: "gitlab.example.com",
         repository: "group/subgroup/repo",
@@ -484,7 +505,7 @@ describe("GitLabForgeConnector", () => {
     });
   });
 
-  test("discovers every open MergeRequest before adding recent merged entries", async () => {
+  test("applies the caller's MergeRequest state and result limit", async () => {
     const pages: string[] = [];
     const fetch: Fetch = async (input) => {
       const url = new URL(String(input));
@@ -508,23 +529,26 @@ describe("GitLabForgeConnector", () => {
       token: "secret",
     }, { fetch });
 
-    await expect(connector.list("group/repo", 1)).resolves.toEqual([
+    await expect(connector.list("group/repo", {
+      state: "open",
+      limit: 1,
+    })).resolves.toEqual([
       {
         source: "gitlab.example.com",
         repository: "group/repo",
         number: 3,
       },
-      {
-        source: "gitlab.example.com",
-        repository: "group/repo",
-        number: 1,
-      },
+    ]);
+    await expect(connector.list("group/repo", {
+      state: "merged",
+      limit: 1,
+    })).resolves.toEqual([
       {
         source: "gitlab.example.com",
         repository: "group/repo",
         number: 2,
       },
     ]);
-    expect(pages).toEqual(["opened:1", "opened:2", "merged:1"]);
+    expect(pages).toEqual(["opened:1", "merged:1"]);
   });
 });

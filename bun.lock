@@ -5,7 +5,7 @@
     "": {
       "name": "reqloop-marketplace",
       "devDependencies": {
-        "@compforge/baton-plugin": "0.2.0",
+        "@compforge/baton-plugin": "0.2.1",
         "@types/bun": "^1.3.0",
         "typescript": "^5.9.0",
       },
@@ -20,9 +20,9 @@
     },
     "plugins/reqloop": {
       "name": "@compforge/baton-plugin-reqloop",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "peerDependencies": {
-        "@compforge/baton-plugin": "^0.2.0",
+        "@compforge/baton-plugin": "^0.2.1",
       },
     },
     "plugins/turn-coach": {
@@ -31,7 +31,7 @@
     },
   },
   "packages": {
-    "@compforge/baton-plugin": ["@compforge/baton-plugin@0.2.0", "", {}, "sha512-ELrUjQ0qGiMm+oRCeRvIlfyki68M7P0wIxPZrK3zwL3uZ5Pz9RafpCKN6Ojhs3S08wpYc3y8y8WDdICwNr2z5w=="],
+    "@compforge/baton-plugin": ["@compforge/baton-plugin@0.2.1", "", {}, "sha512-wrIwmDFKRH3AhC8FBMFxJSDdOPVW3u1xuV4jBKoMGKnAw9VODD2d+/F6/AwCU1lgCZ8FTguH3b+HRRewmnppkQ=="],
 
     "@compforge/baton-plugin-hello": ["@compforge/baton-plugin-hello@workspace:plugins/hello"],
 

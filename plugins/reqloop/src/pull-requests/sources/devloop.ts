@@ -15,7 +15,10 @@ import {
   devloopStatePath,
   readOpenPullRequestNumbers,
 } from "../devloop-state.ts";
-import type { PullRequestSpec } from "../protocol.ts";
+import type {
+  PullRequestReviewObservation,
+  PullRequestSpec,
+} from "../protocol.ts";
 import { pullRequestResourceId } from "../resource.ts";
 
 /**
@@ -27,6 +30,9 @@ export class DevloopPullRequestSource implements Source<PullRequestSpec> {
   readonly sourceId = "devloop";
   readonly path?: string;
   private readonly watchIntervalMs: number;
+  private readonly reviewObservations?: () => Promise<
+    readonly PullRequestReviewObservation[]
+  >;
   private lastFailureKey?: string;
 
   constructor(
@@ -34,13 +40,21 @@ export class DevloopPullRequestSource implements Source<PullRequestSpec> {
     options: {
       readonly path?: string;
       readonly watchIntervalMs?: number;
+      readonly reviewObservations?: () => Promise<
+        readonly PullRequestReviewObservation[]
+      >;
     } = {},
   ) {
     this.path = options.path?.trim() || undefined;
     this.watchIntervalMs = options.watchIntervalMs ?? 1_000;
+    this.reviewObservations = options.reviewObservations;
   }
 
   async start(context: SourceContext<PullRequestSpec>): Promise<void> {
+    for (const observation of await this.reviewObservations?.() ?? []) {
+      if (context.signal.aborted) return;
+      await this.emit(context, observation.identity);
+    }
     const path = this.path ?? await devloopStatePath(this.cwd, "pr.json");
     if (!path) return;
     const listener = (): void => {
@@ -86,11 +100,18 @@ export class DevloopPullRequestSource implements Source<PullRequestSpec> {
 
     for (const number of numbers) {
       const identity = { ...repository, number };
-      await context.emit({
-        name: pullRequestResourceId(identity),
-        spec: { identity },
-      });
+      await this.emit(context, identity);
     }
+  }
+
+  private async emit(
+    context: SourceContext<PullRequestSpec>,
+    identity: PullRequestSpec["identity"],
+  ): Promise<void> {
+    await context.emit({
+      name: pullRequestResourceId(identity),
+      spec: { identity },
+    });
   }
 
   private reportFailure(

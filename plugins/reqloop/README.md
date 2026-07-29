@@ -112,7 +112,7 @@ reconciliation, and recovery details.
 
 ```text
 pluginId: compforge/reqloop
-version:  0.2.0
+version:  0.2.1
 ```
 
 Install this Marketplace in Baton, install `compforge/reqloop`, then enable it

@@ -107,6 +107,12 @@ export interface PullRequestReviewConnector {
   ): Promise<PullRequestReviewObservation | undefined>;
 }
 
+export interface PullRequestListQuery {
+  readonly state: "open" | "merged";
+  /** Maximum number of provider results returned for this query. */
+  readonly limit: number;
+}
+
 /**
  * Read-only provider boundary for PullRequest discovery and observation.
  * `source` selects one configured Forge without leaking provider details into
@@ -115,10 +121,10 @@ export interface PullRequestReviewConnector {
 export interface ForgeConnector {
   readonly source: string;
   readonly provider: "github" | "gitlab";
-  /** Lists every open PR/MR plus at most `limit` recently merged entries. */
+  /** Lists provider objects; the calling Source owns the admission policy. */
   list(
     repository: string,
-    limit?: number,
+    query: PullRequestListQuery,
   ): Promise<readonly PullRequestIdentity[]>;
   get(identity: PullRequestIdentity): Promise<PullRequest>;
 }

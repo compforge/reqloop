@@ -10,6 +10,8 @@ import {
 import type {
   RepositorySpec,
 } from "./repositories/protocol.ts";
+import { DevloopRepositorySource } from "./repositories/sources/devloop.ts";
+import { ForgeRepositorySource } from "./repositories/sources/forge.ts";
 import {
   DevloopReviewConnector,
 } from "./pull-requests/connectors/devloop-review.ts";
@@ -35,14 +37,16 @@ import type {
   PullRequestSpec,
   PullRequestReviewConnector,
 } from "./pull-requests/protocol.ts";
-import { upsertPullRequestReview } from "./pull-requests/resource.ts";
+import { DevloopPullRequestSource } from "./pull-requests/sources/devloop.ts";
+import { ForgePullRequestSource } from "./pull-requests/sources/forge.ts";
 import { createWorkspaceController } from "./workspaces/controller.ts";
 import { discoverWorkspaceRepositories } from "./workspaces/discovery.ts";
 import type { WorkspaceSpec } from "./workspaces/protocol.ts";
 import { WorkspaceSource } from "./workspaces/source.ts";
+import { withUserDeletionPolicy } from "./retention.ts";
 
 export const REQLOOP_PLUGIN_ID = "compforge/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.2.0";
+export const REQLOOP_PACKAGE_VERSION = "0.2.1";
 
 function currentRepo(context: PluginActivationContext): string {
   const cwd = context.session.cwd;
@@ -77,17 +81,18 @@ export function createReqloopPackage(options: {
         createRequirementContextProvider(context.resources),
       );
       context.registerController(
-        createRequirementController(
+        withUserDeletionPolicy(
           context.resources,
-          requirementConnectors,
-          context.toast,
+          createRequirementController(
+            context.resources,
+            requirementConnectors,
+            context.toast,
+          ),
         ),
       );
       const forgeConnectors =
         options.forgeConnectors ?? createForgeConnectors();
       const cwd = currentRepo(context);
-      const repositorySources = options.repositorySources ?? [];
-      const pullRequestSources = options.pullRequestSources ?? [];
       const workspaceSources =
         options.workspaceSources ?? [new WorkspaceSource(cwd)];
       const reviewConnector =
@@ -101,29 +106,45 @@ export function createReqloopPackage(options: {
               }),
             ),
         });
-      for (const reviewBaseline of await reviewConnector.listLatest()) {
-        await upsertPullRequestReview(context.resources, reviewBaseline);
-      }
+      const repositorySources = options.repositorySources ?? [
+        new ForgeRepositorySource(cwd),
+        new DevloopRepositorySource(cwd),
+      ];
+      const pullRequestSources = options.pullRequestSources ?? [
+        new ForgePullRequestSource(cwd, forgeConnectors),
+        new DevloopPullRequestSource(cwd, {
+          reviewObservations: () => reviewConnector.listLatest(),
+        }),
+      ];
       context.registerController(
-        createPullRequestController(
+        withUserDeletionPolicy(
           context.resources,
-          forgeConnectors,
-          reviewConnector,
-          pullRequestSources,
+          createPullRequestController(
+            context.resources,
+            forgeConnectors,
+            reviewConnector,
+            pullRequestSources,
+          ),
         ),
       );
       context.registerController(
-        createRepositoryController(
+        withUserDeletionPolicy(
           context.resources,
-          forgeConnectors,
-          repositorySources,
+          createRepositoryController(
+            context.resources,
+            forgeConnectors,
+            repositorySources,
+          ),
         ),
       );
       context.registerController(
-        createWorkspaceController(
+        withUserDeletionPolicy(
           context.resources,
-          cwd,
-          workspaceSources,
+          createWorkspaceController(
+            context.resources,
+            cwd,
+            workspaceSources,
+          ),
         ),
       );
     },
@@ -138,7 +159,9 @@ export * from "./repositories/controller.ts";
 export * from "./repositories/protocol.ts";
 export * from "./repositories/resource.ts";
 export * from "./repositories/sources/devloop.ts";
+export * from "./repositories/sources/forge.ts";
 export * from "./pull-requests/sources/devloop.ts";
+export * from "./pull-requests/sources/forge.ts";
 export * from "./pull-requests/connectors/config.ts";
 export * from "./pull-requests/connectors/devloop-review.ts";
 export * from "./pull-requests/connectors/github.ts";
@@ -148,6 +171,7 @@ export * from "./pull-requests/controller.ts";
 export * from "./pull-requests/protocol.ts";
 export * from "./pull-requests/review.ts";
 export * from "./pull-requests/resource.ts";
+export * from "./retention.ts";
 export * from "./requirements/connectors/meego.ts";
 export * from "./requirements/context.ts";
 export * from "./requirements/controller.ts";

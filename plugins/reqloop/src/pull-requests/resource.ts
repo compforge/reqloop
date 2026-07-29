@@ -64,11 +64,11 @@ export function pullRequestResourceId(
  * Materializes the latest Forge observation without making Connector state a
  * second source of truth. Re-observing the same PR/MR targets the same Resource.
  */
-export async function upsertPullRequest(
+export async function updatePullRequestObservation(
   resources: ResourceClient,
   observation: PullRequest,
 ): Promise<Readonly<Resource<PullRequestSpec, PullRequestStatus>>> {
-  const resource = await ensurePullRequestResource(
+  const resource = await existingPullRequestResource(
     resources,
     observation.identity,
   );
@@ -85,25 +85,20 @@ export async function upsertPullRequest(
   });
 }
 
-export async function ensurePullRequestResource(
+async function existingPullRequestResource(
   resources: ResourceClient,
   requestedIdentity: PullRequestIdentity,
 ): Promise<Readonly<Resource<PullRequestSpec, PullRequestStatus>>> {
   const identity = normalizedIdentity(requestedIdentity);
   const name = pullRequestResourceId(identity);
-  let resource = (await resources
+  const resource = (await resources
     .list<PullRequestSpec, PullRequestStatus>(PULL_REQUEST_RESOURCE_TYPE))
     .find((candidate) => candidate.metadata.name === name);
 
   if (!resource) {
-    resource = await resources.create<PullRequestSpec, PullRequestStatus>(
-      PULL_REQUEST_RESOURCE_TYPE,
-      {
-        name,
-        spec: { identity },
-      },
-    );
-  } else if (!sameIdentity(resource.spec.identity, identity)) {
+    throw new Error(`PullRequest Resource not found: ${name}`);
+  }
+  if (!sameIdentity(resource.spec.identity, identity)) {
     throw new Error(
       `PullRequest Resource identity mismatch: ${name}`,
     );
@@ -111,11 +106,11 @@ export async function ensurePullRequestResource(
   return resource;
 }
 
-export async function upsertPullRequestReview(
+export async function updatePullRequestReviewObservation(
   resources: ResourceClient,
   observation: PullRequestReviewObservation,
 ): Promise<Readonly<Resource<PullRequestSpec, PullRequestStatus>>> {
-  const resource = await ensurePullRequestResource(
+  const resource = await existingPullRequestResource(
     resources,
     observation.identity,
   );
