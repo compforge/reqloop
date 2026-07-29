@@ -6,16 +6,22 @@ import type {
   Source,
 } from "@compforge/baton-plugin";
 
+import { enqueueRequestsFromMapFunc } from "../event-handler.ts";
 import {
-  devloopStatePath,
-  readOpenPullRequestNumbers,
-} from "../pull-requests/devloop-state.ts";
-import {
-  ensurePullRequestResource,
+  PULL_REQUEST_RESOURCE_TYPE,
   pullRequestResourceId,
 } from "../pull-requests/resource.ts";
+import type {
+  PullRequestSpec,
+  PullRequestStatus,
+} from "../pull-requests/protocol.ts";
+import type {
+  RepositorySpec,
+  RepositoryStatus,
+} from "../repositories/protocol.ts";
 import {
-  ensureRepositoryResource,
+  repositoryResourceName,
+  REPOSITORY_RESOURCE_TYPE,
 } from "../repositories/resource.ts";
 import { discoverWorkspaceRepositories } from "./discovery.ts";
 import type {
@@ -24,9 +30,16 @@ import type {
   WorkspaceSpec,
   WorkspaceStatus,
 } from "./protocol.ts";
-import { WORKSPACE_RESOURCE_TYPE } from "./resource.ts";
+import {
+  WORKSPACE_RESOURCE_NAME,
+  WORKSPACE_RESOURCE_TYPE,
+} from "./resource.ts";
 
 const WORKSPACE_RESYNC_CRON = "*/30 * * * * *";
+
+const enqueueWorkspace = enqueueRequestsFromMapFunc<unknown, unknown>(
+  async () => [{ name: WORKSPACE_RESOURCE_NAME }],
+);
 
 function resourceRef<TSpec, TStatus>(
   resource: Readonly<Resource<TSpec, TStatus>>,
@@ -38,11 +51,6 @@ function resourceRef<TSpec, TStatus>(
     name: resource.metadata.name,
     uid: resource.metadata.uid,
   };
-}
-
-function discoveryMessage(error: unknown, root: string): string {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.replaceAll(root, ".");
 }
 
 function sameDiscovery(
@@ -69,6 +77,16 @@ export function createWorkspaceController(
 ): Controller<WorkspaceSpec, WorkspaceStatus> {
   return {
     resourceType: WORKSPACE_RESOURCE_TYPE,
+    watches: [
+      {
+        resourceType: REPOSITORY_RESOURCE_TYPE,
+        handler: enqueueWorkspace,
+      },
+      {
+        resourceType: PULL_REQUEST_RESOURCE_TYPE,
+        handler: enqueueWorkspace,
+      },
+    ],
     sources: [
       ...sources,
       {
@@ -88,29 +106,35 @@ export function createWorkspaceController(
       const repositories: WorkspaceRepository[] = [];
       const discoveryErrors: WorkspaceDiscoveryError[] = [];
       const pullRequests = new Set<string>();
+      const repositoryResources = await resources.list<
+        RepositorySpec,
+        RepositoryStatus
+      >(REPOSITORY_RESOURCE_TYPE);
+      const pullRequestResources = await resources.list<
+        PullRequestSpec,
+        PullRequestStatus
+      >(PULL_REQUEST_RESOURCE_TYPE);
       for (const checkout of await discoverWorkspaceRepositories(root)) {
-        const repository = await ensureRepositoryResource(
-          resources,
-          checkout.identity,
+        const repositoryName = repositoryResourceName(checkout.identity);
+        const repository = repositoryResources.find(({ metadata }) =>
+          metadata.name === repositoryName
         );
-        repositories.push({
-          relativePath: checkout.relativePath,
-          repository: resourceRef(repository),
-        });
-
-        const path = await devloopStatePath(checkout.path, "pr.json");
-        if (!path) continue;
-        try {
-          for (const number of readOpenPullRequestNumbers(path)) {
-            const identity = { ...checkout.identity, number };
-            await ensurePullRequestResource(resources, identity);
+        if (repository) {
+          repositories.push({
+            relativePath: checkout.relativePath,
+            repository: resourceRef(repository),
+          });
+        }
+        for (const pullRequest of pullRequestResources) {
+          const { identity } = pullRequest.spec;
+          if (
+            identity.source === checkout.identity.source &&
+            identity.repository === checkout.identity.repository &&
+            pullRequest.status.lifecycle !== "merged" &&
+            pullRequest.status.lifecycle !== "closed"
+          ) {
             pullRequests.add(pullRequestResourceId(identity));
           }
-        } catch (error) {
-          discoveryErrors.push({
-            relativePath: checkout.relativePath,
-            message: discoveryMessage(error, root),
-          });
         }
       }
 

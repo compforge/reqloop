@@ -31,10 +31,14 @@ import reqloop, {
   DevloopPullRequestSource,
   DevloopRepositorySource,
   DevloopReviewConnector,
+  type ForgeConnector,
+  ForgePullRequestSource,
+  ForgeRepositorySource,
   REPOSITORY_RESOURCE_TYPE,
   loadMeegoRequirementConfigs,
   MeegleCliRequirementConnector,
   PULL_REQUEST_RESOURCE_TYPE,
+  pullRequestResourceId,
   type PullRequestSpec,
   type PullRequestStatus,
   type RepositorySpec,
@@ -302,6 +306,84 @@ describe("ReqLoop PluginPackage", () => {
     }]);
   });
 
+  test("Forge Sources own bounded Resource admission", async () => {
+    const root = testRoot();
+    initializeRepository(root);
+    const repositoryEmits: Parameters<
+      SourceContext<RepositorySpec>["emit"]
+    >[0][] = [];
+    const repositoryAbort = new AbortController();
+    const repositorySource = new ForgeRepositorySource(root, {
+      resyncIntervalMs: 60_000,
+    });
+    await repositorySource.start({
+      signal: repositoryAbort.signal,
+      async emit(resource) {
+        repositoryEmits.push(resource);
+      },
+      reportError() {},
+    });
+    repositoryAbort.abort();
+
+    const calls: unknown[] = [];
+    const forge: ForgeConnector = {
+      source: "github.com",
+      provider: "github",
+      async list(repository, query) {
+        calls.push({ repository, query });
+        return [30, 29].map((number) => ({
+          source: "github.com",
+          repository,
+          number,
+        }));
+      },
+      async get() {
+        throw new Error("not used");
+      },
+    };
+    const pullRequestEmits: Parameters<
+      SourceContext<PullRequestSpec>["emit"]
+    >[0][] = [];
+    const pullRequestAbort = new AbortController();
+    const pullRequestSource = new ForgePullRequestSource(root, [forge], {
+      maxPerRepository: 2,
+      maxResources: 1,
+      resyncIntervalMs: 60_000,
+    });
+    await pullRequestSource.start({
+      signal: pullRequestAbort.signal,
+      async emit(resource) {
+        pullRequestEmits.push(resource);
+      },
+      reportError() {},
+    });
+    pullRequestAbort.abort();
+
+    expect(repositoryEmits).toEqual([{
+      name: expect.stringMatching(/^repo-/),
+      spec: {
+        identity: {
+          source: "github.com",
+          repository: "compforge/reqloop",
+        },
+      },
+    }]);
+    expect(calls).toEqual([{
+      repository: "compforge/reqloop",
+      query: { state: "open", limit: 2 },
+    }]);
+    expect(pullRequestEmits).toEqual([{
+      name: expect.stringMatching(/^pr_/),
+      spec: {
+        identity: {
+          source: "github.com",
+          repository: "compforge/reqloop",
+          number: 30,
+        },
+      },
+    }]);
+  });
+
   test("contributes open PullRequests and watches devloop state", async () => {
     const root = testRoot();
     initializeRepository(root);
@@ -348,6 +430,48 @@ describe("ReqLoop PluginPackage", () => {
           source: "github.com",
           repository: "compforge/reqloop",
           number: 30,
+        },
+      },
+    }]);
+  });
+
+  test("Devloop Source admits review observations without creating in the Connector", async () => {
+    const root = testRoot();
+    initializeRepository(root);
+    const emitted: Parameters<
+      SourceContext<PullRequestSpec>["emit"]
+    >[0][] = [];
+    const source = new DevloopPullRequestSource(root, {
+      reviewObservations: async () => [{
+        identity: {
+          source: "github.com",
+          repository: "compforge/reqloop",
+          number: 31,
+        },
+        key: "review-31",
+        status: "success",
+        sha: "head",
+        count: 1,
+        failed: 0,
+        findings: [],
+      }],
+    });
+
+    await source.start({
+      signal: new AbortController().signal,
+      async emit(resource) {
+        emitted.push(resource);
+      },
+      reportError() {},
+    });
+
+    expect(emitted).toEqual([{
+      name: expect.stringMatching(/^pr_/),
+      spec: {
+        identity: {
+          source: "github.com",
+          repository: "compforge/reqloop",
+          number: 31,
         },
       },
     }]);
@@ -776,6 +900,14 @@ describe("ReqLoop PluginPackage", () => {
       },
     ]);
     expect(
+      controllers.get(WORKSPACE_RESOURCE_TYPE.kind)?.watches?.map(
+        ({ resourceType }) => resourceType,
+      ),
+    ).toEqual([
+      REPOSITORY_RESOURCE_TYPE,
+      PULL_REQUEST_RESOURCE_TYPE,
+    ]);
+    expect(
       controllers.get(REQUIREMENT_RESOURCE_TYPE.kind)?.watches?.map(
         ({ resourceType }) => resourceType,
       ),
@@ -789,7 +921,10 @@ describe("ReqLoop PluginPackage", () => {
       controllers.get(REPOSITORY_RESOURCE_TYPE.kind)?.watches?.map(
         ({ resourceType }) => resourceType,
       ),
-    ).toEqual([WORKSPACE_RESOURCE_TYPE]);
+    ).toEqual([
+      WORKSPACE_RESOURCE_TYPE,
+      PULL_REQUEST_RESOURCE_TYPE,
+    ]);
   });
 
   test("persists the activation baseline and proposes actionable follow-up", async () => {
@@ -897,16 +1032,27 @@ describe("ReqLoop PluginPackage", () => {
     });
 
     await plugin.activate(context);
-    expect(resource?.status.review?.sha).toBe("baseline");
+    expect(resource).toBeUndefined();
     expect(controller?.resourceType).toBe(PULL_REQUEST_RESOURCE_TYPE);
-    expect(controller?.sources).toEqual([
-      {
-        type: "cron",
-        sourceId: "pull-request-poll",
-        cron: "*/30 * * * * *",
-        timeZone: "UTC",
-      },
+    expect(controller?.sources?.map(({ type, sourceId }) => ({
+      type,
+      sourceId,
+    }))).toEqual([
+      { type: "resource", sourceId: "forge" },
+      { type: "resource", sourceId: "devloop" },
+      { type: "cron", sourceId: "pull-request-poll" },
     ]);
+    const identity = {
+      source: "github.com",
+      repository: "owner/repo",
+      number: 7,
+    };
+    await resources.create(PULL_REQUEST_RESOURCE_TYPE, {
+      name: pullRequestResourceId(identity),
+      spec: { identity },
+    });
+    await controller!.reconcile(batonSnapshot(), resource!);
+    expect(resource?.status.review?.sha).toBe("baseline");
 
     headSha = "new-review";
     appendReview(path, {

@@ -6,8 +6,12 @@ import type {
 } from "@compforge/baton-plugin";
 
 import { enqueueRequestsFromMapFunc } from "../event-handler.ts";
-import type { ForgeConnector } from "../pull-requests/protocol.ts";
-import { ensurePullRequestResource } from "../pull-requests/resource.ts";
+import type {
+  ForgeConnector,
+  PullRequestSpec,
+  PullRequestStatus,
+} from "../pull-requests/protocol.ts";
+import { PULL_REQUEST_RESOURCE_TYPE } from "../pull-requests/resource.ts";
 import type {
   WorkspaceSpec,
   WorkspaceStatus,
@@ -17,9 +21,10 @@ import type {
   RepositorySpec,
   RepositoryStatus,
 } from "./protocol.ts";
-import { REPOSITORY_RESOURCE_TYPE } from "./resource.ts";
-
-const REPOSITORY_POLL_INTERVAL_MS = 30_000;
+import {
+  repositoryResourceName,
+  REPOSITORY_RESOURCE_TYPE,
+} from "./resource.ts";
 
 const enqueueWorkspaceRepositories = enqueueRequestsFromMapFunc<
   WorkspaceSpec,
@@ -33,6 +38,13 @@ const enqueueWorkspaceRepositories = enqueueRequestsFromMapFunc<
       : []
   )
 );
+
+const enqueuePullRequestRepository = enqueueRequestsFromMapFunc<
+  PullRequestSpec,
+  PullRequestStatus
+>(async (pullRequest) => [{
+  name: repositoryResourceName(pullRequest.spec.identity),
+}]);
 
 async function inWorkspace(
   resources: ResourceClient,
@@ -51,18 +63,6 @@ async function inWorkspace(
     );
 }
 
-function nextScanDelay(lastScanAt: string | undefined): number | undefined {
-  if (!lastScanAt) return;
-  const elapsed = Date.now() - Date.parse(lastScanAt);
-  if (!Number.isFinite(elapsed) || elapsed >= REPOSITORY_POLL_INTERVAL_MS) {
-    return;
-  }
-  return Math.min(
-    REPOSITORY_POLL_INTERVAL_MS,
-    Math.max(1, REPOSITORY_POLL_INTERVAL_MS - elapsed),
-  );
-}
-
 export function createRepositoryController(
   resources: ResourceClient,
   connectors: readonly ForgeConnector[] = [],
@@ -76,17 +76,22 @@ export function createRepositoryController(
     connectorsBySource.set(connector.source, connector);
   }
 
-  const directlyObserved = sources.length > 0;
   return {
     resourceType: REPOSITORY_RESOURCE_TYPE,
-    watches: [{
-      resourceType: WORKSPACE_RESOURCE_TYPE,
-      handler: enqueueWorkspaceRepositories,
-    }],
+    watches: [
+      {
+        resourceType: WORKSPACE_RESOURCE_TYPE,
+        handler: enqueueWorkspaceRepositories,
+      },
+      {
+        resourceType: PULL_REQUEST_RESOURCE_TYPE,
+        handler: enqueuePullRequestRepository,
+      },
+    ],
     ...(sources.length > 0 ? { sources } : {}),
     async reconcile(_baton, resource) {
       let current = resource;
-      if (!directlyObserved && !(await inWorkspace(resources, current))) {
+      if (!(await inWorkspace(resources, current))) {
         if (current.status.inScope !== false) {
           await resources.patchStatus(current, { inScope: false });
         }
@@ -96,36 +101,26 @@ export function createRepositoryController(
         current = await resources.patchStatus(current, { inScope: true });
       }
 
-      // Updating lastScanAt enqueues this Resource again. Restore the remaining
-      // timer on that immediate reconcile instead of polling the Forge twice.
-      const delay = nextScanDelay(current.status.lastScanAt);
-      if (delay !== undefined) return { requeueAfterMs: delay };
-
       const { identity } = current.spec;
-      const connector = connectorsBySource.get(identity.source);
-      if (!connector) {
-        await resources.patchStatus(current, { connectorAvailable: false });
-        return;
+      const discoveredPullRequests = (await resources.list<
+        PullRequestSpec,
+        PullRequestStatus
+      >(PULL_REQUEST_RESOURCE_TYPE))
+        .filter(({ spec }) =>
+          spec.identity.source === identity.source &&
+          spec.identity.repository === identity.repository
+        )
+        .length;
+      const connectorAvailable = connectorsBySource.has(identity.source);
+      if (
+        current.status.connectorAvailable !== connectorAvailable ||
+        current.status.discoveredPullRequests !== discoveredPullRequests
+      ) {
+        await resources.patchStatus(current, {
+          connectorAvailable,
+          discoveredPullRequests,
+        });
       }
-
-      const pullRequests = await connector.list(identity.repository);
-      for (const pullRequest of pullRequests) {
-        if (
-          pullRequest.source !== identity.source ||
-          pullRequest.repository !== identity.repository
-        ) {
-          throw new Error(
-            "ForgeConnector discovered a PullRequest outside its repository",
-          );
-        }
-        await ensurePullRequestResource(resources, pullRequest);
-      }
-      await resources.patchStatus(current, {
-        connectorAvailable: true,
-        discoveredPullRequests: pullRequests.length,
-        lastScanAt: new Date().toISOString(),
-      });
-      return { requeueAfterMs: REPOSITORY_POLL_INTERVAL_MS };
     },
     async present(resource) {
       if (resource.status.inScope === false) return undefined;
@@ -134,9 +129,7 @@ export function createRepositoryController(
         title: repository,
         status: resource.status.connectorAvailable === false
           ? "Forge connector unavailable"
-          : resource.status.lastScanAt
-          ? `${resource.status.discoveredPullRequests ?? 0} tracked PR/MR`
-          : "Waiting for first scan",
+          : `${resource.status.discoveredPullRequests ?? 0} tracked PR/MR`,
         detail: source,
         tone: resource.status.connectorAvailable === false
           ? "warning"

@@ -26,7 +26,7 @@ import {
   REQUIREMENT_RESOURCE_TYPE,
   type RequirementSpec,
   type RequirementStatus,
-  upsertPullRequest,
+  updatePullRequestObservation,
   WORKSPACE_RESOURCE_TYPE,
   type WorkspaceSpec,
   type WorkspaceStatus,
@@ -241,15 +241,29 @@ const observation: PullRequest = {
   observedAt: "2026-07-26T08:00:00.000Z",
 };
 
+async function materializePullRequest(
+  resources: ReturnType<typeof resourceClient>,
+  observed: PullRequest,
+): Promise<Readonly<Resource<PullRequestSpec, PullRequestStatus>>> {
+  await resources.client.create<PullRequestSpec, PullRequestStatus>(
+    PULL_REQUEST_RESOURCE_TYPE,
+    {
+      name: pullRequestResourceId(observed.identity),
+      spec: { identity: observed.identity },
+    },
+  );
+  return await updatePullRequestObservation(resources.client, observed);
+}
+
 describe("PullRequest Resource", () => {
   test("uses one stable Resource for repeated external observations", async () => {
     const resources = resourceClient();
 
-    const created = await upsertPullRequest(
-      resources.client,
+    const created = await materializePullRequest(
+      resources,
       observation,
     );
-    const repeated = await upsertPullRequest(
+    const repeated = await updatePullRequestObservation(
       resources.client,
       observation,
     );
@@ -278,8 +292,8 @@ describe("PullRequest Resource", () => {
   test("shows only standalone open PullRequests on the Board", async () => {
     const controller = createPullRequestController();
     const resources = resourceClient();
-    const pullRequest = await upsertPullRequest(
-      resources.client,
+    const pullRequest = await materializePullRequest(
+      resources,
       observation,
     );
 
@@ -313,8 +327,8 @@ describe("PullRequest Resource", () => {
 
   test("refreshes a PullRequest through its configured Forge", async () => {
     const resources = resourceClient();
-    const pullRequest = await upsertPullRequest(
-      resources.client,
+    const pullRequest = await materializePullRequest(
+      resources,
       observation,
     );
     const forge: ForgeConnector = {
@@ -357,8 +371,8 @@ describe("PullRequest Resource", () => {
   test("asks once whether a PullRequest joins a Requirement", async () => {
     const resources = resourceClient();
     resources.addRequirement();
-    const pullRequest = await upsertPullRequest(
-      resources.client,
+    const pullRequest = await materializePullRequest(
+      resources,
       observation,
     );
     const controller = createPullRequestController(resources.client);
@@ -442,7 +456,7 @@ describe("PullRequest Resource", () => {
   test("pins legacy Requirement associations to their current uid", async () => {
     const resources = resourceClient();
     resources.addRequirement();
-    const pullRequest = await upsertPullRequest(resources.client, observation);
+    const pullRequest = await materializePullRequest(resources, observation);
     const legacy = await resources.client.patchStatus(pullRequest, {
       requirementAssociation: {
         state: "linked",
@@ -478,7 +492,7 @@ describe("PullRequest Resource", () => {
       ] as const
     ) {
       const resources = resourceClient();
-      const terminal = await upsertPullRequest(resources.client, {
+      const terminal = await materializePullRequest(resources, {
         ...observation,
         ...status,
       });
@@ -506,7 +520,7 @@ describe("PullRequest Resource", () => {
 
   test("keeps observing merged PullRequests until review state settles", async () => {
     const resources = resourceClient();
-    const merged = await upsertPullRequest(resources.client, {
+    const merged = await materializePullRequest(resources, {
       ...observation,
       lifecycle: "merged",
       reviewThreads: "unknown",
@@ -543,7 +557,7 @@ describe("PullRequest Resource", () => {
 
   test("does not immediately repoll a fresh open observation", async () => {
     const resources = resourceClient();
-    const current = await upsertPullRequest(resources.client, {
+    const current = await materializePullRequest(resources, {
       ...observation,
       observedAt: new Date().toISOString(),
     });
@@ -570,8 +584,8 @@ describe("PullRequest Resource", () => {
 
   test("records an ignored review decision and does not remind again", async () => {
     const resources = resourceClient();
-    const pullRequest = await upsertPullRequest(
-      resources.client,
+    const pullRequest = await materializePullRequest(
+      resources,
       observation,
     );
     const reviewConnector: PullRequestReviewConnector = {
@@ -632,19 +646,15 @@ describe("PullRequest Resource", () => {
     ).toBeUndefined();
   });
 
-  test("uses Forge listing as Repository discovery fallback", async () => {
+  test("Repository reconciliation never expands the PullRequest set", async () => {
     const resources = resourceClient();
     let listCalls = 0;
     const forge: ForgeConnector = {
       source: "github-primary",
       provider: "github",
-      async list(repository) {
+      async list() {
         listCalls += 1;
-        return [{
-          source: "github-primary",
-          repository,
-          number: 18,
-        }];
+        return [];
       },
       async get(identity) {
         return {
@@ -673,6 +683,23 @@ describe("PullRequest Resource", () => {
       },
     });
     resources.observeRepository(repository);
+    await resources.client.create<PullRequestSpec, PullRequestStatus>(
+      PULL_REQUEST_RESOURCE_TYPE,
+      {
+        name: pullRequestResourceId({
+          source: "github-primary",
+          repository: "compforge/reqloop",
+          number: 18,
+        }),
+        spec: {
+          identity: {
+            source: "github-primary",
+            repository: "compforge/reqloop",
+            number: 18,
+          },
+        },
+      },
+    );
     const observedWorkspace = resources.workspaceCurrent()!;
     const repositoryWatch = controller.watches?.[0];
     expect(
@@ -705,15 +732,13 @@ describe("PullRequest Resource", () => {
       connectorAvailable: true,
       discoveredPullRequests: 1,
     });
-    expect(typeof repositoryStatus?.lastScanAt).toBe("string");
-    expect(result).toEqual({ requeueAfterMs: 30_000 });
+    expect(result).toBeUndefined();
     const replay = await controller.reconcile(
       {} as never,
       resources.repositoryCurrent()!,
     );
-    expect(listCalls).toBe(1);
-    expect(replay?.requeueAfterMs).toBeGreaterThan(0);
-    expect(replay?.requeueAfterMs).toBeLessThanOrEqual(30_000);
+    expect(listCalls).toBe(0);
+    expect(replay).toBeUndefined();
 
     resources.clearWorkspace();
     expect(await repositoryWatch?.handler.update({
@@ -731,6 +756,6 @@ describe("PullRequest Resource", () => {
     expect(
       await controller.present?.(resources.repositoryCurrent()!),
     ).toBeUndefined();
-    expect(listCalls).toBe(1);
+    expect(listCalls).toBe(0);
   });
 });

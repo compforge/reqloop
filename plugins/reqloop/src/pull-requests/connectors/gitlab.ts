@@ -1,6 +1,7 @@
 import type {
   ForgeConnector,
   PullRequestIdentity,
+  PullRequestListQuery,
   PullRequestLifecycle,
   PullRequestMergeability,
   PullRequest,
@@ -87,16 +88,14 @@ export class GitLabForgeConnector implements ForgeConnector {
 
   async list(
     repository: string,
-    limit?: number,
+    query: PullRequestListQuery,
   ): Promise<readonly PullRequestIdentity[]> {
-    const recentMergedLimit = positiveLimit(limit);
-    const open = await this.#listByState(repository, "opened");
-    const merged = await this.#listByState(
+    const limit = positiveLimit(query.limit);
+    return await this.#listByState(
       repository,
-      "merged",
-      recentMergedLimit,
+      query.state === "open" ? "opened" : "merged",
+      limit,
     );
-    return [...open, ...merged];
   }
 
   async #listByState(
@@ -116,7 +115,8 @@ export class GitLabForgeConnector implements ForgeConnector {
         "GET",
         `${this.#projectBase(repository)}` +
           `/merge_requests?state=${state}&order_by=updated_at&sort=desc` +
-          `&per_page=${MERGE_REQUEST_PAGE_SIZE}&page=${page}`,
+          `&per_page=${Math.min(MERGE_REQUEST_PAGE_SIZE, limit ?? MERGE_REQUEST_PAGE_SIZE)}` +
+          `&page=${page}`,
         { headers: this.#headers() },
       );
       const mergeRequests = records("GitLab MergeRequests", data);

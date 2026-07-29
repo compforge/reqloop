@@ -24,8 +24,8 @@ import type {
 } from "./protocol.ts";
 import {
   PULL_REQUEST_RESOURCE_TYPE,
-  upsertPullRequest,
-  upsertPullRequestReview,
+  updatePullRequestObservation,
+  updatePullRequestReviewObservation,
 } from "./resource.ts";
 import {
   actionableReview,
@@ -256,7 +256,7 @@ export function createPullRequestController(
         if (!sameIdentity(observation.identity, identity)) {
           throw new Error("ForgeConnector returned a different PullRequest");
         }
-        current = await upsertPullRequest(resources, observation);
+        current = await updatePullRequestObservation(resources, observation);
       }
       if (
         current.status.lifecycle === "merged" ||
@@ -338,7 +338,7 @@ export function createPullRequestController(
       const review = await reviewConnector?.latest(identity);
       if (!review) return;
       if (review.key !== current.status.review?.key) {
-        current = await upsertPullRequestReview(resources, review);
+        current = await updatePullRequestReviewObservation(resources, review);
       }
       if (!actionableReview(review)) return;
       if (current.status.reviewDecision?.reviewKey === review.key) return;

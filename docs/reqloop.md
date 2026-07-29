@@ -112,11 +112,12 @@ cwd”的稳定语义，不持久化机器相关的绝对路径；发现结果�
 同时覆盖两种启动方式：在单仓根目录启动时发现根仓库，在聚合目录启动时发现其一级子目录中的多个
 仓库。
 
-Workspace 仍配置 `WorkspaceSource`，但 Source 不拥有扫描事实。它在激活时贡献单例 Workspace，
+Workspace 仍配置 `WorkspaceSource`。它在激活时贡献单例 Workspace，
 并监听根目录、一级候选目录以及已知 `.devloop/pr.json` 的变化；变化发生时只重新 emit 同一份
 Workspace spec，使主 Resource 进入 keyed reconcile queue。`WorkspaceController` 随后重新读取
-文件系统，确保对应 Repository 和活跃 PullRequest Resource 存在，再更新 Workspace status。
-因此遗漏或合并文件事件不会破坏正确性，固定周期的 cron Source 仍作为完整性兜底。
+文件系统，并把已经由 Repository/PullRequest Source 准入的 Resource 投影进 Workspace status；
+它不创建其它 Resource。Repository/PullRequest 的 create、update、delete 通过 Watch 立即重投影；
+固定周期的 cron Source 仍作为投影完整性的兜底。
 
 首版扫描必须有界：只检查 workspace 根目录自身，以及一级子目录和一级符号链接指向的目录，
 不做无上限递归。WorkspaceSource 提供低延迟感知，不是语义上的必需依赖；即使 watcher 不可用，
@@ -124,7 +125,7 @@ Controller 仍可依靠首次 reconcile 和 cron 重扫收敛，只是发现延�
 
 ### Repository
 
-`Repository` 是 PR/MR 集合发现的长期 owner。它按 `source + repository` 唯一标识一个
+`Repository` 是 PR/MR 集合发现的长期观察锚点。它按 `source + repository` 唯一标识一个
 外部仓库，由多项 Requirement 共享，而不是每创建一项 Requirement 就复制一份：
 
 ```text
@@ -133,22 +134,21 @@ Repository
 │   └── identity          Forge source + repository
 └── status
     ├── connectorAvailable
-    ├── discoveredPullRequests
-    └── lastScanAt
+    └── discoveredPullRequests
 ```
 
-创建条件是“仓库进入 reqloop 的观察范围”。WorkspaceController 从 Workspace 中识别仓库并按
-稳定 identity 幂等确保 Repository；未来 Requirement 支持 `repositoryRefs` 后，用户确认仓库
-目标的入口同样负责确保对应 Repository 存在。多个 Workspace 路径或 Requirement 指向同一仓库
-时复用同一 Resource；发现 PR/MR 或创建 Requirement 本身都不是新建 Repository 的理由。
+创建条件是“仓库进入 reqloop 的观察范围”。`ForgeRepositorySource` 对有界 Workspace
+checkout 执行准入并按稳定 identity emit Repository，`DevloopRepositorySource` 可以更快贡献
+当前 checkout；未来 Requirement 支持 `repositoryRefs` 后，对应 Source 同样可以贡献目标仓库。
+多个发现入口指向同一仓库时复用同一 Resource；发现 PR/MR 或创建 Requirement 本身都不是新建
+Repository 的理由。
 RepositoryController Watches Workspace 的旧、新成员引用；默认 Workspace 入口不再引用某个
-Repository 时，将其标记为离开观察范围、停止外部轮询并从 Board 隐藏，重新进入时复用原 Resource
-并恢复观察。
+Repository 时，将其标记为离开观察范围并从 Board 隐藏，重新进入时复用原 Resource。
 
-WorkspaceController 读取各仓库的 `.devloop/pr.json` 作为活跃 PullRequest 的本地快速发现入口。
-缺失或单仓读取失败不阻塞其它仓库。RepositoryController 独立通过 `ForgeConnector.list()` 兜底
-集合完整性，再用 `requeueAfter` 安排下一次扫描；逐 PullRequest 的外部状态仍由
-PullRequestController 通过 `get()` 收敛。
+`DevloopPullRequestSource` 读取 `.devloop/pr.json`，作为当前 PR 的本地低延迟入口；
+`ForgePullRequestSource` 周期性调用 `ForgeConnector.list()`，按自己的有界准入策略贡献近期开放
+PR/MR。RepositoryController 只汇总已经存在的 PullRequest，不调用 Connector 扩张集合；逐
+PullRequest 的外部状态仍由 PullRequestController 通过 `get()` 收敛。
 
 ### PullRequest
 
@@ -200,7 +200,62 @@ PullRequestController 还 Watches Requirement 从非活跃变为活跃，把尚�
 Board 展示活跃 Requirement，也单独展示孤立的活跃 PullRequest。PullRequest 关联 Requirement
 后仍保持独立 Resource 和生命周期，但 Board 以 Requirement 为主，不再重复生成 PR 卡片；
 Requirement status 汇总关联 PR 的 lifecycle、merge conflict 和 unresolved review thread。
-已 merged 的 PullRequest 从 Board 消失且不再轮询 Forge；closed PullRequest 不再发现或轮询。
+merged 和 closed 的 PullRequest 都从 Board 消失；closed 与 review 状态已收敛的 merged
+PullRequest 停止轮询，review 状态尚未满足 Requirement 收尾条件的 merged PullRequest 继续观察。
+
+### Resource 的创建、保留与销毁（当前阶段）
+
+外部对象是否存在、内部 Resource 是否存储、Board 是否展示是三件事。reqloop 当前已经把
+“谁能让外部对象成为 Resource”收口到显式 Command 和 Source，也已经可以使用 Baton 的通用
+terminating 删除流程。用户还可以为任一 reqloop Resource 设置绝对删除期限 annotation
+`reqloop.baton.dev/delete-after`；除此之外不启用默认 retention / GC，不能把“隐藏”写成“销毁”。
+
+| Resource | 进入系统 | 活跃期收敛 | 当前退出行为 |
+|---|---|---|---|
+| Workspace | `WorkspaceSource` 为当前 session emit 单例 | `WorkspaceController` 重扫本地范围并投影已准入对象 | 默认保留；设置 `delete-after` 后到期删除 |
+| Repository | `ForgeRepositorySource` 与 `DevloopRepositorySource` 按稳定 identity 准入 | `RepositoryController` 汇总已存在 PR 并维护 `inScope` | 离开 workspace 时设为 `inScope=false` 并从 Board 隐藏；默认保留，可设置期限 |
+| PullRequest | `ForgePullRequestSource` 与 `DevloopPullRequestSource` 各自按有界策略准入 | `PullRequestController` 用 `ForgeConnector.get()` 与 review observation 更新 status | merged / closed 后从 Board 隐藏并按现有条件停止轮询；默认保留，可设置期限 |
+| Requirement | 用户通过 `/requirements` 明确选择后由 Command 创建或恢复 | `RequirementController` 观察外部需求并汇总关联 PR | completed / closed 后从 Board 隐藏；默认保留，可设置期限 |
+
+```text
+外部对象
+   │ 用户选择 / Source 准入
+   ▼
+Active Resource ── present() 返回卡片 ── Board 可见
+   │
+   ├── 离开范围或进入 terminal
+   │       └── Board 隐藏，Resource 仍存在并可被重新使用
+   │
+   └── 用户设置 delete-after
+           ├── 到期前 requeue 到较早的领域检查或删除期限
+           └── 到期后调用 ResourceClient.delete()
+                    └── Baton terminating reconcile ── 物理删除
+```
+
+`delete-after` 保存 ISO 绝对时间，而不是只保存一段相对 TTL，避免重启或重复 reconcile 时重新
+起算。用户界面可以把“7 天后删除”一次换算成该 annotation；修改或删除 annotation 就能延后或
+取消策略。metadata 变化会触发 reconcile；未到期时统一 policy wrapper 保留更早的领域 wakeup，
+到期后请求删除；进入 `deletionTimestamp` 后仍委托原 Controller 完成 terminating cleanup。
+
+reqloop 目前仍没有自动设置期限的 Usage、lease、terminal TTL 或 `lastSeenAt` 规则。Source 一次
+没有 emit 某个 identity 可能只是分页、窗口、权限或临时失败，因此 omission 不构成删除证据。
+终态、离开 workspace 和 Board 不可见也只影响观察与展示，不会隐式设置期限或销毁 Resource。
+`delete-after` 是 annotation 而非 label：它需要被 reconcile 读取，但不用于 Resource 集合检索；
+可检索的分组字段才应使用受约束的 label。
+
+Workspace 是当前模型中的**逻辑观察根**，不是 Baton 结构 owner。Workspace、Repository、
+PullRequest 和 Requirement 目前都未设置 `metadata.owner`，所以删除 Workspace 不会级联删除
+其它 reqloop Resource；PullRequest 到 Requirement 的 `ResourceRef` 也是可独立存在的领域关联，
+不能改成结构 owner。只有当一个 dependent 脱离 owner 后没有独立存在意义时，才应建立 owner
+链并使用 Baton cascade。
+
+因此当前闭环分两层看：
+
+- **Baton 机制闭环**：显式删除请求可以经过 `deletionTimestamp`、terminating reconcile、
+  失败重试和最终物理删除；详见
+  [Plugin Resource 生命周期](https://github.com/compforge/baton/blob/main/docs/resource-lifecycle.md)。
+- **reqloop 用户策略闭环**：用户给出的绝对删除期限可以持久调度并最终请求删除；首版不自动
+  推断这个期限，保留 Resource 仍是默认行为，避免把一次观察缺失误判为删除。
 
 ### 状态、事件、决定与动作
 
@@ -245,10 +300,10 @@ Interaction 询问一次，回答写回 `requirementAssociation`。系统事实�
 自动化提升的是某一类动作在明确范围内的信任等级，不是绕过状态模型的一键开关。每次执行仍要
 保留意图、结果和最新外部观测；副作用不确定时先重新观察，不能盲目重试。
 
-集合发现有两条并行入口：WorkspaceSource 监听本地变化并重新 emit Workspace，后者重扫
-workspace 与 `.devloop/pr.json`，缩短本地发现路径；RepositoryController 通过
-`ForgeConnector.list()` 兜底外部集合完整性，为尚未发现的 identity 创建缺失 Resource，并安排
-下一次扫描。PullRequest 创建后由 Baton 自动入队，逐 Resource 的 PullRequestController 再通过
+集合发现有两条并行入口：DevloopPullRequestSource 监听本地状态，缩短当前 PR 的发现路径；
+ForgePullRequestSource 通过 `ForgeConnector.list()` 周期性读取外部候选，并独立决定哪些
+identity 应成为 Resource。Connector 只提供外部查询能力，不能创建或删除 Resource。
+PullRequest 创建后由 Baton 自动入队，逐 Resource 的 PullRequestController 再通过
 `ForgeConnector.get()` 刷新状态。merged 保留为 Requirement 收尾证据，并在 review 状态为
 unknown 或 unresolved 时继续观察；closed 和 review 已收敛的 merged 不再轮询，closed 也不会
 被发现。PullRequest 的关联或观察 status 改变后，Requirement 的 Watch 将 create / update /
@@ -270,7 +325,7 @@ Repository 或落成同一种 PullRequest，再复用既有 reconcile 路径。
 - 返回一份 `kind: "proposed-input"` 的 Plugin Output，建议用户审核后交给 Harness；
 - 没有下一步时等待新事实，或用 `requeueAfter` 安排下一次检查。
 
-Requirement 外部观察和 PullRequest 派生投影共享一个 Controller owner，但不共享可用性：
+Requirement 外部观察和 PullRequest 派生投影由同一个 RequirementController 收敛，但不共享可用性：
 `lastObservedAt` 控制 Connector freshness，PullRequest Watch 触发的 reconcile 可以直接使用
 本地 Resources 更新 `linkedPullRequests` 和 `ReadyToClose`；即使外部观察失败，也先完成本地
 投影，再保留失败 condition 并交给 Baton 重试。
@@ -333,7 +388,9 @@ Connector 只做三件事：
 3. 将平台变化归一成 reqloop 领域事实。
 
 Connector 不负责 Baton session 路由、Board 渲染、Harness 选择、完成条件或跨领域编排。
-这些职责分别属于 Baton 和 reqloop domain。
+它也不持有 ResourceClient 或创建 Resource；这些职责分别属于 Baton、Source 和 reqloop
+domain。`list()` 的状态、数量等参数只是外部查询能力，具体查询窗口和 Resource 准入由调用它的
+Source 决定。
 
 `/requirements` 的搜索词属于一次 Picker 交互，不是 Requirement 状态。Baton 负责输入防抖和
 过期响应丢弃，reqloop Command 将最新查询词交给 RequirementConnector，再返回新的 Picker
@@ -470,15 +527,16 @@ Harness Work 类型；Harness 的路由、成本、并发、取消和可靠投�
 ## 6. 用户主流程
 
 1. 用户安装并启用 reqloop，配置需求与部署平台。
-2. reqloop 激活时从 Workspace 识别一个或多个 checkout 的仓库，并创建或恢复共享的
-   Repository；其 Reconciler 持续发现 PullRequest。
+2. reqloop 激活时，Repository Sources 从 Workspace 的有界 checkout 中准入或恢复共享的
+   Repository；PullRequest Sources 再通过本地 devloop 状态和 Forge 列表准入 PR/MR。
 3. 用户通过 `/requirements` 选择需求，或直接粘贴、输入一项需求；reqloop 创建或恢复
    Requirement Resource，将目标和验收条件写入 `spec`，并展示到 Board。
 4. RequirementController 返回“根据需求完成开发并提交 PR”的 `proposed-input` Output，Board 展示这段
    文本。用户原样提交或编辑后提交，Baton 组装 context 并交给目标 Harness；这仍是
    user-driven turn。
 5. Harness 内部的 devloop 约束 agent 完成开发小闭环；Harness 边界报告 DevelopmentOutcome，
-   或 reqloop 的 ForgeConnector 观察到新的 PR/MR，reqloop 创建或刷新 PullRequest Resource。
+   或 PullRequest Source 通过 devloop 状态 / `ForgeConnector.list()` 观察到符合准入策略的新
+   PR/MR，Baton materialize 或唤醒对应 PullRequest Resource。
    若存在活跃 Requirement 且尚未询问归属，reqloop 发起一次 durable Interaction；用户可关联
    一项 Requirement，也可让 PullRequest 独立存在。决定写入
    `PullRequest.status.requirementAssociation`，不根据匹配猜测自动关联，也不重复询问。
@@ -517,7 +575,7 @@ Harness turn 停止、Board 更新或 Context 可用都不自动代表下一步�
 reqloop 读取带 revision 的结构化 BoardSnapshot，不解析面向人的渲染文本。
 
 reqloop 只能更新自己的 Resource status；Board presentation 只能从 Resource 派生，不能覆盖
-Baton 或 Harness 的事实；它通过 resourceRef、领域 ID 和 provenance 关联不同 owner 的信息。并行 observation 由
+Baton 或 Harness 的事实；它通过 resourceRef、领域 ID 和 provenance 关联不同事实持有方的信息。并行 observation 由
 Controller 汇入新的 Resource revision，各 Plugin 和 ContextComposer 总是基于明确版本读取。
 
 Board 也不是 reqloop 唯一的信息通道。领域事件仍走 Baton Event Ledger，Connector 原始状态
@@ -590,8 +648,8 @@ RequirementController 可以调用自己拥有的 Connector，但外部写入使
 9. Plugin 声明能力不等于获得权限；敏感 desired state 在写入 spec 前完成授权。
 10. reqloop 只能修改自己的 Resource status；Board presentation 展示活跃 Requirement 与孤立
     的活跃 PullRequest；关联不改变 PullRequest 的独立身份，只改变 Board 的主展示对象。其他
-    owner 的产出只能作为 observation 读取。
-11. 全量周期唤醒可以使用 Controller cron Source；单个长期 owner 的下一次检查使用
+    事实持有方的产出只能作为 observation 读取。
+11. 全量周期唤醒可以使用 Controller cron Source；单个长期 Resource 的下一次检查使用
     `requeueAfter`，调度由 Baton 持久化，不进入 Resource metadata。
 12. Resource、Input、Harness 结果、cron 和 timer 只触发重新检查；Controller 不把触发当成必须逐条
     执行的命令。
@@ -600,6 +658,8 @@ RequirementController 可以调用自己拥有的 Connector，但外部写入使
     Requirement。Requirement 不在 spec/status 双写实际 PR/MR 列表。
 14. Event、webhook、cron 和 timer 只表示“事实可能变化”；状态转换必须以重新观察后的 Resource
     status 为依据。人的 durable decision 与外部 observation 分字段持久化。
+15. 外部集合只能由 Source 准入；Connector 只提供外部能力，Controller 只收敛已经存在的
+    Resource。Source omission、terminal status 与 Board 隐藏都不是删除证据。
 
 ## 10. 待继续讨论
 
@@ -613,3 +673,5 @@ RequirementController 可以调用自己拥有的 Connector，但外部写入使
 6. 哪些 Connector 应随首版 reqloop 交付，第三方 Connector SDK 的触发条件是什么？
 7. Connector permission scope 如何表达 project、BatonSession、环境和资源范围，Plugin 升级时哪些变化
    必须重新授权？
+8. Repository、PullRequest 和 Requirement 未来应由哪些持久证据自动设置 `delete-after`：
+   Usage / lease、terminal TTL，还是它们的组合？一次 Source omission 不得作为依据。

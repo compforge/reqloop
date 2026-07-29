@@ -1,14 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type {
-  Resource,
-  ResourceClient,
-} from "@compforge/baton-plugin";
-
-import type {
   RepositoryIdentity,
-  RepositorySpec,
-  RepositoryStatus,
 } from "./protocol.ts";
 
 export const REPOSITORY_RESOURCE_TYPE = Object.freeze({
@@ -27,16 +20,6 @@ function normalizedIdentity(
   return { source, repository };
 }
 
-function sameIdentity(
-  left: RepositoryIdentity,
-  right: RepositoryIdentity,
-): boolean {
-  return (
-    left.source === right.source &&
-    left.repository === right.repository
-  );
-}
-
 export function repositoryResourceName(
   identity: RepositoryIdentity,
 ): string {
@@ -46,30 +29,4 @@ export function repositoryResourceName(
     .digest("hex")
     .slice(0, 24);
   return `repo-${digest}`;
-}
-
-/** Ensures one observation owner exists for each external repository. */
-export async function ensureRepositoryResource(
-  resources: ResourceClient,
-  requestedIdentity: RepositoryIdentity,
-): Promise<Readonly<Resource<RepositorySpec, RepositoryStatus>>> {
-  const identity = normalizedIdentity(requestedIdentity);
-  const name = repositoryResourceName(identity);
-  let resource = (await resources.list<RepositorySpec, RepositoryStatus>(
-    REPOSITORY_RESOURCE_TYPE,
-  ))
-    .find((candidate) => candidate.metadata.name === name);
-
-  if (!resource) {
-    resource = await resources.create<RepositorySpec, RepositoryStatus>(
-      REPOSITORY_RESOURCE_TYPE,
-      {
-        name,
-        spec: { identity },
-      },
-    );
-  } else if (!sameIdentity(resource.spec.identity, identity)) {
-    throw new Error(`Repository Resource identity mismatch: ${name}`);
-  }
-  return resource;
 }
