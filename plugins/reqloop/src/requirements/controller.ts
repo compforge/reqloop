@@ -6,6 +6,7 @@ import type {
   ToastSink,
 } from "@compforge/baton-plugin";
 
+import { boardPriority } from "../board.ts";
 import { enqueueRequestsFromMapFunc } from "../event-handler.ts";
 import type {
   PullRequestSpec,
@@ -385,11 +386,14 @@ export function createRequirementController(
         ...(resource.status.url ? { url: resource.status.url } : {}),
         status: [state ?? "Not observed", ...pullRequestStatus].join(" · "),
         detail: resource.spec.title,
-        priority: pullRequests?.conflicted
-          ? 200
-          : pullRequests?.unresolvedReviewThreads
-          ? 100
-          : 0,
+        priority: boardPriority(
+          pullRequests?.conflicted
+            ? 200
+            : pullRequests?.unresolvedReviewThreads
+            ? 100
+            : 0,
+          resource.metadata.creationTimestamp,
+        ),
         tone: pullRequests?.conflicted
           ? "error"
           : pullRequests?.unresolvedReviewThreads

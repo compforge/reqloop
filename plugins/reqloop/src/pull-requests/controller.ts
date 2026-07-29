@@ -10,6 +10,7 @@ import type {
   Source,
 } from "@compforge/baton-plugin";
 
+import { boardPriority } from "../board.ts";
 import type {
   RequirementSpec,
   RequirementStatus,
@@ -522,11 +523,14 @@ export function createPullRequestController(
               detail: resource.status.title,
             }
           : {}),
-        priority: resource.status.mergeability === "conflicted"
-          ? 200
-          : resource.status.reviewThreads === "unresolved"
-          ? 100
-          : 0,
+        priority: boardPriority(
+          resource.status.mergeability === "conflicted"
+            ? 200
+            : resource.status.reviewThreads === "unresolved"
+            ? 100
+            : 0,
+          resource.metadata.creationTimestamp,
+        ),
         tone: resource.status.mergeability === "conflicted"
           ? "error"
           : resource.status.reviewThreads === "unresolved"

@@ -457,8 +457,10 @@ function mqlUserKeyLiteral(userKey: string): string {
 }
 
 function participantFilter(userKey: string): string {
+  // Meegle currently ignores literal user IDs in participate_persons();
+  // all_participate_persons() keeps configured userKey filtering effective.
   return "WHERE array_contains(" +
-    `participate_persons(), ${mqlUserKeyLiteral(userKey)})`;
+    `all_participate_persons(), ${mqlUserKeyLiteral(userKey)})`;
 }
 
 function stringList(value: unknown): readonly string[] | undefined {

@@ -13,6 +13,7 @@ export interface ForgeConfig {
   readonly provider: "github" | "gitlab";
   readonly host: string;
   readonly apiHost?: string;
+  readonly uid?: string;
   readonly token?: string;
 }
 
@@ -88,6 +89,10 @@ export function loadForgeConfigs(
       `reqloop forge ${host} api_host`,
       forge.api_host,
     );
+    const uid = optionalString(
+      `reqloop forge ${host} uid`,
+      forge.uid,
+    );
     const token =
       environmentToken(configuredProvider, environment) ?? configuredToken;
     return Object.freeze({
@@ -95,6 +100,7 @@ export function loadForgeConfigs(
       provider: configuredProvider,
       host,
       ...(apiHost ? { apiHost } : {}),
+      ...(uid ? { uid } : {}),
       ...(token ? { token } : {}),
     });
   });

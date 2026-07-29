@@ -317,11 +317,22 @@ describe("PullRequest Resource", () => {
       url: "https://github.com/compforge/reqloop/pull/17",
       status: "Unresolved review threads",
       detail: "Keep Board focused",
-      priority: 100,
+      priority: expect.any(Number),
       tone: "warning",
     } as const;
-    expect(await controller.present?.(pullRequest)).toEqual(
-      expectedPresentation,
+    const presentation = await controller.present?.(pullRequest);
+    expect(presentation).toEqual(expectedPresentation);
+    expect(presentation?.priority).toBeGreaterThan(100);
+    expect(presentation?.priority).toBeLessThan(101);
+    const newerPresentation = await controller.present?.({
+      ...pullRequest,
+      metadata: {
+        ...pullRequest.metadata,
+        creationTimestamp: "2026-07-27T00:00:00.000Z",
+      },
+    });
+    expect(newerPresentation?.priority).toBeGreaterThan(
+      presentation?.priority ?? Number.POSITIVE_INFINITY,
     );
     expect(await controller.present?.({
       ...pullRequest,

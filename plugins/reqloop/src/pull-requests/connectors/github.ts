@@ -53,6 +53,17 @@ function mergeability(
   return "unknown";
 }
 
+function authorMatches(
+  pullRequest: Record<string, unknown>,
+  uid: string,
+): boolean {
+  const user = pullRequest.user;
+  if (!user || typeof user !== "object" || Array.isArray(user)) return false;
+  const author = user as Record<string, unknown>;
+  return author.login === uid ||
+    (author.id !== undefined && String(author.id) === uid);
+}
+
 export class GitHubForgeConnector implements ForgeConnector {
   readonly source: string;
   readonly provider = "github" as const;
@@ -61,6 +72,7 @@ export class GitHubForgeConnector implements ForgeConnector {
   readonly #graphqlUrl: string;
   readonly #http: JsonHttpClient;
   readonly #now: () => Date;
+  readonly #uid?: string;
 
   constructor(
     config: ForgeConfig,
@@ -72,6 +84,7 @@ export class GitHubForgeConnector implements ForgeConnector {
     if (!config.token) throw new Error(`GitHub token missing for ${config.host}`);
     this.source = config.source;
     this.#token = config.token;
+    this.#uid = config.uid;
     const apiHost = config.apiHost ?? config.host;
     const restBase = apiHost === "github.com"
       ? "https://api.github.com"
@@ -108,7 +121,14 @@ export class GitHubForgeConnector implements ForgeConnector {
         "GET",
         `${this.#restBase}/repos/${repositoryPath(repository)}` +
           `/pulls?state=${state}&sort=updated&direction=desc` +
-          `&per_page=${Math.min(PULL_REQUEST_PAGE_SIZE, limit ?? PULL_REQUEST_PAGE_SIZE)}` +
+          `&per_page=${
+            this.#uid
+              ? PULL_REQUEST_PAGE_SIZE
+              : Math.min(
+                PULL_REQUEST_PAGE_SIZE,
+                limit ?? PULL_REQUEST_PAGE_SIZE,
+              )
+          }` +
           `&page=${page}`,
         { headers: this.#headers() },
       );
@@ -120,6 +140,7 @@ export class GitHubForgeConnector implements ForgeConnector {
         ) {
           continue;
         }
+        if (this.#uid && !authorMatches(pullRequest, this.#uid)) continue;
         const number = pullRequest.number;
         if (!Number.isSafeInteger(number) || (number as number) < 1) {
           throw new Error(`GitHub PullRequests[${index}].number is invalid`);
