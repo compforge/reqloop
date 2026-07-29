@@ -60,6 +60,11 @@ export interface PullRequestStatus {
     readonly reviewKey: string;
     readonly choice: "accept" | "ignore";
   };
+  /** One durable user decision for the current merge-conflict episode. */
+  readonly mergeConflictDecision?: {
+    readonly decisionKey: string;
+    readonly choice?: "accept" | "ignore";
+  } | null;
 }
 
 export interface PullRequest {

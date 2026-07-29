@@ -75,6 +75,10 @@ Controller 还读取最新 devloop review observation。新的 actionable review
 ignore，并按 review key 记录一次最终决定；accept 返回 `proposed-input`，由用户审核或编辑后
 再提交给当前 Harness，ignore 不驱动 Harness。
 
+开放 PR/MR 出现 merge conflict 时，Controller 同样返回 durable Interaction。每次连续冲突
+只询问一次；accept 返回解决冲突的 `proposed-input`，ignore 不驱动 Harness。冲突状态消失后
+结束本次 decision episode，未来再次冲突时使用新的 decision key 重新询问。
+
 ## Requirement
 
 RequirementController 定期用与 identity.source 匹配的 RequirementConnector 读取外部需求。

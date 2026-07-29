@@ -507,6 +507,101 @@ describe("PullRequest Resource", () => {
     ).toBeUndefined();
   });
 
+  test("proposes Harness follow-up once for each merge-conflict episode", async () => {
+    const resources = resourceClient();
+    const conflicted = await materializePullRequest(resources, {
+      ...observation,
+      reviewThreads: "resolved",
+      mergeability: "conflicted",
+    });
+    const controller = createPullRequestController(resources.client);
+
+    const prompted = await controller.reconcile(
+      batonSnapshot(),
+      conflicted,
+    );
+    expect(prompted?.output).toMatchObject({
+      kind: "interaction",
+      title: "Merge conflict found",
+      options: [
+        {
+          optionId: "accept",
+          label: "Accept",
+        },
+        {
+          optionId: "ignore",
+          label: "Ignore",
+          role: "reject",
+        },
+      ],
+    });
+    if (prompted?.output?.kind !== "interaction") {
+      throw new Error("expected merge-conflict Interaction");
+    }
+    expect(resources.current()?.status.mergeConflictDecision).toEqual({
+      decisionKey: prompted.output.decisionKey,
+    });
+
+    const accepted = await controller.reconcile(
+      batonSnapshot([{
+        interactionId: "ix_merge_conflict",
+        decisionKey: prompted.output.decisionKey,
+        resource: {
+          ...PULL_REQUEST_RESOURCE_TYPE,
+          namespace: conflicted.metadata.namespace,
+          name: conflicted.metadata.name,
+        },
+        outcome: { kind: "answered", values: ["accept"] },
+      }]),
+      resources.current()!,
+    );
+    expect(resources.current()?.status.mergeConflictDecision).toEqual({
+      decisionKey: prompted.output.decisionKey,
+      choice: "accept",
+    });
+    expect(accepted?.output).toMatchObject({
+      kind: "proposed-input",
+      text: expect.stringContaining(
+        "Resolve the merge conflicts for compforge/reqloop PR/MR 17",
+      ),
+    });
+    expect(
+      await controller.reconcile(batonSnapshot(), resources.current()!),
+    ).toBeUndefined();
+
+    const ready = await updatePullRequestObservation(resources.client, {
+      ...observation,
+      reviewThreads: "resolved",
+      observedAt: "2026-07-26T09:00:00.000Z",
+    });
+    await controller.reconcile(batonSnapshot(), ready);
+    expect(resources.current()?.status.mergeConflictDecision).toBeNull();
+
+    const conflictedAgain = await updatePullRequestObservation(
+      resources.client,
+      {
+        ...observation,
+        reviewThreads: "resolved",
+        mergeability: "conflicted",
+        observedAt: "2026-07-26T10:00:00.000Z",
+      },
+    );
+    const promptedAgain = await controller.reconcile(
+      batonSnapshot(),
+      conflictedAgain,
+    );
+    expect(promptedAgain?.output).toMatchObject({
+      kind: "interaction",
+      title: "Merge conflict found",
+    });
+    if (promptedAgain?.output?.kind !== "interaction") {
+      throw new Error("expected a new merge-conflict Interaction");
+    }
+    expect(promptedAgain.output.decisionKey).not.toBe(
+      prompted.output.decisionKey,
+    );
+  });
+
   test("pins legacy Requirement associations to their current uid", async () => {
     const resources = resourceClient();
     resources.addRequirement();

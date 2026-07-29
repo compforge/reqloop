@@ -54,7 +54,8 @@ Requirement 不保存实际 PR 列表，只在 reconcile 时扫描仍指向自�
 
 Requirement `spec` 保存用户选中时认可的标题、描述和验收标准；`status` 保存需求平台当前
 状态、关联 PR 汇总和条件。PullRequest `spec` 只保存不可变外部身份；Forge 观测、归属决定和
-devloop review 结果都进入不同的 status 字段，互不覆盖。
+devloop review 结果都进入不同的 status 字段，互不覆盖。merge conflict 的用户决定按一次
+连续冲突 episode 保存；冲突消失后清空，避免旧决定压住未来再次出现的冲突。
 
 Requirement 当前使用三个 condition：
 

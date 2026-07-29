@@ -38,6 +38,8 @@ import {
 const PULL_REQUEST_POLL_CRON = "*/30 * * * * *";
 const PULL_REQUEST_ACTIVE_POLL_INTERVAL_MS = 30_000;
 const PULL_REQUEST_IDLE_POLL_INTERVAL_MS = 5 * 60_000;
+const MERGE_CONFLICT_ACTION_ACCEPT = "accept";
+const MERGE_CONFLICT_ACTION_IGNORE = "ignore";
 const REVIEW_ACTION_ACCEPT = "accept";
 const REVIEW_ACTION_IGNORE = "ignore";
 const ASSOCIATION_STANDALONE = "standalone";
@@ -182,6 +184,20 @@ function observationDue(
     elapsed >= intervalMs;
 }
 
+function mergeConflictFollowUpText(
+  identity: PullRequestIdentity,
+  url: string | undefined,
+): string {
+  const target = `${identity.repository} PR/MR ${identity.number}`;
+  return [
+    `Resolve the merge conflicts for ${target}${url ? ` (${url})` : ""}.`,
+    "",
+    "Inspect the target branch changes and every conflicting file. Preserve " +
+    "both intended behaviors, run the relevant lint and tests, then update " +
+    "the existing PR/MR branch.",
+  ].join("\n");
+}
+
 export function createPullRequestController(
   resources?: ResourceClient,
   connectors: readonly ForgeConnector[] = [],
@@ -274,6 +290,86 @@ export function createPullRequestController(
       // A freshly observed merge must not skip actionable review feedback:
       // unresolved reviews still continue into the decision/proposal flow below.
       if (observationComplete(current.status)) return;
+
+      if (
+        current.status.mergeability !== "conflicted" &&
+        current.status.mergeConflictDecision
+      ) {
+        // Ending one conflict episode lets a later regression ask again with a
+        // new decision key instead of replaying an old user answer.
+        current = await resources.patchStatus(current, {
+          mergeConflictDecision: null,
+        });
+      }
+      if (
+        current.status.lifecycle === "open" &&
+        current.status.mergeability === "conflicted" &&
+        !current.status.mergeConflictDecision?.choice
+      ) {
+        let conflictDecision = current.status.mergeConflictDecision;
+        if (!conflictDecision) {
+          const conflictBasis = current.status.observedAt ??
+            current.metadata.resourceVersion;
+          conflictDecision = {
+            decisionKey:
+              `handle-merge-conflict:${current.metadata.name}:${conflictBasis}`,
+          };
+          current = await resources.patchStatus(current, {
+            mergeConflictDecision: conflictDecision,
+          });
+        }
+        const decision = interactionDecision(
+          baton,
+          conflictDecision.decisionKey,
+        );
+        if (!decision) {
+          return {
+            output: {
+              kind: "interaction",
+              decisionKey: conflictDecision.decisionKey,
+              title: "Merge conflict found",
+              prompt:
+                `Ask the current Harness to resolve merge conflicts for ` +
+                `${identity.repository} PR/MR ${identity.number}?`,
+              options: [
+                {
+                  optionId: MERGE_CONFLICT_ACTION_ACCEPT,
+                  label: "Accept",
+                  description:
+                    "Ask the current Harness to resolve the conflicts.",
+                },
+                {
+                  optionId: MERGE_CONFLICT_ACTION_IGNORE,
+                  label: "Ignore",
+                  role: "reject",
+                },
+              ],
+            },
+          };
+        }
+        if (decision.outcome?.kind !== "answered") return;
+        const choice = decision.outcome.values[0];
+        if (
+          choice !== MERGE_CONFLICT_ACTION_ACCEPT &&
+          choice !== MERGE_CONFLICT_ACTION_IGNORE
+        ) {
+          return;
+        }
+        await resources.patchStatus(current, {
+          mergeConflictDecision: {
+            decisionKey: conflictDecision.decisionKey,
+            choice,
+          },
+        });
+        if (choice === MERGE_CONFLICT_ACTION_ACCEPT) {
+          return {
+            output: {
+              kind: "proposed-input",
+              text: mergeConflictFollowUpText(identity, current.status.url),
+            },
+          };
+        }
+      }
 
       if (current.status.lifecycle === "open") {
         const association = current.status.requirementAssociation;
