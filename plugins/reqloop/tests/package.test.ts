@@ -747,6 +747,9 @@ describe("ReqLoop PluginPackage", () => {
       },
       async (args) => {
         calls.push([...args]);
+        if (args[0] === "config" && args[1] === "get") {
+          return "meego.example";
+        }
         const category = args.join(" ").includes("`issue`")
           ? "issue"
           : "story";
@@ -856,12 +859,14 @@ describe("ReqLoop PluginPackage", () => {
       state: "in_progress",
       assignee: "Owner",
       updatedAt: "2026-01-01T10:00:00+08:00",
+      url: "https://meego.example/llmops/story/detail/1001",
       description: "Normalize requirement platforms.",
       acceptanceCriteria: ["List requirements", "Read details"],
     });
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(4);
     expect(calls[0]).toContain("--profile");
     expect(calls[2]).toContain('["description"]');
+    expect(calls[3]).toContain("host");
   });
 
   test("aggregates active requirement sources and routes detail reads", async () => {

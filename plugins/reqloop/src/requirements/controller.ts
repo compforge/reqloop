@@ -338,11 +338,10 @@ export function createRequirementController(
         ]
         : [];
       return {
-        title: resource.spec.title,
+        title: resource.spec.identity.id,
+        ...(resource.status.url ? { url: resource.status.url } : {}),
         status: [state ?? "Not observed", ...pullRequestStatus].join(" · "),
-        ...(resource.spec.description
-          ? { detail: resource.spec.description }
-          : {}),
+        detail: resource.spec.title,
         priority: pullRequests?.conflicted
           ? 200
           : pullRequests?.unresolvedReviewThreads
