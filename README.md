@@ -94,10 +94,10 @@ Proposal contracts.
   Resource combined with a `baton.turn` Controller.
 - [Turn Coach](./plugins/turn-coach/README.md) — an end-to-end canary for
   Baton-owned Resource replay, persistent state, and proposed input.
-- [ReqLoop](./plugins/reqloop/README.md) — requirement-level coordination;
-  `0.2.5` connects Workspace, Repository, PullRequest, and Requirement
-  Resources, exposes active requirements as Harness context, and aggregates
-  merge and review progress on the Board.
+- [ReqLoop](./plugins/reqloop/README.md) — requirement-level coordination
+  connecting Workspace, Repository, PullRequest, and Requirement Resources,
+  exposing active requirements as Harness context, and aggregating merge and
+  review progress on the Board.
 
 See the [ReqLoop architecture](./plugins/reqloop/AGENTS.md) for its domain
 model, reconcile flow, integration boundaries, and roadmap.

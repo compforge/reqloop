@@ -132,7 +132,6 @@ flow, integration boundaries, and roadmap.
 
 ```text
 pluginId: compforge/reqloop
-version:  0.2.5
 ```
 
 Install this Marketplace in Baton, install `compforge/reqloop`, then enable it
