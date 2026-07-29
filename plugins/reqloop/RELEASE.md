@@ -4,8 +4,9 @@ Current version: `0.2.7`
 
 ## 0.2.7
 
-- Enforce configured Meegle participant filtering for Requirement searches.
-- Optionally discover only PullRequests authored by a configured Forge account.
+- Enforce configured Meegle participant filtering for Requirement searches,
+  including multiple configured accounts.
+- Optionally discover only PullRequests authored by configured Forge accounts.
 - Rank newer Requirement and PullRequest Board items higher within the same condition.
 
 ## 0.2.6

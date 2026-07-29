@@ -67,13 +67,15 @@ function encodedProject(repository: string): string {
 
 function authorMatches(
   mergeRequest: Record<string, unknown>,
-  uid: string,
+  uids: readonly string[],
 ): boolean {
   const value = mergeRequest.author;
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const author = value as Record<string, unknown>;
-  return author.username === uid ||
-    (author.id !== undefined && String(author.id) === uid);
+  return uids.some((uid) =>
+    author.username === uid ||
+    (author.id !== undefined && String(author.id) === uid)
+  );
 }
 
 export class GitLabForgeConnector implements ForgeConnector {
@@ -83,7 +85,7 @@ export class GitLabForgeConnector implements ForgeConnector {
   readonly #apiBase: string;
   readonly #http: JsonHttpClient;
   readonly #now: () => Date;
-  readonly #uid?: string;
+  readonly #uids?: readonly string[];
 
   constructor(
     config: ForgeConfig,
@@ -95,7 +97,7 @@ export class GitLabForgeConnector implements ForgeConnector {
     if (!config.token) throw new Error(`GitLab token missing for ${config.host}`);
     this.source = config.source;
     this.#token = config.token;
-    this.#uid = config.uid;
+    this.#uids = config.uids;
     this.#apiBase = `https://${config.apiHost ?? config.host}/api/v4`;
     this.#http = new JsonHttpClient({ fetch: options.fetch });
     this.#now = options.now ?? (() => new Date());
@@ -131,14 +133,21 @@ export class GitLabForgeConnector implements ForgeConnector {
         `${this.#projectBase(repository)}` +
           `/merge_requests?state=${state}&order_by=updated_at&sort=desc` +
           this.#authorQuery() +
-          `&per_page=${Math.min(MERGE_REQUEST_PAGE_SIZE, limit ?? MERGE_REQUEST_PAGE_SIZE)}` +
+          `&per_page=${
+            this.#uids && this.#uids.length > 1
+              ? MERGE_REQUEST_PAGE_SIZE
+              : Math.min(
+                MERGE_REQUEST_PAGE_SIZE,
+                limit ?? MERGE_REQUEST_PAGE_SIZE,
+              )
+          }` +
           `&page=${page}`,
         { headers: this.#headers() },
       );
       const mergeRequests = records("GitLab MergeRequests", data);
       for (const [index, mergeRequest] of mergeRequests.entries()) {
         if (mergeRequest.state !== state) continue;
-        if (this.#uid && !authorMatches(mergeRequest, this.#uid)) continue;
+        if (this.#uids && !authorMatches(mergeRequest, this.#uids)) continue;
         const number = mergeRequest.iid;
         if (!Number.isSafeInteger(number) || (number as number) < 1) {
           throw new Error(`GitLab MergeRequests[${index}].iid is invalid`);
@@ -204,11 +213,12 @@ export class GitLabForgeConnector implements ForgeConnector {
   }
 
   #authorQuery(): string {
-    if (!this.#uid) return "";
-    const parameter = /^\d+$/.test(this.#uid)
+    if (this.#uids?.length !== 1) return "";
+    const uid = this.#uids[0]!;
+    const parameter = /^\d+$/.test(uid)
       ? "author_id"
       : "author_username";
-    return `&${parameter}=${encodeURIComponent(this.#uid)}`;
+    return `&${parameter}=${encodeURIComponent(uid)}`;
   }
 
   #projectBase(repository: string): string {

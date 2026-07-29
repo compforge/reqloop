@@ -23,7 +23,7 @@ export interface MeegoRequirementConfig {
   readonly provider: "meego";
   readonly projectKey: string;
   readonly profile?: string;
-  readonly userKey?: string;
+  readonly userKeys?: readonly string[];
   readonly categories: readonly string[];
 }
 
@@ -71,6 +71,19 @@ function categories(name: string, value: unknown): readonly string[] {
     value.map((category, index) =>
       nonEmptyString(`${name}[${index}]`, category)
     ),
+  );
+}
+
+function optionalStrings(
+  name: string,
+  value: unknown,
+): readonly string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`${name} must be a non-empty string array`);
+  }
+  return Object.freeze(
+    value.map((item, index) => nonEmptyString(`${name}[${index}]`, item)),
   );
 }
 
@@ -131,9 +144,9 @@ export function loadMeegoRequirementConfigs(
         `reqloop requirement source ${source} profile`,
         requirement.profile,
       ),
-      userKey: optionalString(
-        `reqloop requirement source ${source} userKey`,
-        requirement.userKey,
+      userKeys: optionalStrings(
+        `reqloop requirement source ${source} userKeys`,
+        requirement.userKeys,
       ),
       categories: Object.freeze(configuredCategories),
     }));
@@ -456,11 +469,15 @@ function mqlUserKeyLiteral(userKey: string): string {
   return `'<id:${userKey.replaceAll("'", "''")}>'`;
 }
 
-function participantFilter(userKey: string): string {
+function participantFilter(userKeys: readonly string[]): string {
   // Meegle currently ignores literal user IDs in participate_persons();
-  // all_participate_persons() keeps configured userKey filtering effective.
-  return "WHERE array_contains(" +
-    `all_participate_persons(), ${mqlUserKeyLiteral(userKey)})`;
+  // all_participate_persons() keeps configured userKeys filtering effective.
+  return "WHERE (" + userKeys
+    .map((userKey) =>
+      "array_contains(" +
+      `all_participate_persons(), ${mqlUserKeyLiteral(userKey)})`
+    )
+    .join(" OR ") + ")";
 }
 
 function stringList(value: unknown): readonly string[] | undefined {
@@ -511,8 +528,8 @@ export class MeegleCliRequirementConnector
           "SELECT `work_item_id`, `name`, `current_status_operator`,",
           "`work_item_status`, `updated_at`",
           `FROM \`${this.config.projectKey}\`.\`${category}\``,
-          ...(this.config.userKey
-            ? [participantFilter(this.config.userKey)]
+          ...(this.config.userKeys
+            ? [participantFilter(this.config.userKeys)]
             : []),
           "ORDER BY `updated_at` DESC",
           "LIMIT 50",
