@@ -53,11 +53,13 @@ describe("Forge config", () => {
       forges: {
         "github.com": {
           token: "configured-github",
+          uid: "octocat",
         },
         "code.example.com": {
           type: "gitlab",
           api_host: "gitlab-api.example.com",
           token: "configured-gitlab",
+          uid: "42",
         },
       },
     }));
@@ -70,6 +72,7 @@ describe("Forge config", () => {
         source: "github.com",
         provider: "github",
         host: "github.com",
+        uid: "octocat",
         token: "environment-github",
       },
       {
@@ -77,6 +80,7 @@ describe("Forge config", () => {
         provider: "gitlab",
         host: "code.example.com",
         apiHost: "gitlab-api.example.com",
+        uid: "42",
         token: "environment-gitlab",
       },
     ]);
@@ -368,6 +372,42 @@ describe("GitHubForgeConnector", () => {
     expect(pages).toEqual(["open:1", "closed:1"]);
   });
 
+  test("optionally filters PullRequests by configured author uid", async () => {
+    let requestedUrl = "";
+    const fetch: Fetch = async (input) => {
+      requestedUrl = String(input);
+      return json([
+        {
+          number: 3,
+          state: "open",
+          user: { login: "someone-else", id: 7 },
+        },
+        {
+          number: 2,
+          state: "open",
+          user: { login: "owner", id: 42 },
+        },
+      ]);
+    };
+    const connector = new GitHubForgeConnector({
+      source: "github.com",
+      provider: "github",
+      host: "github.com",
+      token: "secret",
+      uid: "owner",
+    }, { fetch });
+
+    await expect(connector.list("owner/repo", {
+      state: "open",
+      limit: 1,
+    })).resolves.toEqual([{
+      source: "github.com",
+      repository: "owner/repo",
+      number: 2,
+    }]);
+    expect(new URL(requestedUrl).searchParams.get("per_page")).toBe("100");
+  });
+
   test("changes the activity key when a review comment changes", async () => {
     let commentId = "PRRC_1";
     const fetch: Fetch = async (input) => {
@@ -629,5 +669,41 @@ describe("GitLabForgeConnector", () => {
       },
     ]);
     expect(pages).toEqual(["opened:1", "merged:1"]);
+  });
+
+  test("optionally filters MergeRequests by configured author uid", async () => {
+    let requestedUrl = "";
+    const fetch: Fetch = async (input) => {
+      requestedUrl = String(input);
+      return json([
+        {
+          iid: 3,
+          state: "opened",
+          author: { username: "someone-else", id: 7 },
+        },
+        {
+          iid: 2,
+          state: "opened",
+          author: { username: "owner", id: 42 },
+        },
+      ]);
+    };
+    const connector = new GitLabForgeConnector({
+      source: "gitlab.example.com",
+      provider: "gitlab",
+      host: "gitlab.example.com",
+      token: "secret",
+      uid: "42",
+    }, { fetch });
+
+    await expect(connector.list("group/repo", {
+      state: "open",
+      limit: 1,
+    })).resolves.toEqual([{
+      source: "gitlab.example.com",
+      repository: "group/repo",
+      number: 2,
+    }]);
+    expect(new URL(requestedUrl).searchParams.get("author_id")).toBe("42");
   });
 });
