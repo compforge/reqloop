@@ -162,6 +162,7 @@ PullRequest
 ├── spec
 │   └── identity          Forge source + repository + number
 └── status
+    ├── title / url       Forge 展示标题与可打开地址
     ├── lifecycle         open / merged / closed
     ├── reviewThreads     none / unresolved / resolved / unknown
     ├── reviewActivityKey review thread/comment 集合的外部活动指纹
@@ -198,9 +199,12 @@ Controller 只有看到 Baton 已持久化的 Interaction snapshot 后才写最�
 `prompted` 但 Interaction 尚未落盘，则幂等返回同一 `decisionKey`，避免崩溃窗口丢失问题。
 PullRequestController 还 Watches Requirement 从非活跃变为活跃，把尚待关联的开放 PR 重新入队。
 
-Board 当前只展示活跃 Requirement 和孤立的活跃 PullRequest。PullRequest 关联 Requirement
+Board 当前只展示活跃 Requirement 和尚未关联的活跃 PullRequest。PullRequest 关联 Requirement
 后仍保持独立 Resource 和生命周期，但 Board 以 Requirement 为主，不再重复生成 PR 卡片；
 Requirement status 汇总关联 PR 的 lifecycle、merge conflict 和 unresolved review thread。
+PullRequest 卡片用 Resource Type 的首个 `shortNames` 别名 `pr` 作为分组标题，第一行展示
+repository/number 与状态，第二行展示 Forge title；title 超出 Sidecar 横向空间时才滚动。
+卡片 title 是指向 Forge `url` 的终端原生超链接。
 merged 和 closed 的 PullRequest 都从 Board 消失；closed 与 review 状态已收敛的 merged
 PullRequest 停止轮询，review 状态尚未满足 Requirement 收尾条件的 merged PullRequest 继续观察。
 

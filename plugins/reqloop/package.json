@@ -1,6 +1,6 @@
 {
   "name": "@compforge/baton-plugin-reqloop",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "description": "Requirement-loop coordination plugin for Baton.",
   "type": "module",
@@ -8,7 +8,7 @@
     "test": "bun test"
   },
   "peerDependencies": {
-    "@compforge/baton-plugin": "^0.2.2"
+    "@compforge/baton-plugin": "^0.2.3"
   },
   "license": "MIT"
 }

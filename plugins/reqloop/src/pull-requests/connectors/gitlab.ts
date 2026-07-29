@@ -10,6 +10,7 @@ import type {
 import type { ForgeConfig } from "./config.ts";
 import {
   JsonHttpClient,
+  nonEmptyString,
   positiveLimit,
   record,
   records,
@@ -168,6 +169,8 @@ export class GitLabForgeConnector implements ForgeConnector {
     }
     return {
       identity,
+      title: nonEmptyString("GitLab MergeRequest.title", mergeRequest.title),
+      url: nonEmptyString("GitLab MergeRequest.web_url", mergeRequest.web_url),
       lifecycle: lifecycle(mergeRequest),
       reviewThreads,
       ...(reviewActivity ? { reviewActivityKey: reviewActivity } : {}),

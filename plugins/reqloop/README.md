@@ -109,15 +109,17 @@ requirement platform, and devloop review ledger. When user judgment is needed,
 ReqLoop opens a durable Interaction; an accepted review can become a
 `proposed-input` for the current Harness. ReqLoop does not directly drive a
 Harness or mutate external Requirement state. The Board currently presents
-only active Requirements and standalone active PullRequests; Workspace and
-Repository remain internal observation Resources.
+only active Requirements and unlinked active PullRequests; PullRequest cards
+link to the Forge and show the external title on a single marquee line only
+when it overflows. Workspace and Repository remain internal observation
+Resources.
 
 See [the Requirement Loop design](../../docs/reqloop.md) for lifecycle,
 reconciliation, and recovery details.
 
 ```text
 pluginId: compforge/reqloop
-version:  0.2.2
+version:  0.2.3
 ```
 
 Install this Marketplace in Baton, install `compforge/reqloop`, then enable it

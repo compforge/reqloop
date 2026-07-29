@@ -235,6 +235,8 @@ const observation: PullRequest = {
     repository: "compforge/reqloop",
     number: 17,
   },
+  title: "Keep Board focused",
+  url: "https://github.com/compforge/reqloop/pull/17",
   lifecycle: "open",
   reviewThreads: "unresolved",
   mergeability: "ready",
@@ -271,12 +273,17 @@ describe("PullRequest Resource", () => {
     expect({
       apiVersion: created.apiVersion,
       kind: created.kind,
-    }).toEqual(PULL_REQUEST_RESOURCE_TYPE);
+    }).toEqual({
+      apiVersion: PULL_REQUEST_RESOURCE_TYPE.apiVersion,
+      kind: PULL_REQUEST_RESOURCE_TYPE.kind,
+    });
     expect(created.metadata.name).toBe(
       pullRequestResourceId(observation.identity),
     );
     expect(created.spec).toEqual({ identity: observation.identity });
     expect(created.status).toEqual({
+      title: "Keep Board focused",
+      url: "https://github.com/compforge/reqloop/pull/17",
       lifecycle: "open",
       reviewThreads: "unresolved",
       reviewActivityKey: null,
@@ -289,7 +296,7 @@ describe("PullRequest Resource", () => {
     expect(resources.current()).toEqual(repeated);
   });
 
-  test("shows only standalone open PullRequests on the Board", async () => {
+  test("shows only unlinked open PullRequests on the Board", async () => {
     const controller = createPullRequestController();
     const resources = resourceClient();
     const pullRequest = await materializePullRequest(
@@ -298,12 +305,17 @@ describe("PullRequest Resource", () => {
     );
 
     expect(controller.resourceType).toBe(PULL_REQUEST_RESOURCE_TYPE);
-    expect(await controller.present?.(pullRequest)).toEqual({
+    const expectedPresentation = {
       title: "compforge/reqloop #17",
+      url: "https://github.com/compforge/reqloop/pull/17",
       status: "Unresolved review threads",
-      detail: "Unassociated PullRequest",
+      detail: "Keep Board focused",
+      priority: 100,
       tone: "warning",
-    });
+    } as const;
+    expect(await controller.present?.(pullRequest)).toEqual(
+      expectedPresentation,
+    );
     expect(await controller.present?.({
       ...pullRequest,
       status: {
@@ -340,6 +352,8 @@ describe("PullRequest Resource", () => {
       async get(identity) {
         return {
           identity,
+          title: "Already merged",
+          url: "https://github.com/compforge/reqloop/pull/17",
           lifecycle: "merged",
           reviewThreads: "resolved",
           mergeability: "ready",
@@ -360,6 +374,8 @@ describe("PullRequest Resource", () => {
     }]);
     await controller.reconcile({} as never, pullRequest);
     expect(resources.current()?.status).toEqual({
+      title: "Already merged",
+      url: "https://github.com/compforge/reqloop/pull/17",
       lifecycle: "merged",
       reviewThreads: "resolved",
       reviewActivityKey: null,
@@ -659,6 +675,8 @@ describe("PullRequest Resource", () => {
       async get(identity) {
         return {
           identity,
+          title: "Needs observation",
+          url: "https://github.com/compforge/reqloop/pull/17",
           lifecycle: "open",
           reviewThreads: "unknown",
           mergeability: "unknown",
@@ -721,6 +739,8 @@ describe("PullRequest Resource", () => {
       resources.current()!,
     );
     expect(resources.current()?.status).toEqual({
+      title: "Needs observation",
+      url: "https://github.com/compforge/reqloop/pull/17",
       lifecycle: "open",
       reviewThreads: "unknown",
       reviewActivityKey: null,

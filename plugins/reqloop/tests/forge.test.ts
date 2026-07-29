@@ -107,7 +107,13 @@ describe("GitHubForgeConnector", () => {
       const url = String(input);
       calls.push({ url, headers: new Headers(init?.headers) });
       if (url.endsWith("/pulls/17")) {
-        return json({ number: 17, state: "open", mergeable: false });
+        return json({
+          number: 17,
+          title: "Keep Board focused",
+          html_url: "https://github.com/compforge/reqloop/pull/17",
+          state: "open",
+          mergeable: false,
+        });
       }
       if (url.endsWith("/graphql")) {
         return json({
@@ -179,6 +185,8 @@ describe("GitHubForgeConnector", () => {
         repository: "compforge/reqloop",
         number: 17,
       },
+      title: "Keep Board focused",
+      url: "https://github.com/compforge/reqloop/pull/17",
       lifecycle: "open",
       reviewThreads: "unresolved",
       reviewActivityKey: expect.any(String),
@@ -222,6 +230,8 @@ describe("GitHubForgeConnector", () => {
       if (String(input).endsWith("/pulls/3")) {
         return json({
           number: 3,
+          title: "Already merged",
+          html_url: "https://github.com/owner/repo/pull/3",
           state: "closed",
           merged: true,
           mergeable: null,
@@ -309,7 +319,13 @@ describe("GitHubForgeConnector", () => {
     const fetch: Fetch = async (input) => {
       const url = String(input);
       if (url.endsWith("/pulls/5")) {
-        return json({ number: 5, state: "open", mergeable: true });
+        return json({
+          number: 5,
+          title: "Ready to merge",
+          html_url: "https://github.com/owner/repo/pull/5",
+          state: "open",
+          mergeable: true,
+        });
       }
       if (url.endsWith("/graphql")) {
         return json({
@@ -367,6 +383,9 @@ describe("GitLabForgeConnector", () => {
       if (url.endsWith("/merge_requests/9")) {
         return json({
           iid: 9,
+          title: "Keep Board focused",
+          web_url:
+            "https://gitlab.example.com/group/subgroup/repo/-/merge_requests/9",
           state: "opened",
           detailed_merge_status: "mergeable",
           has_conflicts: false,
@@ -421,6 +440,9 @@ describe("GitLabForgeConnector", () => {
         repository: "group/subgroup/repo",
         number: 9,
       },
+      title: "Keep Board focused",
+      url:
+        "https://gitlab.example.com/group/subgroup/repo/-/merge_requests/9",
       lifecycle: "open",
       reviewThreads: "unresolved",
       reviewActivityKey: expect.any(String),
@@ -470,6 +492,9 @@ describe("GitLabForgeConnector", () => {
       if (url.endsWith("/merge_requests/4")) {
         return json({
           iid: 4,
+          title: "Ordinary conversation",
+          web_url:
+            "https://gitlab.example.com/group/repo/-/merge_requests/4",
           state: "closed",
           detailed_merge_status: "unchecked",
           has_conflicts: false,
