@@ -270,6 +270,8 @@ export function createPullRequestController(
           current = await updatePullRequestObservation(resources, observation);
         }
       }
+      // A freshly observed merge must not skip actionable review feedback:
+      // unresolved reviews still continue into the decision/proposal flow below.
       if (observationComplete(current.status)) return;
 
       if (current.status.lifecycle === "open") {
