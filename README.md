@@ -2,7 +2,7 @@
 
 # reqloop
 
-reqloop is the official [Baton](https://github.com/qiankunli/baton) marketplace
+reqloop is the official [Baton](https://github.com/compforge/baton) marketplace
 for requirement-level engineering loops. It is a multi-plugin repository: every
 directory under `plugins/` is an independently versioned Baton PluginPackage,
 while the repository root owns only marketplace discovery and shared
@@ -51,8 +51,8 @@ Register this Git repository as a Marketplace and install the Package you need:
 
 ```bash
 baton plugins marketplace add https://github.com/compforge/reqloop.git
-baton plugins install qiankunli/turn-coach --marketplace reqloop
-baton plugins install qiankunli/reqloop --marketplace reqloop
+baton plugins install compforge/turn-coach --marketplace reqloop
+baton plugins install compforge/reqloop --marketplace reqloop
 baton plugins list
 ```
 

@@ -63,5 +63,5 @@ reqloop/
 - `README.md` — Marketplace 定位、目标使用流程和 Plugin 列表
 - `CONTRIBUTING.md` — 新增 Plugin 的目录、manifest 与验证要求
 - Baton Plugin 设计：
-  `https://github.com/qiankunli/baton/blob/main/docs/plugin.md`
+  `https://github.com/compforge/baton/blob/main/docs/plugin.md`
 - `docs/reqloop.md` — Requirement Loop 领域模型、内部 Connector 与 Harness 协作边界

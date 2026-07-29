@@ -111,11 +111,11 @@ See [the Requirement Loop design](../../docs/reqloop.md) for lifecycle,
 reconciliation, and recovery details.
 
 ```text
-pluginId: qiankunli/reqloop
+pluginId: compforge/reqloop
 version:  0.2.0
 ```
 
-Install this Marketplace in Baton, install `qiankunli/reqloop`, then enable it
+Install this Marketplace in Baton, install `compforge/reqloop`, then enable it
 for the BatonSession that owns the repository.
 
 ---

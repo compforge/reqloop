@@ -232,7 +232,7 @@ function batonSnapshot(
 const observation: PullRequest = {
   identity: {
     source: "github-primary",
-    repository: "qiankunli/reqloop",
+    repository: "compforge/reqloop",
     number: 17,
   },
   lifecycle: "open",
@@ -285,7 +285,7 @@ describe("PullRequest Resource", () => {
 
     expect(controller.resourceType).toBe(PULL_REQUEST_RESOURCE_TYPE);
     expect(await controller.present?.(pullRequest)).toEqual({
-      title: "qiankunli/reqloop #17",
+      title: "compforge/reqloop #17",
       status: "Unresolved review threads",
       detail: "Unassociated PullRequest",
       tone: "warning",
@@ -668,7 +668,7 @@ describe("PullRequest Resource", () => {
       spec: {
         identity: {
         source: "github-primary",
-        repository: "qiankunli/reqloop",
+        repository: "compforge/reqloop",
         },
       },
     });
@@ -683,7 +683,7 @@ describe("PullRequest Resource", () => {
 
     expect(resources.current()?.spec.identity).toEqual({
       source: "github-primary",
-      repository: "qiankunli/reqloop",
+      repository: "compforge/reqloop",
       number: 18,
     });
     await createPullRequestController(

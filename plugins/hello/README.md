@@ -6,7 +6,7 @@ the real Marketplace discovery, immutable installation, and Package loading
 path before later examples introduce host behavior.
 
 ```text
-pluginId: qiankunli/hello
+pluginId: compforge/hello
 version:  0.1.0
 ```
 

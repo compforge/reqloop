@@ -1,5 +1,5 @@
 {
-  "name": "@qiankunli/baton-plugin-turn-coach",
+  "name": "@compforge/baton-plugin-turn-coach",
   "version": "0.1.0",
   "private": true,
   "description": "End-to-end canary for Baton Plugin resources, turn watches, and proposed input.",

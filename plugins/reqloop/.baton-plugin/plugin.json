@@ -1,6 +1,6 @@
 {
   "manifestVersion": 1,
-  "pluginId": "qiankunli/reqloop",
+  "pluginId": "compforge/reqloop",
   "version": "0.2.0",
   "entry": "./src/index.ts",
   "displayName": "ReqLoop",

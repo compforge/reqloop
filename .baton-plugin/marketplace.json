@@ -1,25 +1,25 @@
 {
   "name": "reqloop",
   "owner": {
-    "name": "qiankunli",
-    "url": "https://github.com/qiankunli"
+    "name": "compforge",
+    "url": "https://github.com/compforge"
   },
   "description": "Baton plugin marketplace for requirement-level engineering loops.",
   "plugins": [
     {
-      "pluginId": "qiankunli/hello",
+      "pluginId": "compforge/hello",
       "source": "./plugins/hello"
     },
     {
-      "pluginId": "qiankunli/hello-counter",
+      "pluginId": "compforge/hello-counter",
       "source": "./plugins/hello-counter"
     },
     {
-      "pluginId": "qiankunli/turn-coach",
+      "pluginId": "compforge/turn-coach",
       "source": "./plugins/turn-coach"
     },
     {
-      "pluginId": "qiankunli/reqloop",
+      "pluginId": "compforge/reqloop",
       "source": "./plugins/reqloop"
     }
   ]

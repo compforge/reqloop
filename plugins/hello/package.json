@@ -1,5 +1,5 @@
 {
-  "name": "@qiankunli/baton-plugin-hello",
+  "name": "@compforge/baton-plugin-hello",
   "version": "0.1.0",
   "private": true,
   "description": "Minimal Baton Plugin Package for Marketplace smoke testing.",

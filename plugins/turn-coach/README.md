@@ -4,7 +4,7 @@ Turn Coach is a small Baton PluginPackage that exercises the real host path
 without depending on an external service:
 
 ```text
-pluginId: qiankunli/turn-coach
+pluginId: compforge/turn-coach
 version:  0.1.0
 ```
 
@@ -23,7 +23,7 @@ that proposal using its durable identity.
 
 ## Try it
 
-Register this repository as a Marketplace, install `qiankunli/turn-coach`, then
+Register this repository as a Marketplace, install `compforge/turn-coach`, then
 enable **Turn Coach** for the current session from `/plugins`. Complete any
 Codex or Claude turn and inspect the proposed input in the composer.
 
