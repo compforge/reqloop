@@ -18,6 +18,26 @@ Connector 负责调用外部协议、校验响应并映射为 ReqLoop 领域对�
 `ResourceClient`，不决定哪些外部对象进入系统，也不负责 Board、Harness 路由、完成条件或
 跨领域编排。
 
+### 缓存与外部调用
+
+Baton 在 Project / Session 停止后仍保留 Repository 和 PullRequest Resource JSON。它们既是
+最近一次领域观测，也是恢复时的本地缓存：Board、汇总和已准入对象的 reconcile 应先读取这些
+Resource，不得仅为重建界面或恢复进度重新请求外部平台。外部系统仍是外部事实的 owner；
+Resource 缓存表达“最后已知状态”，不能被当作永久新鲜的真相。
+
+外部 API 不是可以无成本、无限制调用的。Connector 应优先复用仍在有效窗口内的本地观测，
+并减少非必要调用：
+
+- 已缓存 observation 未到刷新窗口时，通常不重复单项读取；
+- 集合发现优先消费 devloop 等本地产出，确需发现新对象时才执行有界 `list()`；
+- Source、Board、Context 和诊断日志不得各自追加外部请求；
+- 同一轮请求要合并、限制分页和结果数，失败后由既有调度重试，不能立即循环重放；
+- 遇到 429 或 provider rate limit 时必须服从 `Retry-After` / reset window，并暂停同一
+  Connector 的后续调用。
+
+这些约束既降低恢复延迟，也避免多个 checkout 或频繁重启放大 API 调用。缓存不阻止必要的
+事实刷新；日志只记录已有调用的范围、结果和跳过原因，不为补全诊断信息额外访问外部系统。
+
 ### Requirement 平台
 
 `RequirementConnector` 当前只有有界列表和单项读取能力。`/requirements` 把搜索词交给所有

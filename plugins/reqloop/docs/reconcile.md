@@ -109,3 +109,7 @@ Context 搜索和 PR 关联候选。当前不会关闭外部 Requirement，也�
 
 Resource status、durable Interaction 和下一次调度均可跨重启恢复。Controller 不把触发原因
 当作必须执行一次的命令；重复唤醒、队列合并和重启后都重新读取最新状态，以幂等结果为目标。
+恢复时 Repository / PullRequest Resource JSON 同时充当最后观测缓存；Board 和本地汇总直接
+从缓存恢复。外部 Connector 调用应围绕 observation 缺失、刷新窗口到期或新对象发现等实际
+需要安排，避免仅因恢复或重建投影而访问外部 API。具体约束见
+[集成边界](./integrations.md#缓存与外部调用)。

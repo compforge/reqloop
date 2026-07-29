@@ -4,6 +4,7 @@ import {
 } from "node:fs";
 
 import type {
+  PluginLogger,
   Source,
   SourceContext,
 } from "@compforge/baton-plugin";
@@ -30,14 +31,17 @@ export class DevloopPullRequestSource implements Source<PullRequestSpec> {
   readonly sourceId = "devloop";
   readonly path?: string;
   private readonly watchIntervalMs: number;
+  private readonly logger?: PluginLogger;
   private readonly reviewObservations?: () => Promise<
     readonly PullRequestReviewObservation[]
   >;
   private lastFailureKey?: string;
+  private lastPullRequestKey?: string;
 
   constructor(
     private readonly cwd: string,
     options: {
+      readonly logger?: PluginLogger;
       readonly path?: string;
       readonly watchIntervalMs?: number;
       readonly reviewObservations?: () => Promise<
@@ -47,16 +51,43 @@ export class DevloopPullRequestSource implements Source<PullRequestSpec> {
   ) {
     this.path = options.path?.trim() || undefined;
     this.watchIntervalMs = options.watchIntervalMs ?? 1_000;
+    this.logger = options.logger;
     this.reviewObservations = options.reviewObservations;
   }
 
   async start(context: SourceContext<PullRequestSpec>): Promise<void> {
-    for (const observation of await this.reviewObservations?.() ?? []) {
+    const reviewObservations = await this.reviewObservations?.() ?? [];
+    for (const observation of reviewObservations) {
       if (context.signal.aborted) return;
       await this.emit(context, observation.identity);
     }
+    this.logger?.write({
+      level: "info",
+      component: "pull-request-source.devloop",
+      message: "Loaded devloop review observations",
+      details: {
+        observations: reviewObservations.length,
+        pullRequests: reviewObservations.map(({ identity }) =>
+          `${identity.source}/${identity.repository}#${identity.number}`
+        ).sort().join(",") || null,
+      },
+    });
     const path = this.path ?? await devloopStatePath(this.cwd, "pr.json");
-    if (!path) return;
+    if (!path) {
+      this.logger?.write({
+        level: "info",
+        component: "pull-request-source.devloop",
+        message: "Devloop PR state is unavailable for this workspace root",
+        details: { cwd: this.cwd },
+      });
+      return;
+    }
+    this.logger?.write({
+      level: "info",
+      component: "pull-request-source.devloop",
+      message: "Watching devloop PR state",
+      details: { path },
+    });
     const listener = (): void => {
       void this.emitCurrent(context, path).catch((error) =>
         this.reportFailure(context, errorKey(error), error, path)
@@ -97,6 +128,20 @@ export class DevloopPullRequestSource implements Source<PullRequestSpec> {
       return;
     }
     this.lastFailureKey = undefined;
+    const pullRequestKey = JSON.stringify(numbers);
+    if (pullRequestKey !== this.lastPullRequestKey) {
+      this.lastPullRequestKey = pullRequestKey;
+      this.logger?.write({
+        level: "info",
+        component: "pull-request-source.devloop",
+        message: "Observed open PullRequests in devloop state",
+        details: {
+          openPullRequests: numbers.length,
+          pullRequests: numbers.join(",") || null,
+          path,
+        },
+      });
+    }
 
     for (const number of numbers) {
       const identity = { ...repository, number };
