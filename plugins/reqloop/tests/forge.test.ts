@@ -53,13 +53,13 @@ describe("Forge config", () => {
       forges: {
         "github.com": {
           token: "configured-github",
-          uid: "octocat",
+          uids: ["octocat", "42"],
         },
         "code.example.com": {
           type: "gitlab",
           api_host: "gitlab-api.example.com",
           token: "configured-gitlab",
-          uid: "42",
+          uids: ["42", "owner"],
         },
       },
     }));
@@ -72,7 +72,7 @@ describe("Forge config", () => {
         source: "github.com",
         provider: "github",
         host: "github.com",
-        uid: "octocat",
+        uids: ["octocat", "42"],
         token: "environment-github",
       },
       {
@@ -80,7 +80,7 @@ describe("Forge config", () => {
         provider: "gitlab",
         host: "code.example.com",
         apiHost: "gitlab-api.example.com",
-        uid: "42",
+        uids: ["42", "owner"],
         token: "environment-gitlab",
       },
     ]);
@@ -372,7 +372,7 @@ describe("GitHubForgeConnector", () => {
     expect(pages).toEqual(["open:1", "closed:1"]);
   });
 
-  test("optionally filters PullRequests by configured author uid", async () => {
+  test("optionally filters PullRequests by configured author uids", async () => {
     let requestedUrl = "";
     const fetch: Fetch = async (input) => {
       requestedUrl = String(input);
@@ -387,6 +387,11 @@ describe("GitHubForgeConnector", () => {
           state: "open",
           user: { login: "owner", id: 42 },
         },
+        {
+          number: 1,
+          state: "open",
+          user: { login: "backup", id: 43 },
+        },
       ]);
     };
     const connector = new GitHubForgeConnector({
@@ -394,17 +399,24 @@ describe("GitHubForgeConnector", () => {
       provider: "github",
       host: "github.com",
       token: "secret",
-      uid: "owner",
+      uids: ["owner", "43"],
     }, { fetch });
 
     await expect(connector.list("owner/repo", {
       state: "open",
-      limit: 1,
-    })).resolves.toEqual([{
-      source: "github.com",
-      repository: "owner/repo",
-      number: 2,
-    }]);
+      limit: 2,
+    })).resolves.toEqual([
+      {
+        source: "github.com",
+        repository: "owner/repo",
+        number: 2,
+      },
+      {
+        source: "github.com",
+        repository: "owner/repo",
+        number: 1,
+      },
+    ]);
     expect(new URL(requestedUrl).searchParams.get("per_page")).toBe("100");
   });
 
@@ -671,7 +683,7 @@ describe("GitLabForgeConnector", () => {
     expect(pages).toEqual(["opened:1", "merged:1"]);
   });
 
-  test("optionally filters MergeRequests by configured author uid", async () => {
+  test("optionally filters MergeRequests by configured author uids", async () => {
     let requestedUrl = "";
     const fetch: Fetch = async (input) => {
       requestedUrl = String(input);
@@ -686,6 +698,11 @@ describe("GitLabForgeConnector", () => {
           state: "opened",
           author: { username: "owner", id: 42 },
         },
+        {
+          iid: 1,
+          state: "opened",
+          author: { username: "backup", id: 8 },
+        },
       ]);
     };
     const connector = new GitLabForgeConnector({
@@ -693,17 +710,27 @@ describe("GitLabForgeConnector", () => {
       provider: "gitlab",
       host: "gitlab.example.com",
       token: "secret",
-      uid: "42",
+      uids: ["42", "backup"],
     }, { fetch });
 
     await expect(connector.list("group/repo", {
       state: "open",
-      limit: 1,
-    })).resolves.toEqual([{
-      source: "gitlab.example.com",
-      repository: "group/repo",
-      number: 2,
-    }]);
-    expect(new URL(requestedUrl).searchParams.get("author_id")).toBe("42");
+      limit: 2,
+    })).resolves.toEqual([
+      {
+        source: "gitlab.example.com",
+        repository: "group/repo",
+        number: 2,
+      },
+      {
+        source: "gitlab.example.com",
+        repository: "group/repo",
+        number: 1,
+      },
+    ]);
+    const url = new URL(requestedUrl);
+    expect(url.searchParams.get("author_id")).toBeNull();
+    expect(url.searchParams.get("author_username")).toBeNull();
+    expect(url.searchParams.get("per_page")).toBe("100");
   });
 });

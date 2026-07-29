@@ -44,6 +44,14 @@ and Session data directories. The narrower scope recursively overrides the
 broader scope; Instance data does not carry configuration. A typical global
 file is `~/.baton/plugins/compforge%2Freqloop/config.json`:
 
+Copy [`config.json.example`](./config.json.example) for a complete, valid JSON
+template covering every supported field:
+
+```bash
+cp plugins/reqloop/config.json.example \
+  ~/.baton/plugins/compforge%2Freqloop/config.json
+```
+
 ```json
 {
   "version": 1,
@@ -51,7 +59,7 @@ file is `~/.baton/plugins/compforge%2Freqloop/config.json`:
     "llmops": {
       "provider": "meego",
       "projectKey": "<Meegle project key>",
-      "userKey": "<optional Meegle user_key>",
+      "userKeys": ["<optional Meegle user_key>"],
       "categories": ["story", "issue"]
     },
     "another-meego-source": {
@@ -67,11 +75,11 @@ file is `~/.baton/plugins/compforge%2Freqloop/config.json`:
   "forges": {
     "github.com": {
       "type": "github",
-      "uid": "<optional GitHub login or user ID>"
+      "uids": ["<optional GitHub login or user ID>"]
     },
     "gitlab.example.com": {
       "type": "gitlab",
-      "uid": "<optional GitLab username or user ID>"
+      "uids": ["<optional GitLab username or user ID>"]
     },
     "github-work-alias": {
       "type": "github",
@@ -81,18 +89,37 @@ file is `~/.baton/plugins/compforge%2Freqloop/config.json`:
 }
 ```
 
+The map keys under `requirements` and `forges` are stable Connector `source`
+identities. Placeholder values in the example must be replaced or removed
+before use.
+
+| Field | Purpose |
+| --- | --- |
+| `version` | ReqLoop configuration format version; currently `1`. |
+| `requirements.<source>` | Stable Requirement Connector identity. |
+| `provider` | Connector provider; Requirement currently supports `meego`. |
+| `projectKey` | Meegle project whose work items are queried. |
+| `profile` | Optional Meegle CLI profile. |
+| `userKeys` | Optional Meegle participant accounts; any match is admitted. |
+| `categories` | Meegle work-item categories; defaults to `story` and `issue`. |
+| `forges.<source>` | Stable PullRequest source, normally the Git host. |
+| `type` | Forge provider, `github` or `gitlab`; otherwise inferred from host. |
+| `api_host` | Optional real API host when the source key is an alias. |
+| `uids` | Optional PR/MR author accounts; any match is admitted. |
+| `token` | Optional fallback after the provider token environment variables. |
+
 `categories` defaults to `["story", "issue"]`. Configuration is runtime data,
 not part of the PluginPackage, and must not be committed to this repository.
-When `userKey` is present, `/requirements` returns only work items where that
-user is a participant; omitting it preserves the unfiltered behavior.
+When `userKeys` is present, `/requirements` returns only work items where any
+configured user is a participant; omitting it preserves the unfiltered behavior.
 Use `meegle user me` to read your own `user_key`, or resolve another person by
 name or email with
 `meegle user search --user-keys "<name-or-email>" --project-key <projectKey>`.
 The `forges` shape follows devloop: its map key is the PullRequest `source`,
 explicit `type` wins, `github.com` and `github.*` infer GitHub, and other hosts
 default to GitLab. `api_host` points an origin alias at the real API host.
-When `uid` is present, Forge discovery admits only PullRequests authored by
-that provider account; omitting it preserves unfiltered discovery.
+When `uids` is present, Forge discovery admits only PullRequests authored by
+any configured provider account; omitting it preserves unfiltered discovery.
 Tokens use `GITHUB_TOKEN`, then `GH_TOKEN`, for GitHub and `GITLAB_TOKEN` for
 GitLab; a per-forge `token` field is the fallback.
 

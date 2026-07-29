@@ -13,7 +13,7 @@ export interface ForgeConfig {
   readonly provider: "github" | "gitlab";
   readonly host: string;
   readonly apiHost?: string;
-  readonly uid?: string;
+  readonly uids?: readonly string[];
   readonly token?: string;
 }
 
@@ -29,6 +29,19 @@ function requiredString(name: string, value: unknown): string {
 function optionalString(name: string, value: unknown): string | undefined {
   if (value === undefined) return undefined;
   return requiredString(name, value);
+}
+
+function optionalStrings(
+  name: string,
+  value: unknown,
+): readonly string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`${name} must be a non-empty string array`);
+  }
+  return Object.freeze(
+    value.map((item, index) => requiredString(`${name}[${index}]`, item)),
+  );
 }
 
 function inferredProvider(host: string): "github" | "gitlab" {
@@ -89,9 +102,9 @@ export function loadForgeConfigs(
       `reqloop forge ${host} api_host`,
       forge.api_host,
     );
-    const uid = optionalString(
-      `reqloop forge ${host} uid`,
-      forge.uid,
+    const uids = optionalStrings(
+      `reqloop forge ${host} uids`,
+      forge.uids,
     );
     const token =
       environmentToken(configuredProvider, environment) ?? configuredToken;
@@ -100,7 +113,7 @@ export function loadForgeConfigs(
       provider: configuredProvider,
       host,
       ...(apiHost ? { apiHost } : {}),
-      ...(uid ? { uid } : {}),
+      ...(uids ? { uids } : {}),
       ...(token ? { token } : {}),
     });
   });

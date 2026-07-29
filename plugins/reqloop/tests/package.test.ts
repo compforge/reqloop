@@ -712,7 +712,7 @@ describe("ReqLoop PluginPackage", () => {
             provider: "meego",
             projectKey: "secondary-project",
             profile: "secondary-profile",
-            userKey: "ou_owner",
+            userKeys: ["ou_owner", "ou_backup"],
             categories: ["story"],
           },
         },
@@ -731,7 +731,7 @@ describe("ReqLoop PluginPackage", () => {
         provider: "meego",
         projectKey: "secondary-project",
         profile: "secondary-profile",
-        userKey: "ou_owner",
+        userKeys: ["ou_owner", "ou_backup"],
         categories: ["story"],
       },
     ]);
@@ -739,13 +739,13 @@ describe("ReqLoop PluginPackage", () => {
 
   test("optionally filters Meegle queries by participant", async () => {
     const mqls: string[] = [];
-    const connector = (userKey?: string) =>
+    const connector = (userKeys?: readonly string[]) =>
       new MeegleCliRequirementConnector(
         {
           source: "llmops",
           provider: "meego",
           projectKey: "llmops",
-          ...(userKey ? { userKey } : {}),
+          ...(userKeys ? { userKeys } : {}),
           categories: ["story"],
         },
         async (args) => {
@@ -756,11 +756,14 @@ describe("ReqLoop PluginPackage", () => {
       );
 
     await connector().list();
-    await connector("owner'key").list();
+    await connector(["owner'key", "backup"]).list();
 
     expect(mqls[0]).not.toContain("participate_persons()");
     expect(mqls[1]).toContain(
-      "WHERE array_contains(all_participate_persons(), '<id:owner''key>')",
+      "array_contains(all_participate_persons(), '<id:owner''key>')",
+    );
+    expect(mqls[1]).toContain(
+      "OR array_contains(all_participate_persons(), '<id:backup>')",
     );
     expect(mqls[1]).not.toContain(
       "array_contains(participate_persons(),",

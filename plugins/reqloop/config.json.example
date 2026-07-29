@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "requirements": {
+    "meegle-source-name": {
+      "provider": "meego",
+      "projectKey": "<required Meegle project key>",
+      "profile": "<optional Meegle CLI profile>",
+      "userKeys": [
+        "<optional Meegle user_key>"
+      ],
+      "categories": [
+        "story",
+        "issue"
+      ]
+    }
+  },
+  "forges": {
+    "github.com": {
+      "type": "github",
+      "uids": [
+        "<optional GitHub login or numeric user ID>"
+      ],
+      "token": "<optional token fallback; prefer GITHUB_TOKEN or GH_TOKEN>"
+    },
+    "gitlab.example.com": {
+      "type": "gitlab",
+      "uids": [
+        "<optional GitLab username or numeric user ID>"
+      ],
+      "token": "<optional token fallback; prefer GITLAB_TOKEN>"
+    },
+    "github-source-alias": {
+      "type": "github",
+      "api_host": "github.example.com",
+      "uids": [
+        "<optional GitHub Enterprise login or numeric user ID>"
+      ]
+    }
+  }
+}
