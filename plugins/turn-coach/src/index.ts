@@ -46,7 +46,7 @@ function proposedInput(userText: string): string {
 }
 
 const turnCoach: PluginPackage = Object.freeze({
-  pluginId: "qiankunli/turn-coach",
+  pluginId: "compforge/turn-coach",
   version: "0.1.0",
 
   async activate(context: PluginActivationContext): Promise<void> {

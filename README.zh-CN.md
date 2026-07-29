@@ -2,7 +2,7 @@
 
 # reqloop
 
-reqloop 是面向 Requirement Loop 的官方 [Baton](https://github.com/qiankunli/baton)
+reqloop 是面向 Requirement Loop 的官方 [Baton](https://github.com/compforge/baton)
 Marketplace。它是一个多 Plugin 仓库：`plugins/` 下每个 Plugin 目录都是可独立版本化的
 Baton PluginPackage，仓库根只负责 Marketplace 发现和公共开发约定。
 
@@ -44,8 +44,8 @@ devloop review 状态。
 
 ```bash
 baton plugins marketplace add https://github.com/compforge/reqloop.git
-baton plugins install qiankunli/turn-coach --marketplace reqloop
-baton plugins install qiankunli/reqloop --marketplace reqloop
+baton plugins install compforge/turn-coach --marketplace reqloop
+baton plugins install compforge/reqloop --marketplace reqloop
 baton plugins list
 ```
 

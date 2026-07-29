@@ -3,8 +3,8 @@
 > 状态：讨论草案。reqloop 是独立交付的 Requirement Loop Marketplace / Plugin。本文只描述
 > reqloop 的领域与内部边界；Baton 的通用
 > Plugin、Resource 和 Reconcile 契约见
-> [Baton Plugin 设计](https://github.com/qiankunli/baton/blob/main/docs/plugin.md)，整体控制面
-> 见 [Loop Engineering](https://github.com/qiankunli/baton/blob/main/docs/loop-engineering.md)。
+> [Baton Plugin 设计](https://github.com/compforge/baton/blob/main/docs/plugin.md)，整体控制面
+> 见 [Loop Engineering](https://github.com/compforge/baton/blob/main/docs/loop-engineering.md)。
 
 ## 1. 定位与边界
 

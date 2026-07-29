@@ -1,5 +1,5 @@
 const hello = Object.freeze({
-  pluginId: "qiankunli/hello",
+  pluginId: "compforge/hello",
   version: "0.1.0",
   async activate(): Promise<void> {},
 });

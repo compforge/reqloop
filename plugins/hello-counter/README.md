@@ -9,7 +9,7 @@ Hello Counter is a Baton PluginPackage that demonstrates:
 - Proposing UI input based on plugin logic
 
 ```text
-pluginId: qiankunli/hello-counter
+pluginId: compforge/hello-counter
 version:  0.1.0
 ```
 

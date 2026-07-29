@@ -68,7 +68,7 @@ function appendReview(
 function initializeRepository(root: string): void {
   for (const args of [
     ["init"],
-    ["remote", "add", "origin", "git@github.com:qiankunli/reqloop.git"],
+    ["remote", "add", "origin", "git@github.com:compforge/reqloop.git"],
   ]) {
     const result = Bun.spawnSync(["git", ...args], {
       cwd: root,
@@ -296,7 +296,7 @@ describe("ReqLoop PluginPackage", () => {
       spec: {
         identity: {
           source: "github.com",
-          repository: "qiankunli/reqloop",
+          repository: "compforge/reqloop",
         },
       },
     }]);
@@ -346,7 +346,7 @@ describe("ReqLoop PluginPackage", () => {
       spec: {
         identity: {
           source: "github.com",
-          repository: "qiankunli/reqloop",
+          repository: "compforge/reqloop",
           number: 30,
         },
       },

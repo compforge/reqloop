@@ -171,12 +171,12 @@ describe("GitHubForgeConnector", () => {
 
     await expect(connector.get({
       source: "github.com",
-      repository: "qiankunli/reqloop",
+      repository: "compforge/reqloop",
       number: 17,
     })).resolves.toEqual({
       identity: {
         source: "github.com",
-        repository: "qiankunli/reqloop",
+        repository: "compforge/reqloop",
         number: 17,
       },
       lifecycle: "open",
@@ -185,15 +185,15 @@ describe("GitHubForgeConnector", () => {
       mergeability: "conflicted",
       observedAt: "2026-07-26T08:00:00.000Z",
     });
-    await expect(connector.list("qiankunli/reqloop", 2)).resolves.toEqual([
+    await expect(connector.list("compforge/reqloop", 2)).resolves.toEqual([
       {
         source: "github.com",
-        repository: "qiankunli/reqloop",
+        repository: "compforge/reqloop",
         number: 17,
       },
       {
         source: "github.com",
-        repository: "qiankunli/reqloop",
+        repository: "compforge/reqloop",
         number: 16,
       },
     ]);

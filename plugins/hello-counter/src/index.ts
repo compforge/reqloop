@@ -26,7 +26,7 @@ const COUNTER_RESOURCE_TYPE = Object.freeze({
 } as const);
 
 const helloCounter: PluginPackage = Object.freeze({
-  pluginId: "qiankunli/hello-counter",
+  pluginId: "compforge/hello-counter",
   version: "0.1.0",
 
   async activate(context: PluginActivationContext): Promise<void> {
