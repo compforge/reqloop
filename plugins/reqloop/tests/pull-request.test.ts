@@ -571,6 +571,68 @@ describe("PullRequest Resource", () => {
     });
   });
 
+  test("continues an actionable review after the PullRequest is merged", async () => {
+    const resources = resourceClient();
+    const merged = await materializePullRequest(resources, {
+      ...observation,
+      lifecycle: "merged",
+    });
+    const reviewConnector: PullRequestReviewConnector = {
+      async listLatest() {
+        return [];
+      },
+      async latest() {
+        return {
+          identity: observation.identity,
+          key: "review_after_merge",
+          status: "success",
+          sha: "merged-head",
+          count: 1,
+          failed: 0,
+          findings: [{
+            path: "src/app.ts",
+            message: "review comment after merge",
+          }],
+        };
+      },
+    };
+    const controller = createPullRequestController(
+      resources.client,
+      [],
+      reviewConnector,
+    );
+    const prompted = await controller.reconcile(
+      batonSnapshot(),
+      merged,
+    );
+    if (prompted?.output?.kind !== "interaction") {
+      throw new Error("expected review Interaction");
+    }
+
+    const accepted = await controller.reconcile(
+      batonSnapshot([{
+        interactionId: "ix_accept_after_merge",
+        decisionKey: prompted.output.decisionKey,
+        resource: {
+          ...PULL_REQUEST_RESOURCE_TYPE,
+          namespace: merged.metadata.namespace,
+          name: merged.metadata.name,
+        },
+        outcome: { kind: "answered", values: ["accept"] },
+      }]),
+      resources.current()!,
+    );
+
+    expect(resources.current()?.status.reviewDecision).toEqual({
+      reviewKey: "review_after_merge",
+      choice: "accept",
+    });
+    expect(accepted?.output).toMatchObject({
+      kind: "proposed-input",
+      text: expect.stringContaining("review comment after merge"),
+    });
+  });
+
   test("does not immediately repoll a fresh open observation", async () => {
     const resources = resourceClient();
     const current = await materializePullRequest(resources, {
