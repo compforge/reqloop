@@ -48,7 +48,7 @@ import { WorkspaceSource } from "./workspaces/source.ts";
 import { withUserDeletionPolicy } from "./retention.ts";
 
 export const REQLOOP_PLUGIN_ID = "compforge/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.2.3";
+export const REQLOOP_PACKAGE_VERSION = "0.2.4";
 
 function currentRepo(context: PluginActivationContext): string {
   const cwd = context.session.cwd;

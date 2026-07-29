@@ -343,6 +343,11 @@ export function createRequirementController(
         ...(resource.spec.description
           ? { detail: resource.spec.description }
           : {}),
+        priority: pullRequests?.conflicted
+          ? 200
+          : pullRequests?.unresolvedReviewThreads
+          ? 100
+          : 0,
         tone: pullRequests?.conflicted
           ? "error"
           : pullRequests?.unresolvedReviewThreads
