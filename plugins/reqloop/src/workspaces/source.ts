@@ -6,7 +6,7 @@ import {
 import type {
   Source,
   SourceContext,
-} from "@qiankun01/baton-plugin";
+} from "@compforge/baton-plugin";
 
 import { devloopStatePath } from "../pull-requests/devloop-state.ts";
 import { workspaceCandidates } from "./discovery.ts";
@@ -32,23 +32,25 @@ export class WorkspaceSource implements Source<WorkspaceSpec> {
     this.watchIntervalMs = options.watchIntervalMs ?? 1_000;
   }
 
-  start(context: SourceContext<WorkspaceSpec>): void {
+  async start(context: SourceContext<WorkspaceSpec>): Promise<void> {
     if (context.signal.aborted) return;
-    const onChange = (): void => this.refresh(context, onChange);
+    const onChange = (): void => {
+      void this.refresh(context, onChange).catch(context.reportError);
+    };
     context.signal.addEventListener(
       "abort",
       () => this.stop(onChange),
       { once: true },
     );
-    this.refresh(context, onChange);
+    await this.refresh(context, onChange);
   }
 
-  private refresh(
+  private async refresh(
     context: SourceContext<WorkspaceSpec>,
     onChange: () => void,
-  ): void {
+  ): Promise<void> {
     try {
-      this.syncWatchers(onChange);
+      await this.syncWatchers(onChange);
       this.lastFailureKey = undefined;
     } catch (error) {
       const key = errorKey(error);
@@ -60,17 +62,17 @@ export class WorkspaceSource implements Source<WorkspaceSpec> {
         ));
       }
     }
-    context.emit({
+    await context.emit({
       name: WORKSPACE_RESOURCE_NAME,
       spec: workspaceSpec(),
     });
   }
 
-  private syncWatchers(onChange: () => void): void {
+  private async syncWatchers(onChange: () => void): Promise<void> {
     const targets = new Set<string>();
     for (const candidate of workspaceCandidates(this.root)) {
       targets.add(candidate.path);
-      const pullRequestState = devloopStatePath(
+      const pullRequestState = await devloopStatePath(
         candidate.path,
         "pr.json",
       );

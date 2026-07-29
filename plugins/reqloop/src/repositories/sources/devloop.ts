@@ -1,7 +1,7 @@
 import type {
   Source,
   SourceContext,
-} from "@qiankun01/baton-plugin";
+} from "@compforge/baton-plugin";
 
 import { currentRepositoryIdentity } from "../identity.ts";
 import type { RepositorySpec } from "../protocol.ts";
@@ -14,10 +14,10 @@ export class DevloopRepositorySource implements Source<RepositorySpec> {
 
   constructor(private readonly cwd: string) {}
 
-  start(context: SourceContext<RepositorySpec>): void {
-    const identity = currentRepositoryIdentity(this.cwd);
+  async start(context: SourceContext<RepositorySpec>): Promise<void> {
+    const identity = await currentRepositoryIdentity(this.cwd);
     if (!identity) return;
-    context.emit({
+    await context.emit({
       name: repositoryResourceName(identity),
       spec: { identity },
     });

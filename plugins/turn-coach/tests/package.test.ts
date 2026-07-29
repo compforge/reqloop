@@ -67,7 +67,7 @@ function turnResource(
   };
 }
 
-function activationHarness() {
+async function activationHarness() {
   let state: StateResource | undefined;
   let stateReconciler: TestReconciler | undefined;
   let turnReconciler: TestReconciler | undefined;
@@ -150,7 +150,7 @@ function activationHarness() {
     onClose() {},
   } as unknown as Parameters<typeof turnCoach.activate>[0];
 
-  turnCoach.activate(context);
+  await turnCoach.activate(context);
 
   return {
     get state() {
@@ -171,7 +171,7 @@ function activationHarness() {
 }
 
 describe("Turn Coach PluginPackage", () => {
-  test("keeps runtime, Package, and Marketplace identities aligned", () => {
+  test("keeps Package and Marketplace identities aligned", () => {
     const manifest = JSON.parse(
       readFileSync(new URL("../.baton-plugin/plugin.json", import.meta.url), "utf8"),
     ) as {
@@ -199,7 +199,7 @@ describe("Turn Coach PluginPackage", () => {
   });
 
   test("persists a monotonic turn watermark and returns a replay-safe proposal", async () => {
-    const harness = activationHarness();
+    const harness = await activationHarness();
     const baton = {
       turns: [{ turnId: "t_1" }, { turnId: "t_2" }],
     };
@@ -240,14 +240,14 @@ describe("Turn Coach PluginPackage", () => {
   });
 
   test("does not regress state when older ledger turns are replayed", async () => {
-    const harness = activationHarness();
+    const harness = await activationHarness();
     await harness.turnReconciler(
       { turns: [{ turnId: "t_new" }] },
       turnResource(
         20,
         "t_new",
         "new request",
-        "2026-07-27T10:00:00.000Z",
+        "9999-07-27T10:00:00.000Z",
       ),
     );
 
@@ -257,7 +257,7 @@ describe("Turn Coach PluginPackage", () => {
         10,
         "t_old",
         "old request",
-        "2026-07-27T09:00:00.000Z",
+        "9999-07-27T09:00:00.000Z",
       ),
     );
 
@@ -270,7 +270,7 @@ describe("Turn Coach PluginPackage", () => {
   });
 
   test("does not propose turns that predate the first activation", async () => {
-    const harness = activationHarness();
+    const harness = await activationHarness();
     const activatedAt = harness.state?.status.activatedAt;
     if (!activatedAt) throw new Error("activation boundary was not persisted");
     const historicalTime = new Date(Date.parse(activatedAt) - 1).toISOString();
@@ -291,7 +291,7 @@ describe("Turn Coach PluginPackage", () => {
   });
 
   test("brings Resource status to its current spec generation", async () => {
-    const harness = activationHarness();
+    const harness = await activationHarness();
     const state = harness.state;
     if (!state) throw new Error("TurnCoachState was not created");
     state.status.observedGeneration = 0;

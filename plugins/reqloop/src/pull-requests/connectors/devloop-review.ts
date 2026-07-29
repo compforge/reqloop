@@ -7,6 +7,7 @@ import type {
   PullRequestReviewConnector,
   PullRequestReviewObservation,
 } from "../protocol.ts";
+import { gitOutput } from "../../git-command.ts";
 import { devloopStatePath } from "../devloop-state.ts";
 
 interface ReviewHistoryRecord {
@@ -123,27 +124,12 @@ function parseHistoryLine(
   });
 }
 
-function gitOutput(cwd: string, args: readonly string[]): string | undefined {
-  let result: ReturnType<typeof Bun.spawnSync>;
-  try {
-    result = Bun.spawnSync(["git", ...args], {
-      cwd,
-      stdout: "pipe",
-      stderr: "pipe",
-      timeout: 2_000,
-    });
-  } catch {
-    return;
-  }
-  if (result.exitCode !== 0) return;
-  const output = result.stdout?.toString().trim();
-  return output || undefined;
-}
-
-function gitCheckout(cwd: string): CheckoutIdentity | undefined {
-  const headSha = gitOutput(cwd, ["rev-parse", "HEAD"]);
+async function gitCheckout(
+  cwd: string,
+): Promise<CheckoutIdentity | undefined> {
+  const headSha = await gitOutput(cwd, ["rev-parse", "HEAD"]);
   if (!headSha) return;
-  const branch = gitOutput(cwd, ["branch", "--show-current"]);
+  const branch = await gitOutput(cwd, ["branch", "--show-current"]);
   return Object.freeze({
     headSha,
     ...(branch ? { branch } : {}),
@@ -168,39 +154,46 @@ function sameIdentity(
 export class DevloopReviewConnector implements PullRequestReviewConnector {
   readonly historyPath?: string;
   private readonly explicitHistoryPath?: string;
-  private readonly rootCheckout?: () => CheckoutIdentity | undefined;
+  private readonly rootCheckout?:
+    () => Promise<CheckoutIdentity | undefined> | CheckoutIdentity | undefined;
   private readonly workspaceCheckouts:
-    () => readonly PullRequestReviewCheckout[];
+    () =>
+      | Promise<readonly PullRequestReviewCheckout[]>
+      | readonly PullRequestReviewCheckout[];
 
   constructor(
     private readonly root: string,
     options: {
       historyPath?: string;
-      checkout?: () => CheckoutIdentity | undefined;
-      workspaceCheckouts?: () => readonly PullRequestReviewCheckout[];
+      checkout?:
+        () => Promise<CheckoutIdentity | undefined> | CheckoutIdentity | undefined;
+      workspaceCheckouts?:
+        () =>
+          | Promise<readonly PullRequestReviewCheckout[]>
+          | readonly PullRequestReviewCheckout[];
     } = {},
   ) {
     const explicit = options.historyPath?.trim();
     this.explicitHistoryPath = explicit || undefined;
-    this.historyPath =
-      explicit ||
-      devloopStatePath(root, "review-history.jsonl");
+    this.historyPath = explicit || undefined;
     this.rootCheckout = options.checkout;
     this.workspaceCheckouts = options.workspaceCheckouts ??
       (() => [{ path: root }]);
   }
 
-  listLatest(): readonly PullRequestReviewObservation[] {
-    return this.reviewCheckouts().flatMap((checkout) => {
-      const observation = this.latestForCheckout(checkout.path);
-      return observation ? [observation] : [];
-    });
+  async listLatest(): Promise<readonly PullRequestReviewObservation[]> {
+    const observations: PullRequestReviewObservation[] = [];
+    for (const checkout of await this.reviewCheckouts()) {
+      const observation = await this.latestForCheckout(checkout.path);
+      if (observation) observations.push(observation);
+    }
+    return observations;
   }
 
-  latest(
+  async latest(
     identity: PullRequestIdentity,
-  ): PullRequestReviewObservation | undefined {
-    for (const checkout of this.reviewCheckouts()) {
+  ): Promise<PullRequestReviewObservation | undefined> {
+    for (const checkout of await this.reviewCheckouts()) {
       if (
         checkout.source !== undefined &&
         (checkout.source !== identity.source ||
@@ -208,17 +201,19 @@ export class DevloopReviewConnector implements PullRequestReviewConnector {
       ) {
         continue;
       }
-      const observation = this.latestForCheckout(checkout.path);
+      const observation = await this.latestForCheckout(checkout.path);
       if (observation && sameIdentity(observation.identity, identity)) {
         return observation;
       }
     }
   }
 
-  private reviewCheckouts(): readonly PullRequestReviewCheckout[] {
+  private async reviewCheckouts(): Promise<
+    readonly PullRequestReviewCheckout[]
+  > {
     const checkouts = this.explicitHistoryPath
       ? [{ path: this.root }]
-      : this.workspaceCheckouts();
+      : await this.workspaceCheckouts();
     const unique = new Map<string, PullRequestReviewCheckout>();
     for (const checkout of checkouts) {
       if (!unique.has(checkout.path)) unique.set(checkout.path, checkout);
@@ -226,12 +221,13 @@ export class DevloopReviewConnector implements PullRequestReviewConnector {
     return [...unique.values()];
   }
 
-  private latestForCheckout(
+  private async latestForCheckout(
     checkoutRoot: string,
-  ): PullRequestReviewObservation | undefined {
+  ): Promise<PullRequestReviewObservation | undefined> {
     const historyPath = checkoutRoot === this.root
-      ? this.historyPath
-      : devloopStatePath(checkoutRoot, "review-history.jsonl");
+      ? this.historyPath ??
+        await devloopStatePath(checkoutRoot, "review-history.jsonl")
+      : await devloopStatePath(checkoutRoot, "review-history.jsonl");
     const checkout = checkoutRoot === this.root && this.rootCheckout
       ? this.rootCheckout
       : () => gitCheckout(checkoutRoot);
@@ -242,7 +238,7 @@ export class DevloopReviewConnector implements PullRequestReviewConnector {
     } catch {
       return;
     }
-    const current = checkout();
+    const current = await checkout();
     if (!current) return;
     for (let index = lines.length - 1; index >= 0; index -= 1) {
       const line = lines[index]?.trim();

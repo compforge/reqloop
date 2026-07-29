@@ -33,7 +33,7 @@ ReqLoop 将需求、代码、review、CI 和部署系统接入同一条 Loop，�
 
 ## 当前状态
 
-本仓库随 Baton 的外部 Plugin runtime 一起演进。Hello 验证最小 Package 生命周期，
+本仓库随 Baton 的 Plugin host 与 per-Binding Runner 进程一起演进。Hello 验证最小 Package 生命周期，
 Hello Counter 和 Turn Coach 验证 Resource/Reconcile、Baton-owned Resource watch 和持久
 Proposal；ReqLoop 是首个 Requirement Loop Package，提供 `/requirements` 并观察外部
 devloop review 状态。
@@ -77,13 +77,13 @@ Binding、Resource/Controller 和 Proposal 契约。
 
 ## Plugins
 
-- [Hello](./plugins/hello/README.md) — 用于验证 Marketplace 发现、安装和加载的最小 `0.0.1`
+- [Hello](./plugins/hello/README.md) — 用于验证 Marketplace 发现、安装和加载的最小 `0.1.0`
   Package。
 - [Hello Counter](./plugins/hello-counter/README.md) — 演示可写 Resource 与
   `baton.turn` Controller 的组合。
 - [Turn Coach](./plugins/turn-coach/README.md) — 验证 Baton-owned Resource replay、持久状态和
   proposed input 的端到端 canary。
-- [ReqLoop](./plugins/reqloop/README.md) — 需求级闭环协调；`0.1.18` 物化 Requirement
+- [ReqLoop](./plugins/reqloop/README.md) — 需求级闭环协调；`0.2.0` 物化 Requirement
   Resource，将活跃 Requirement 暴露为可搜索的 Harness context、通过 Repository
   Resource 发现 PullRequest，并只询问一次 PullRequest 是否关联 Requirement。
 

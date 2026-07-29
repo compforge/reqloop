@@ -1,11 +1,11 @@
-import {
-  enqueueRequestsFromMapFunc,
-  type Controller,
-  type Resource,
-  type ResourceClient,
-  type Source,
-} from "@qiankun01/baton-plugin";
+import type {
+  Controller,
+  Resource,
+  ResourceClient,
+  Source,
+} from "@compforge/baton-plugin";
 
+import { enqueueRequestsFromMapFunc } from "../event-handler.ts";
 import type { ForgeConnector } from "../pull-requests/protocol.ts";
 import { ensurePullRequestResource } from "../pull-requests/resource.ts";
 import type {
@@ -24,7 +24,7 @@ const REPOSITORY_POLL_INTERVAL_MS = 30_000;
 const enqueueWorkspaceRepositories = enqueueRequestsFromMapFunc<
   WorkspaceSpec,
   WorkspaceStatus
->((workspace) =>
+>(async (workspace) =>
   (workspace.status.repositories ?? []).flatMap(({ repository }) =>
     repository.apiVersion === REPOSITORY_RESOURCE_TYPE.apiVersion &&
       repository.kind === REPOSITORY_RESOURCE_TYPE.kind &&
@@ -34,12 +34,12 @@ const enqueueWorkspaceRepositories = enqueueRequestsFromMapFunc<
   )
 );
 
-function inWorkspace(
+async function inWorkspace(
   resources: ResourceClient,
   repository: Readonly<Resource<RepositorySpec, RepositoryStatus>>,
-): boolean {
-  return resources
-    .list<WorkspaceSpec, WorkspaceStatus>(WORKSPACE_RESOURCE_TYPE)
+): Promise<boolean> {
+  return (await resources
+    .list<WorkspaceSpec, WorkspaceStatus>(WORKSPACE_RESOURCE_TYPE))
     .some((workspace) =>
       workspace.status.repositories?.some(({ repository: reference }) =>
         reference.apiVersion === repository.apiVersion &&
@@ -86,14 +86,14 @@ export function createRepositoryController(
     ...(sources.length > 0 ? { sources } : {}),
     async reconcile(_baton, resource) {
       let current = resource;
-      if (!directlyObserved && !inWorkspace(resources, current)) {
+      if (!directlyObserved && !(await inWorkspace(resources, current))) {
         if (current.status.inScope !== false) {
-          resources.patchStatus(current, { inScope: false });
+          await resources.patchStatus(current, { inScope: false });
         }
         return;
       }
       if (current.status.inScope !== true) {
-        current = resources.patchStatus(current, { inScope: true });
+        current = await resources.patchStatus(current, { inScope: true });
       }
 
       // Updating lastScanAt enqueues this Resource again. Restore the remaining
@@ -104,7 +104,7 @@ export function createRepositoryController(
       const { identity } = current.spec;
       const connector = connectorsBySource.get(identity.source);
       if (!connector) {
-        resources.patchStatus(current, { connectorAvailable: false });
+        await resources.patchStatus(current, { connectorAvailable: false });
         return;
       }
 
@@ -118,16 +118,16 @@ export function createRepositoryController(
             "ForgeConnector discovered a PullRequest outside its repository",
           );
         }
-        ensurePullRequestResource(resources, pullRequest);
+        await ensurePullRequestResource(resources, pullRequest);
       }
-      resources.patchStatus(current, {
+      await resources.patchStatus(current, {
         connectorAvailable: true,
         discoveredPullRequests: pullRequests.length,
         lastScanAt: new Date().toISOString(),
       });
       return { requeueAfterMs: REPOSITORY_POLL_INTERVAL_MS };
     },
-    present(resource) {
+    async present(resource) {
       if (resource.status.inScope === false) return undefined;
       const { source, repository } = resource.spec.identity;
       return {

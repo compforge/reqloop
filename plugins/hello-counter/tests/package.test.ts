@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
-import type { PluginActivationContext } from "@qiankun01/baton-plugin";
+import type { PluginActivationContext } from "@compforge/baton-plugin";
 
 import helloCounter from "../src/index.ts";
 
@@ -12,7 +12,7 @@ interface PluginManifest {
 }
 
 describe("Hello Counter PluginPackage", () => {
-  test("keeps its runtime identity aligned with the Package metadata", () => {
+  test("keeps its Package identity aligned with manifest metadata", () => {
     const manifest = JSON.parse(
       readFileSync(new URL("../.baton-plugin/plugin.json", import.meta.url), "utf8"),
     ) as PluginManifest;
@@ -29,12 +29,12 @@ describe("Hello Counter PluginPackage", () => {
 
   test("presents initialized counter state on the Board and omits empty status", async () => {
     let present:
-      | ((resource: unknown) => {
+      | ((resource: unknown) => Promise<{
           title: string;
           status?: string;
           detail?: string;
           tone?: string;
-        } | undefined)
+        } | undefined>)
       | undefined;
     await helloCounter.activate({
       registerController(controller: {
@@ -61,9 +61,9 @@ describe("Hello Counter PluginPackage", () => {
       spec: { enabled: true },
       status: {},
     };
-    expect(present?.(resource)).toBeUndefined();
+    expect(await present?.(resource)).toBeUndefined();
     expect(
-      present?.({
+      await present?.({
         ...resource,
         status: {
           totalTurns: 2,

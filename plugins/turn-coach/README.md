@@ -1,11 +1,11 @@
 # Turn Coach
 
-Turn Coach is a small Baton PluginPackage that exercises the real runtime path
+Turn Coach is a small Baton PluginPackage that exercises the real host path
 without depending on an external service:
 
 ```text
 pluginId: qiankunli/turn-coach
-version:  0.0.3
+version:  0.1.0
 ```
 
 It observes the read-only `baton.turn` Baton-owned Resource, keeps a

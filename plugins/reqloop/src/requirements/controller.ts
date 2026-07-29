@@ -1,11 +1,11 @@
-import {
-  enqueueRequestsFromMapFunc,
-  type Controller,
-  type Resource,
-  type ResourceClient,
-  type ToastSink,
-} from "@qiankun01/baton-plugin";
+import type {
+  Controller,
+  Resource,
+  ResourceClient,
+  ToastSink,
+} from "@compforge/baton-plugin";
 
+import { enqueueRequestsFromMapFunc } from "../event-handler.ts";
 import type {
   PullRequestSpec,
   PullRequestStatus,
@@ -62,7 +62,7 @@ function observationDue(observedAt: string | undefined): boolean {
 const enqueueLinkedRequirement = enqueueRequestsFromMapFunc<
   PullRequestSpec,
   PullRequestStatus
->((pullRequest) => {
+>(async (pullRequest) => {
   const association = pullRequest.status.requirementAssociation;
   if (
     association?.state !== "linked" ||
@@ -76,14 +76,13 @@ const enqueueLinkedRequirement = enqueueRequestsFromMapFunc<
   return [{ name: association.requirement.name }];
 });
 
-function linkedPullRequests(
+async function linkedPullRequests(
   resources: ResourceClient,
   requirement: Readonly<Resource<RequirementSpec, RequirementStatus>>,
-): readonly Readonly<Resource<PullRequestSpec, PullRequestStatus>>[] {
-  return resources
-    .list<PullRequestSpec, PullRequestStatus>(
-      PULL_REQUEST_RESOURCE_TYPE,
-    )
+): Promise<readonly Readonly<Resource<PullRequestSpec, PullRequestStatus>>[]> {
+  return (await resources.list<PullRequestSpec, PullRequestStatus>(
+    PULL_REQUEST_RESOURCE_TYPE,
+  ))
     .filter(({ status }) =>
       status.requirementAssociation?.state === "linked" &&
       status.requirementAssociation.requirement.apiVersion ===
@@ -245,12 +244,12 @@ export function createRequirementController(
               "RequirementConnector returned a different Requirement",
             );
           }
-          current = upsertRequirement(resources, observation);
-          current = resources.patchStatus(current, {
+          current = await upsertRequirement(resources, observation);
+          current = await resources.patchStatus(current, {
             lastObservedAt: new Date().toISOString(),
           });
         } catch (error) {
-          current = resources.patchStatus(current, {
+          current = await resources.patchStatus(current, {
             conditions: setStatusCondition(current.status.conditions, {
               type: REQUIREMENT_CONDITION.observed,
               status: "False",
@@ -268,7 +267,7 @@ export function createRequirementController(
         return;
       }
 
-      const pullRequests = linkedPullRequests(
+      const pullRequests = await linkedPullRequests(
         resources,
         current,
       );
@@ -276,7 +275,7 @@ export function createRequirementController(
         pullRequests,
         current.metadata.generation,
       );
-      current = resources.patchStatus(current, {
+      current = await resources.patchStatus(current, {
         linkedPullRequests: summarizePullRequests(pullRequests),
         conditions: setStatusCondition(
           current.status.conditions,
@@ -300,13 +299,13 @@ export function createRequirementController(
             `Please close it${target}.`,
           tone: "info",
         });
-        current = resources.patchStatus(current, {
+        current = await resources.patchStatus(current, {
           closeReminderKey: reminderKey,
         });
       }
       if (observationError) throw observationError;
     },
-    present(resource) {
+    async present(resource) {
       const state = resource.status.externalState;
       if (state === "completed" || state === "closed") return undefined;
       const pullRequests = resource.status.linkedPullRequests;

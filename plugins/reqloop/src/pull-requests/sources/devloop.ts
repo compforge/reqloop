@@ -6,7 +6,7 @@ import {
 import type {
   Source,
   SourceContext,
-} from "@qiankun01/baton-plugin";
+} from "@compforge/baton-plugin";
 
 import {
   currentRepositoryIdentity,
@@ -36,41 +36,49 @@ export class DevloopPullRequestSource implements Source<PullRequestSpec> {
       readonly watchIntervalMs?: number;
     } = {},
   ) {
-    this.path = options.path?.trim() ||
-      devloopStatePath(cwd, "pr.json");
+    this.path = options.path?.trim() || undefined;
     this.watchIntervalMs = options.watchIntervalMs ?? 1_000;
   }
 
-  start(context: SourceContext<PullRequestSpec>): void {
-    if (!this.path) return;
-    const listener = (): void => this.emitCurrent(context);
-    watchFile(this.path, {
+  async start(context: SourceContext<PullRequestSpec>): Promise<void> {
+    const path = this.path ?? await devloopStatePath(this.cwd, "pr.json");
+    if (!path) return;
+    const listener = (): void => {
+      void this.emitCurrent(context, path).catch((error) =>
+        this.reportFailure(context, errorKey(error), error, path)
+      );
+    };
+    watchFile(path, {
       interval: this.watchIntervalMs,
       persistent: false,
     }, listener);
     context.signal.addEventListener(
       "abort",
-      () => unwatchFile(this.path!, listener),
+      () => unwatchFile(path, listener),
       { once: true },
     );
-    this.emitCurrent(context);
+    await this.emitCurrent(context, path);
   }
 
-  private emitCurrent(context: SourceContext<PullRequestSpec>): void {
-    const repository = currentRepositoryIdentity(this.cwd);
-    if (!repository || !this.path) {
+  private async emitCurrent(
+    context: SourceContext<PullRequestSpec>,
+    path: string,
+  ): Promise<void> {
+    const repository = await currentRepositoryIdentity(this.cwd);
+    if (!repository) {
       this.lastFailureKey = undefined;
       return;
     }
 
     let numbers: readonly number[];
     try {
-      numbers = readOpenPullRequestNumbers(this.path);
+      numbers = readOpenPullRequestNumbers(path);
     } catch (error) {
       this.reportFailure(
         context,
         errorKey(error),
         error,
+        path,
       );
       return;
     }
@@ -78,7 +86,7 @@ export class DevloopPullRequestSource implements Source<PullRequestSpec> {
 
     for (const number of numbers) {
       const identity = { ...repository, number };
-      context.emit({
+      await context.emit({
         name: pullRequestResourceId(identity),
         spec: { identity },
       });
@@ -89,13 +97,14 @@ export class DevloopPullRequestSource implements Source<PullRequestSpec> {
     context: SourceContext<PullRequestSpec>,
     key: string,
     error: unknown,
+    path: string,
   ): void {
     if (this.lastFailureKey === key) return;
     this.lastFailureKey = key;
     context.reportError(
       error instanceof Error
         ? error
-        : new Error(`Could not read devloop PR state: ${this.path}`, {
+        : new Error(`Could not read devloop PR state: ${path}`, {
           cause: error,
         }),
     );

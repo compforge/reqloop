@@ -3,7 +3,7 @@ import {
   test,
 } from "bun:test";
 
-import type { ResourceCondition } from "@qiankun01/baton-plugin";
+import type { ResourceCondition } from "@compforge/baton-plugin";
 
 import { setStatusCondition } from "../src/index.ts";
 

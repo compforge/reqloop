@@ -1,4 +1,4 @@
-import type { ResourceRef } from "@qiankun01/baton-plugin";
+import type { ResourceRef } from "@compforge/baton-plugin";
 
 /** Stable external identity shared by GitHub PRs and GitLab MRs. */
 export interface PullRequestIdentity {
@@ -100,11 +100,11 @@ export interface PullRequestReviewStatus {
 
 export interface PullRequestReviewConnector {
   /** Latest checkout-matching observation for each repository in the Workspace. */
-  listLatest(): readonly PullRequestReviewObservation[];
+  listLatest(): Promise<readonly PullRequestReviewObservation[]>;
   /** Latest checkout-matching observation for one PullRequest. */
   latest(
     identity: PullRequestIdentity,
-  ): PullRequestReviewObservation | undefined;
+  ): Promise<PullRequestReviewObservation | undefined>;
 }
 
 /**

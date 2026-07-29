@@ -8,7 +8,7 @@ import type {
   Resource,
   ResourceClient,
   ToastMessage,
-} from "@qiankun01/baton-plugin";
+} from "@compforge/baton-plugin";
 
 import {
   createRequirementContextProvider,
@@ -112,9 +112,9 @@ function resourceClient(): {
 }
 
 describe("Requirement Resource", () => {
-  test("materializes a selected Requirement and presents it on the Board", () => {
+  test("materializes a selected Requirement and presents it on the Board", async () => {
     const resources = resourceClient();
-    const requirement = upsertRequirement(resources.client, {
+    const requirement = await upsertRequirement(resources.client, {
       source: "meego",
       category: "story",
       id: "REQ-7",
@@ -142,7 +142,9 @@ describe("Requirement Resource", () => {
       observedGeneration: requirement.metadata.generation,
       reason: "ObservationSucceeded",
     });
-    expect(createRequirementController().present?.(requirement)).toEqual({
+    expect(
+      await createRequirementController().present?.(requirement),
+    ).toEqual({
       title: "Requirement intake",
       status: "in_progress",
       detail: "Create a durable Requirement Resource.",
@@ -153,7 +155,7 @@ describe("Requirement Resource", () => {
 
   test("provides searchable local Requirement context to one Harness turn", async () => {
     const resources = resourceClient();
-    const requirement = upsertRequirement(resources.client, {
+    const requirement = await upsertRequirement(resources.client, {
       source: "meego",
       category: "story",
       id: "REQ-7",
@@ -167,12 +169,12 @@ describe("Requirement Resource", () => {
     const provider = createRequirementContextProvider(resources.client);
 
     expect(provider.kind).toBe("requirement");
-    expect(provider.search("durable")).toEqual([{
+    expect(await provider.search("durable")).toEqual([{
       id: requirement.metadata.name,
       label: "Requirement intake",
       detail: "meego · story · REQ-7 · in_progress",
     }]);
-    expect(provider.search("issue")).toEqual([]);
+    expect(await provider.search("issue")).toEqual([]);
 
     const context = await provider.provide(
       requirement.metadata.name,
@@ -191,9 +193,9 @@ describe("Requirement Resource", () => {
     ).toBe(context?.slice(0, 20));
   });
 
-  test("hides completed Requirements from the Board", () => {
+  test("hides completed Requirements from the Board", async () => {
     const resources = resourceClient();
-    const requirement = upsertRequirement(resources.client, {
+    const requirement = await upsertRequirement(resources.client, {
       source: "meego",
       category: "story",
       id: "REQ-8",
@@ -202,23 +204,23 @@ describe("Requirement Resource", () => {
     });
 
     expect(
-      createRequirementController().present?.(requirement),
+      await createRequirementController().present?.(requirement),
     ).toBeUndefined();
     expect(
-      createRequirementContextProvider(resources.client).search(""),
+      await createRequirementContextProvider(resources.client).search(""),
     ).toEqual([]);
   });
 
-  test("maps PullRequest association changes to Requirement requests", () => {
+  test("maps PullRequest association changes to Requirement requests", async () => {
     const resources = resourceClient();
-    const requirement = upsertRequirement(resources.client, {
+    const requirement = await upsertRequirement(resources.client, {
       source: "meego",
       category: "story",
       id: "REQ-WATCH",
       title: "Watch linked pull requests",
       state: "in_progress",
     });
-    const pullRequest = resources.client.create<
+    const pullRequest = await resources.client.create<
       PullRequestSpec,
       PullRequestStatus
     >(PULL_REQUEST_RESOURCE_TYPE, {
@@ -231,7 +233,7 @@ describe("Requirement Resource", () => {
         },
       },
     });
-    const linked = resources.client.patchStatus(pullRequest, {
+    const linked = await resources.client.patchStatus(pullRequest, {
       requirementAssociation: {
         state: "linked",
         requirement: {
@@ -265,29 +267,29 @@ describe("Requirement Resource", () => {
     const watch = controller.watches?.[0];
 
     expect(watch?.resourceType).toBe(PULL_REQUEST_RESOURCE_TYPE);
-    expect(watch?.handler.create({ object: pullRequest })).toEqual([]);
-    expect(watch?.handler.update({
+    expect(await watch?.handler.create({ object: pullRequest })).toEqual([]);
+    expect(await watch?.handler.update({
       oldObject: pullRequest,
       newObject: linked,
     })).toEqual([{ name: requirement.metadata.name }]);
-    expect(watch?.handler.create({ object: linked })).toEqual([
+    expect(await watch?.handler.create({ object: linked })).toEqual([
       { name: requirement.metadata.name },
     ]);
-    expect(watch?.handler.update({
+    expect(await watch?.handler.update({
       oldObject: linked,
       newObject: moved,
     })).toEqual([
       { name: requirement.metadata.name },
       { name: "req_other" },
     ]);
-    expect(watch?.handler.delete({ object: moved })).toEqual([
+    expect(await watch?.handler.delete({ object: moved })).toEqual([
       { name: "req_other" },
     ]);
   });
 
   test("refreshes external state and reminds once when linked PRs are done", async () => {
     const resources = resourceClient();
-    const requirement = upsertRequirement(resources.client, {
+    const requirement = await upsertRequirement(resources.client, {
       source: "meego",
       category: "story",
       id: "REQ-9",
@@ -295,7 +297,7 @@ describe("Requirement Resource", () => {
       state: "in_progress",
       url: "https://meego.example/story/REQ-9",
     });
-    const pullRequest = resources.client.create<
+    const pullRequest = await resources.client.create<
       PullRequestSpec,
       PullRequestStatus
     >(PULL_REQUEST_RESOURCE_TYPE, {
@@ -308,7 +310,7 @@ describe("Requirement Resource", () => {
         },
       },
     });
-    let linkedPullRequest = resources.client.patchStatus(pullRequest, {
+    let linkedPullRequest = await resources.client.patchStatus(pullRequest, {
       lifecycle: "merged",
       reviewThreads: "unknown",
       requirementAssociation: {
@@ -364,7 +366,9 @@ describe("Requirement Resource", () => {
         unresolvedReviewThreads: 0,
       },
     });
-    expect(controller.present?.(resources.current()!)).toMatchObject({
+    expect(
+      await controller.present?.(resources.current()!),
+    ).toMatchObject({
       status: "in_progress · 1 PR merged",
       tone: "default",
     });
@@ -380,11 +384,13 @@ describe("Requirement Resource", () => {
     });
     expect(toasts).toHaveLength(0);
 
-    linkedPullRequest = resources.client.patchStatus(linkedPullRequest, {
+    linkedPullRequest = await resources.client.patchStatus(linkedPullRequest, {
       reviewThreads: "unresolved",
     });
     await controller.reconcile({} as never, resources.current()!);
-    expect(controller.present?.(resources.current()!)).toMatchObject({
+    expect(
+      await controller.present?.(resources.current()!),
+    ).toMatchObject({
       status: "in_progress · 1 PR merged · 1 unresolved review",
       tone: "warning",
     });
@@ -399,11 +405,13 @@ describe("Requirement Resource", () => {
     });
     expect(toasts).toHaveLength(0);
 
-    linkedPullRequest = resources.client.patchStatus(linkedPullRequest, {
+    linkedPullRequest = await resources.client.patchStatus(linkedPullRequest, {
       reviewThreads: "resolved",
     });
     await controller.reconcile({} as never, resources.current()!);
-    expect(controller.present?.(resources.current()!)).toMatchObject({
+    expect(
+      await controller.present?.(resources.current()!),
+    ).toMatchObject({
       status: "in_progress · 1 PR merged · Ready to close",
       tone: "default",
     });
@@ -433,14 +441,14 @@ describe("Requirement Resource", () => {
 
   test("records a failed Requirement observation before retrying", async () => {
     const resources = resourceClient();
-    const requirement = upsertRequirement(resources.client, {
+    const requirement = await upsertRequirement(resources.client, {
       source: "meego",
       category: "story",
       id: "REQ-FAILED",
       title: "Unavailable requirement",
       state: "in_progress",
     });
-    const pullRequest = resources.client.create<
+    const pullRequest = await resources.client.create<
       PullRequestSpec,
       PullRequestStatus
     >(PULL_REQUEST_RESOURCE_TYPE, {
@@ -453,7 +461,7 @@ describe("Requirement Resource", () => {
         },
       },
     });
-    resources.client.patchStatus(pullRequest, {
+    await resources.client.patchStatus(pullRequest, {
       lifecycle: "open",
       reviewThreads: "resolved",
       requirementAssociation: {
@@ -504,14 +512,14 @@ describe("Requirement Resource", () => {
 
   test("does not inherit PullRequests linked to a replaced Requirement", async () => {
     const resources = resourceClient();
-    const requirement = upsertRequirement(resources.client, {
+    const requirement = await upsertRequirement(resources.client, {
       source: "meego",
       category: "story",
       id: "REQ-REPLACED",
       title: "Replacement requirement",
       state: "in_progress",
     });
-    const pullRequest = resources.client.create<
+    const pullRequest = await resources.client.create<
       PullRequestSpec,
       PullRequestStatus
     >(PULL_REQUEST_RESOURCE_TYPE, {
@@ -524,7 +532,7 @@ describe("Requirement Resource", () => {
         },
       },
     });
-    resources.client.patchStatus(pullRequest, {
+    await resources.client.patchStatus(pullRequest, {
       lifecycle: "merged",
       reviewThreads: "resolved",
       requirementAssociation: {
@@ -548,14 +556,14 @@ describe("Requirement Resource", () => {
 
   test("ignores linked closed PullRequests in the Requirement projection", async () => {
     const resources = resourceClient();
-    const requirement = upsertRequirement(resources.client, {
+    const requirement = await upsertRequirement(resources.client, {
       source: "meego",
       category: "story",
       id: "REQ-10",
       title: "Ignore abandoned delivery",
       state: "in_progress",
     });
-    const pullRequest = resources.client.create<
+    const pullRequest = await resources.client.create<
       PullRequestSpec,
       PullRequestStatus
     >(PULL_REQUEST_RESOURCE_TYPE, {
@@ -568,7 +576,7 @@ describe("Requirement Resource", () => {
         },
       },
     });
-    resources.client.patchStatus(pullRequest, {
+    await resources.client.patchStatus(pullRequest, {
       lifecycle: "closed",
       reviewThreads: "resolved",
       requirementAssociation: {
@@ -606,7 +614,9 @@ describe("Requirement Resource", () => {
       status: "False",
       reason: "NoLinkedPullRequests",
     });
-    expect(controller.present?.(resources.current()!)).toMatchObject({
+    expect(
+      await controller.present?.(resources.current()!),
+    ).toMatchObject({
       status: "in_progress",
       tone: "default",
     });

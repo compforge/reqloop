@@ -1,4 +1,4 @@
-import type { ConditionedStatus } from "@qiankun01/baton-plugin";
+import type { ConditionedStatus } from "@compforge/baton-plugin";
 
 /** Provider-neutral lifecycle state used by Requirement Loop policy. */
 export type RequirementState =

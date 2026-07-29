@@ -2,10 +2,12 @@ import type {
   BatonTurnResourceData,
   PluginPackage,
   PluginActivationContext,
-} from "@qiankun01/baton-plugin";
-import {
-  BATON_TURN_RESOURCE_TYPE,
-} from "@qiankun01/baton-plugin";
+} from "@compforge/baton-plugin";
+
+const BATON_TURN_RESOURCE_TYPE = Object.freeze({
+  apiVersion: "baton.dev/v1alpha1",
+  kind: "Turn",
+} as const);
 
 interface CounterSpec {
   enabled: boolean;
@@ -25,7 +27,7 @@ const COUNTER_RESOURCE_TYPE = Object.freeze({
 
 const helloCounter: PluginPackage = Object.freeze({
   pluginId: "qiankunli/hello-counter",
-  version: "0.0.5",
+  version: "0.1.0",
 
   async activate(context: PluginActivationContext): Promise<void> {
     // 1. 注册 CounterState Resource Controller
@@ -45,7 +47,7 @@ const helloCounter: PluginPackage = Object.freeze({
         // 正常情况下，这里什么都不做，因为实际计数由 baton.turn Controller 触发
         return {};
       },
-      present(resource) {
+      async present(resource) {
         const totalTurns = resource.status.totalTurns;
         if (typeof totalTurns !== "number") return undefined;
         return {
@@ -68,7 +70,7 @@ const helloCounter: PluginPackage = Object.freeze({
         );
 
         // 查找或创建 CounterState
-        const counterList = context.resources.list<
+        const counterList = await context.resources.list<
           CounterSpec,
           CounterStatus
         >(COUNTER_RESOURCE_TYPE);
@@ -78,7 +80,7 @@ const helloCounter: PluginPackage = Object.freeze({
         if (!counter) {
           // 第一次：创建 CounterState（status 会初始化为空对象）
           console.log("[hello-counter] Creating initial CounterState");
-          counter = context.resources.create<CounterSpec, CounterStatus>(
+          counter = await context.resources.create<CounterSpec, CounterStatus>(
             COUNTER_RESOURCE_TYPE,
             {
               name: "main",
@@ -86,7 +88,7 @@ const helloCounter: PluginPackage = Object.freeze({
             },
           );
           // 首次创建后，立即初始化 status
-          counter = context.resources.patchStatus(counter, {
+          counter = await context.resources.patchStatus(counter, {
             totalTurns: 0,
             observedGeneration: 0,
           });
@@ -102,7 +104,7 @@ const helloCounter: PluginPackage = Object.freeze({
         const newTotal = (counter.status?.totalTurns || 0) + 1;
         console.log(`[hello-counter] Updating count: ${newTotal}`);
 
-        counter = context.resources.patchStatus(counter, {
+        counter = await context.resources.patchStatus(counter, {
           totalTurns: newTotal,
           lastTurnId: turnResource.status.turnId,
           lastUserText: turnResource.status.userText?.slice(0, 50), // 只保存前50字符
