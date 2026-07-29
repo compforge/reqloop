@@ -44,6 +44,14 @@ and Session data directories. The narrower scope recursively overrides the
 broader scope; Instance data does not carry configuration. A typical global
 file is `~/.baton/plugins/compforge%2Freqloop/config.json`:
 
+Copy [`config.json.example`](./config.json.example) for a complete, valid JSON
+template covering every supported field:
+
+```bash
+cp plugins/reqloop/config.json.example \
+  ~/.baton/plugins/compforge%2Freqloop/config.json
+```
+
 ```json
 {
   "version": 1,
@@ -80,6 +88,25 @@ file is `~/.baton/plugins/compforge%2Freqloop/config.json`:
   }
 }
 ```
+
+The map keys under `requirements` and `forges` are stable Connector `source`
+identities. Placeholder values in the example must be replaced or removed
+before use.
+
+| Field | Purpose |
+| --- | --- |
+| `version` | ReqLoop configuration format version; currently `1`. |
+| `requirements.<source>` | Stable Requirement Connector identity. |
+| `provider` | Connector provider; Requirement currently supports `meego`. |
+| `projectKey` | Meegle project whose work items are queried. |
+| `profile` | Optional Meegle CLI profile. |
+| `userKeys` | Optional Meegle participant accounts; any match is admitted. |
+| `categories` | Meegle work-item categories; defaults to `story` and `issue`. |
+| `forges.<source>` | Stable PullRequest source, normally the Git host. |
+| `type` | Forge provider, `github` or `gitlab`; otherwise inferred from host. |
+| `api_host` | Optional real API host when the source key is an alias. |
+| `uids` | Optional PR/MR author accounts; any match is admitted. |
+| `token` | Optional fallback after the provider token environment variables. |
 
 `categories` defaults to `["story", "issue"]`. Configuration is runtime data,
 not part of the PluginPackage, and must not be committed to this repository.
