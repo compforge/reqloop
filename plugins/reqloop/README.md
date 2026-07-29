@@ -110,9 +110,9 @@ ReqLoop opens a durable Interaction; an accepted review can become a
 `proposed-input` for the current Harness. ReqLoop does not directly drive a
 Harness or mutate external Requirement state. The Board currently presents
 only active Requirements and unlinked active PullRequests; PullRequest cards
-link to the Forge and show the external title on a single marquee line only
-when it overflows. Workspace and Repository remain internal observation
-Resources.
+and Requirement cards link to their external source and show the external title
+on a single marquee line only when it overflows. Workspace and Repository
+remain internal observation Resources.
 
 Forge admission and observation are activity-aware. ReqLoop interprets
 devloop's raw tool activity: explicit file-write dominance enables collection

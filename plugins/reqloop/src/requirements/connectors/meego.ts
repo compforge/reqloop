@@ -168,6 +168,10 @@ function defaultMeegleCliRunner(
         try {
           resolve(JSON.parse(stdout) as unknown);
         } catch (error) {
+          if (args[0] === "config" && args[1] === "get") {
+            resolve(stdout.trim());
+            return;
+          }
           const detail = error instanceof Error ? error.message : String(error);
           reject(new Error(`Meegle CLI returned invalid JSON: ${detail}`));
         }
@@ -420,6 +424,28 @@ function mapSummary(
   };
 }
 
+function workItemUrl(
+  host: unknown,
+  projectKey: string,
+  identity: RequirementIdentity,
+): string {
+  const normalizedHost = nonEmptyString("Meegle CLI host", host).trim();
+  const baseUrl = new URL(
+    normalizedHost.includes("://")
+      ? normalizedHost
+      : `https://${normalizedHost}`,
+  );
+  return new URL(
+    [
+      encodeURIComponent(projectKey),
+      encodeURIComponent(identity.category),
+      "detail",
+      encodeURIComponent(identity.id),
+    ].join("/"),
+    `${baseUrl.protocol}//${baseUrl.host}/`,
+  ).toString();
+}
+
 function stringList(value: unknown): readonly string[] | undefined {
   if (Array.isArray(value)) {
     const values = value
@@ -534,8 +560,12 @@ export class MeegleCliRequirementConnector
         "验收标准",
       ]),
     );
+    const host = await this.run(
+      this.command("config", "get", "host"),
+    );
     return {
       ...summary,
+      url: workItemUrl(host, this.config.projectKey, identity),
       ...(description ? { description } : {}),
       ...(acceptanceCriteria ? { acceptanceCriteria } : {}),
     };

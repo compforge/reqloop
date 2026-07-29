@@ -122,6 +122,7 @@ describe("Requirement Resource", () => {
       state: "in_progress",
       description: "Create a durable Requirement Resource.",
       acceptanceCriteria: ["The Requirement appears on the Board"],
+      url: "https://meego.example/story/REQ-7",
     });
 
     expect({
@@ -145,9 +146,10 @@ describe("Requirement Resource", () => {
     expect(
       await createRequirementController().present?.(requirement),
     ).toEqual({
-      title: "Requirement intake",
+      title: "REQ-7",
+      url: "https://meego.example/story/REQ-7",
       status: "in_progress",
-      detail: "Create a durable Requirement Resource.",
+      detail: "Requirement intake",
       priority: 0,
       tone: "default",
     });
