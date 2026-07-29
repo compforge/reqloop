@@ -21,16 +21,14 @@ reqloop/
 │   └── <plugin-name>/
 │       ├── .baton-plugin/
 │       │   └── plugin.json
+│       ├── AGENTS.md             # 可选：该 Plugin 的稳定设计边界与 References
+│       ├── docs/                 # 可选：该 Plugin 的设计细节
 │       ├── src/
-│       │   ├── requirements/       # Requirement Resource、Controller、Connector 与命令
-│       │   ├── workspaces/         # session 启动目录与本地仓库发现
-│       │   ├── repositories/       # 仓库观察范围与 PullRequest 集合发现
-│       │   └── pull-requests/      # PullRequest Resource、Controller、Forge 与 review Connector
+│       │   └── index.ts          # PluginPackage 导出与装配入口
 │       ├── tests/
 │       ├── package.json
 │       └── README.md
-├── docs/
-│   └── reqloop.md         # Requirement Loop 领域模型与 Connector 设计
+├── docs/                  # Marketplace 级说明图
 ├── CONTRIBUTING.md        # 新 Plugin 接入与索引规则
 └── README.md              # Marketplace 用户入口
 ```
@@ -51,10 +49,7 @@ reqloop/
    Connector 只负责协议调用和 DTO 映射，不能反向拥有 loop。
    Requirement/Forge 等对象保持 provider-neutral，provider 属于 Connector 或其绑定的
    repository，不摊进每个领域对象。连接参数归 Plugin 配置，cursor/cache 归 Baton 注入的
-   host-owned data 目录，Requirement 等 loop 状态归 session Resource；配置只从
-   `context.dataDirs` 的 global/project/session scope 读取，Instance 不承载配置。Source omission
-   和 Board 隐藏不触发删除；用户可用
-   `delete-after` annotation 给出明确期限，默认仍保留 Resource。
+   host-owned data 目录，领域 loop 状态归 session Resource。
 4. 本地开发可以使用 link 来源，但发布版本必须不可变；来源 provenance 不进入 `pluginId` 或
    PluginInstance 身份。
 5. 新 Plugin 必须放进 `plugins/`，同时更新 Marketplace 索引和根 README；具体配置、限制和
@@ -66,4 +61,4 @@ reqloop/
 - `CONTRIBUTING.md` — 新增 Plugin 的目录、manifest 与验证要求
 - Baton Plugin 设计：
   `https://github.com/compforge/baton/blob/main/docs/plugin.md`
-- `docs/reqloop.md` — Requirement Loop 领域模型、内部 Connector 与 Harness 协作边界
+- `plugins/reqloop/AGENTS.md` — `compforge/reqloop` 的领域边界、代码地图与设计索引

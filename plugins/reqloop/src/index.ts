@@ -11,8 +11,9 @@ import {
 import type {
   RepositorySpec,
 } from "./repositories/protocol.ts";
-import { DevloopRepositorySource } from "./repositories/sources/devloop.ts";
-import { ForgeRepositorySource } from "./repositories/sources/forge.ts";
+import {
+  WorkspaceRepositorySource,
+} from "./repositories/sources/workspace.ts";
 import {
   DevloopReviewConnector,
 } from "./pull-requests/connectors/devloop-review.ts";
@@ -48,7 +49,7 @@ import { WorkspaceSource } from "./workspaces/source.ts";
 import { withUserDeletionPolicy } from "./retention.ts";
 
 export const REQLOOP_PLUGIN_ID = "compforge/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.2.4";
+export const REQLOOP_PACKAGE_VERSION = "0.2.5";
 
 function currentRepo(context: PluginActivationContext): string {
   const cwd = context.session.cwd;
@@ -114,8 +115,7 @@ export function createReqloopPackage(options: {
             ),
         });
       const repositorySources = options.repositorySources ?? [
-        new ForgeRepositorySource(cwd),
-        new DevloopRepositorySource(cwd),
+        new WorkspaceRepositorySource(cwd),
       ];
       const pullRequestSources = options.pullRequestSources ?? [
         new ForgePullRequestSource(cwd, forgeConnectors, {
@@ -168,8 +168,7 @@ export * from "./config.ts";
 export * from "./repositories/controller.ts";
 export * from "./repositories/protocol.ts";
 export * from "./repositories/resource.ts";
-export * from "./repositories/sources/devloop.ts";
-export * from "./repositories/sources/forge.ts";
+export * from "./repositories/sources/workspace.ts";
 export * from "./pull-requests/sources/devloop.ts";
 export * from "./pull-requests/sources/forge.ts";
 export * from "./pull-requests/devloop-activity.ts";

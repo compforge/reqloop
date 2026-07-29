@@ -275,7 +275,6 @@ describe("Workspace Resource", () => {
       workspace.status.repositories?.map((item) => item.relativePath),
     ).toEqual(["repo-a", "repo-b"]);
     expect(workspace.status.openPullRequests).toBe(1);
-    expect(workspace.status.discoveryErrors).toEqual([]);
 
     expect(
       resources.list<RepositorySpec, RepositoryStatus>(

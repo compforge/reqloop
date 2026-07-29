@@ -18,9 +18,10 @@ development loop inside a Harness.
 
 ![Baton, Plugin, and Harness](./docs/baton-plugin-harness.svg)
 
-ReqLoop connects requirement, code, review, CI, and deployment systems; turns
-their state and durable user decisions into Resources; and gradually advances
-from observation and recommendations toward explicitly scoped automation.
+ReqLoop currently connects requirement, Forge, and devloop observations and
+turns their state and durable user decisions into Resources. The workflow below
+also shows the longer-term direction toward delivery, evaluation, and
+explicitly scoped automation; those stages are not all implemented yet.
 
 ![ReqLoop workflow](./docs/reqloop-workflow.svg)
 
@@ -39,11 +40,10 @@ develop a plugin
 ## Status
 
 The repository grows with Baton's external Plugin host and per-Binding Runner
-processes. Hello validates the
-smallest Package lifecycle; Hello Counter and Turn Coach exercise
-Resource/Reconcile, Baton-owned Resource watches, and durable proposals; ReqLoop is
-the first requirement-loop Package, contributes `/requirements`, and observes
-external devloop review state.
+processes. Hello validates the smallest Package lifecycle; Hello Counter and
+Turn Coach exercise Resource/Reconcile, Baton-owned Resource watches, and
+durable proposals; ReqLoop coordinates Workspace, Repository, PullRequest, and
+Requirement Resources across requirement, Forge, and devloop observations.
 
 ## Install and use in Baton
 
@@ -64,9 +64,9 @@ baton plugins marketplace add /path/to/reqloop
 
 Package installation makes it available to Baton. To use it in a session, start
 `baton`, enter `/plugins`, open **Installed**, select the Package, and choose
-**Enable in this session**. Turn Coach reviews completed turns and recommends the
-next step; ReqLoop observes devloop review completion for the session's current
-repository, asks the user to accept or ignore actionable comments once, and
+**Enable in this session**. Turn Coach reviews completed turns and recommends
+the next step; ReqLoop observes devloop review completion across Workspace
+checkouts, asks the user to accept or ignore actionable comments once, and
 proposes a Harness fix only when accepted.
 
 ## Repository layout
@@ -74,7 +74,8 @@ proposes a Harness fix only when accepted.
 ```text
 .baton-plugin/marketplace.json  Marketplace index
 plugins/<plugin-name>/          One independently versioned Baton plugin
-docs/reqloop.md                 Requirement Loop domain and Connector design
+plugins/reqloop/AGENTS.md       ReqLoop architecture and design index
+plugins/reqloop/docs/           ReqLoop domain and reconcile details
 docs/baton-plugin-harness.*     Baton Plugin and Harness relationship
 docs/reqloop-workflow.*         ReqLoop workflow (SVG and PNG)
 CONTRIBUTING.md                 Rules for adding a plugin
@@ -94,11 +95,11 @@ Proposal contracts.
 - [Turn Coach](./plugins/turn-coach/README.md) — an end-to-end canary for
   Baton-owned Resource replay, persistent state, and proposed input.
 - [ReqLoop](./plugins/reqloop/README.md) — requirement-level coordination;
-  `0.2.3` connects Workspace, Repository, PullRequest, and Requirement
+  `0.2.5` connects Workspace, Repository, PullRequest, and Requirement
   Resources, exposes active requirements as Harness context, and aggregates
-  delivery and review progress on the Board.
+  merge and review progress on the Board.
 
-See the [Requirement Loop design](./docs/reqloop.md) for the domain model,
-Connector boundary, and Harness collaboration model.
+See the [ReqLoop architecture](./plugins/reqloop/AGENTS.md) for its domain
+model, reconcile flow, integration boundaries, and roadmap.
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) before adding a plugin.

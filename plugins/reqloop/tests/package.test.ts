@@ -29,12 +29,10 @@ import type {
 import reqloop, {
   createReqloopPackage,
   DevloopPullRequestSource,
-  DevloopRepositorySource,
   DevloopReviewConnector,
   DevloopToolActivityPolicy,
   type ForgeConnector,
   ForgePullRequestSource,
-  ForgeRepositorySource,
   interpretToolActivity,
   REPOSITORY_RESOURCE_TYPE,
   loadMeegoRequirementConfigs,
@@ -47,6 +45,7 @@ import reqloop, {
   type RequirementConnector,
   REQUIREMENT_RESOURCE_TYPE,
   type WorkspaceSpec,
+  WorkspaceRepositorySource,
   WorkspaceSource,
   WORKSPACE_RESOURCE_TYPE,
 } from "../src/index.ts";
@@ -283,19 +282,23 @@ describe("ReqLoop PluginPackage", () => {
     }))?.count).toBe(2);
   });
 
-  test("contributes the current checkout as a Repository", async () => {
+  test("contributes the current checkout through the Workspace Source", async () => {
     const root = testRoot();
     initializeRepository(root);
     const emitted: Parameters<SourceContext<RepositorySpec>["emit"]>[0][] = [];
-    const source = new DevloopRepositorySource(root);
+    const abort = new AbortController();
+    const source = new WorkspaceRepositorySource(root, {
+      resyncIntervalMs: 60_000,
+    });
 
     await source.start({
-      signal: new AbortController().signal,
+      signal: abort.signal,
       async emit(resource) {
         emitted.push(resource);
       },
       reportError() {},
     });
+    abort.abort();
 
     expect(emitted).toEqual([{
       name: expect.stringMatching(/^repo-/),
@@ -308,14 +311,14 @@ describe("ReqLoop PluginPackage", () => {
     }]);
   });
 
-  test("Forge Sources own bounded Resource admission", async () => {
+  test("Workspace and Forge Sources own bounded Resource admission", async () => {
     const root = testRoot();
     initializeRepository(root);
     const repositoryEmits: Parameters<
       SourceContext<RepositorySpec>["emit"]
     >[0][] = [];
     const repositoryAbort = new AbortController();
-    const repositorySource = new ForgeRepositorySource(root, {
+    const repositorySource = new WorkspaceRepositorySource(root, {
       resyncIntervalMs: 60_000,
     });
     await repositorySource.start({
@@ -1017,6 +1020,22 @@ describe("ReqLoop PluginPackage", () => {
     ).toEqual([
       WORKSPACE_RESOURCE_TYPE,
       PULL_REQUEST_RESOURCE_TYPE,
+    ]);
+
+    await createReqloopPackage({
+      requirementConnectors: [],
+      forgeConnectors: [],
+      reviewConnector: {
+        listLatest: async () => [],
+        latest: async () => undefined,
+      },
+    }).activate(context);
+    expect(
+      controllers.get(REPOSITORY_RESOURCE_TYPE.kind)?.sources?.map(
+        ({ type, sourceId }) => ({ type, sourceId }),
+      ),
+    ).toEqual([
+      { type: "resource", sourceId: "workspace" },
     ]);
   });
 
