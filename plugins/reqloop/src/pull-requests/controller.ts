@@ -182,6 +182,9 @@ export function createPullRequestController(
   connectors: readonly ForgeConnector[] = [],
   reviewConnector?: PullRequestReviewConnector,
   sources: readonly Source<PullRequestSpec>[] = [],
+  shouldObserve: (
+    identity: PullRequestIdentity,
+  ) => Promise<boolean> = async () => true,
 ): Controller<
   PullRequestSpec,
   PullRequestStatus
@@ -251,7 +254,11 @@ export function createPullRequestController(
       if (observationComplete(current.status)) return;
       const { identity } = current.spec;
       const connector = connectorsBySource.get(identity.source);
-      if (connector && observationDue(current.status.observedAt)) {
+      if (
+        connector &&
+        observationDue(current.status.observedAt) &&
+        await shouldObserve(identity)
+      ) {
         const observation = await connector.get(identity);
         if (!sameIdentity(observation.identity, identity)) {
           throw new Error("ForgeConnector returned a different PullRequest");

@@ -7,6 +7,7 @@ import type {
   PullRequest,
   PullRequestReviewThreads,
 } from "../protocol.ts";
+import { isForgeRateLimitError } from "../protocol.ts";
 import type { ForgeConfig } from "./config.ts";
 import {
   JsonHttpClient,
@@ -163,7 +164,8 @@ export class GitLabForgeConnector implements ForgeConnector {
       const observation = await this.#reviewThreads(identity);
       reviewThreads = observation.state;
       reviewActivity = observation.activityKey;
-    } catch {
+    } catch (error) {
+      if (isForgeRateLimitError(error)) throw error;
       // Older or restricted GitLab instances may not expose discussions.
     }
     return {

@@ -14,6 +14,7 @@ import { join } from "node:path";
 
 import {
   createForgeConnectors,
+  ForgeRateLimitError,
   GitHubForgeConnector,
   GitLabForgeConnector,
   loadForgeConfigs,
@@ -101,6 +102,59 @@ describe("Forge config", () => {
 });
 
 describe("GitHubForgeConnector", () => {
+  test("backs off after a rate-limit response without issuing more requests", async () => {
+    let calls = 0;
+    const fetch: Fetch = async () => {
+      calls += 1;
+      return new Response(
+        JSON.stringify({ message: "API rate limit exceeded" }),
+        {
+          status: 403,
+          headers: {
+            "content-type": "application/json",
+            "retry-after": "120",
+            "x-ratelimit-remaining": "0",
+          },
+        },
+      );
+    };
+    const connector = new GitHubForgeConnector({
+      source: "github.com",
+      provider: "github",
+      host: "github.com",
+      token: "secret",
+    }, { fetch });
+
+    const query = () => connector.list("owner/repo", {
+      state: "open",
+      limit: 1,
+    });
+    await expect(query()).rejects.toBeInstanceOf(ForgeRateLimitError);
+    await expect(query()).rejects.toMatchObject({ retryAfterMs: expect.any(Number) });
+    expect(calls).toBe(1);
+  });
+
+  test("propagates GraphQL rate-limit errors instead of hiding them", async () => {
+    const fetch: Fetch = async (input) => {
+      if (String(input).endsWith("/pulls/3")) {
+        return json({ number: 3, state: "open", mergeable: true });
+      }
+      return json({ errors: [{ message: "API rate limit exceeded" }] });
+    };
+    const connector = new GitHubForgeConnector({
+      source: "github.com",
+      provider: "github",
+      host: "github.com",
+      token: "secret",
+    }, { fetch });
+
+    await expect(connector.get({
+      source: "github.com",
+      repository: "owner/repo",
+      number: 3,
+    })).rejects.toBeInstanceOf(ForgeRateLimitError);
+  });
+
   test("maps lifecycle, conflicts, review threads, and discovery", async () => {
     const calls: { url: string; headers: Headers }[] = [];
     const fetch: Fetch = async (input, init) => {

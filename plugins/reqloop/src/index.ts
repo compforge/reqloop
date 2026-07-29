@@ -40,6 +40,7 @@ import type {
 } from "./pull-requests/protocol.ts";
 import { DevloopPullRequestSource } from "./pull-requests/sources/devloop.ts";
 import { ForgePullRequestSource } from "./pull-requests/sources/forge.ts";
+import { DevloopToolActivityPolicy } from "./pull-requests/devloop-activity.ts";
 import { createWorkspaceController } from "./workspaces/controller.ts";
 import { discoverWorkspaceRepositories } from "./workspaces/discovery.ts";
 import type { WorkspaceSpec } from "./workspaces/protocol.ts";
@@ -47,7 +48,7 @@ import { WorkspaceSource } from "./workspaces/source.ts";
 import { withUserDeletionPolicy } from "./retention.ts";
 
 export const REQLOOP_PLUGIN_ID = "compforge/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.2.2";
+export const REQLOOP_PACKAGE_VERSION = "0.2.3";
 
 function currentRepo(context: PluginActivationContext): string {
   const cwd = context.session.cwd;
@@ -98,6 +99,7 @@ export function createReqloopPackage(options: {
           reqloopConfigPaths(context.dataDirs),
         );
       const cwd = currentRepo(context);
+      const toolActivity = new DevloopToolActivityPolicy(cwd);
       const workspaceSources =
         options.workspaceSources ?? [new WorkspaceSource(cwd)];
       const reviewConnector =
@@ -116,7 +118,9 @@ export function createReqloopPackage(options: {
         new DevloopRepositorySource(cwd),
       ];
       const pullRequestSources = options.pullRequestSources ?? [
-        new ForgePullRequestSource(cwd, forgeConnectors),
+        new ForgePullRequestSource(cwd, forgeConnectors, {
+          shouldTrack: ({ path }) => toolActivity.shouldTrackCheckout(path),
+        }),
         new DevloopPullRequestSource(cwd, {
           reviewObservations: () => reviewConnector.listLatest(),
         }),
@@ -129,6 +133,7 @@ export function createReqloopPackage(options: {
             forgeConnectors,
             reviewConnector,
             pullRequestSources,
+            (identity) => toolActivity.shouldTrackIdentity(identity),
           ),
         ),
       );
@@ -167,6 +172,7 @@ export * from "./repositories/sources/devloop.ts";
 export * from "./repositories/sources/forge.ts";
 export * from "./pull-requests/sources/devloop.ts";
 export * from "./pull-requests/sources/forge.ts";
+export * from "./pull-requests/devloop-activity.ts";
 export * from "./pull-requests/connectors/config.ts";
 export * from "./pull-requests/connectors/devloop-review.ts";
 export * from "./pull-requests/connectors/github.ts";

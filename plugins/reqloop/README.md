@@ -112,12 +112,19 @@ Harness or mutate external Requirement state. The Board currently presents
 only active Requirements and standalone active PullRequests; Workspace and
 Repository remain internal observation Resources.
 
+Forge polling is activity-aware. Devloop records one rolling hour of raw
+tool-call events in each checkout's `.devloop/tool-calls.jsonl`; ReqLoop owns
+the interpretation and queries PR/MR APIs only while explicit file writes
+outnumber reads. Missing or read-heavy timelines make no Forge request.
+Rate-limit responses honor the provider retry window and pause locally instead
+of repeatedly consuming the same API.
+
 See [the Requirement Loop design](../../docs/reqloop.md) for lifecycle,
 reconciliation, and recovery details.
 
 ```text
 pluginId: compforge/reqloop
-version:  0.2.2
+version:  0.2.3
 ```
 
 Install this Marketplace in Baton, install `compforge/reqloop`, then enable it
@@ -144,3 +151,7 @@ Forge / devloop / 需求平台 → 最新观察 → Resource status → Board / 
 Controller 负责让本地 Resource 与文件系统、代码平台、需求平台及 devloop review 结果持续收敛。
 ReqLoop 不直接驱动 Harness，也暂不代用户修改外部 Requirement。生命周期、reconcile 与恢复细节
 见 [Requirement Loop 设计](../../docs/reqloop.md)。
+
+Forge 观察会读取各 repo 的 `.devloop/tool-calls.jsonl` 最近一小时窗口：只有明确的文件写入次数
+多于读取次数时才查询 PR/MR API；无时间线或以读取为主时不请求外部 URL。Connector 遇到限流会
+按服务端 retry 窗口在本地退避。
