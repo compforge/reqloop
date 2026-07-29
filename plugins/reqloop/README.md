@@ -114,20 +114,19 @@ link to the Forge and show the external title on a single marquee line only
 when it overflows. Workspace and Repository remain internal observation
 Resources.
 
-Forge polling is activity-aware. Devloop records one rolling hour of raw
-tool-call events in each checkout's `.devloop/tool-calls.jsonl`; ReqLoop owns
-the interpretation. Explicit file-write dominance enables frequent discovery
-and 30-second observation. Missing or read-heavy timelines skip collection
-discovery while already admitted PullRequests continue converging every five
-minutes. Rate-limit responses honor the provider retry window and pause locally
-instead of repeatedly consuming the same API.
+Forge admission and observation are activity-aware. ReqLoop interprets
+devloop's raw tool activity: explicit file-write dominance enables collection
+discovery and a higher observation cadence; missing or read-heavy activity does
+not expand the collection, while already admitted PullRequests continue
+converging at a lower cadence. Rate-limit responses honor the provider retry
+window and pause locally instead of repeatedly consuming the same API.
 
-See [the Requirement Loop design](../../docs/reqloop.md) for lifecycle,
-reconciliation, and recovery details.
+See [the ReqLoop architecture](./AGENTS.md) for the domain model, reconcile
+flow, integration boundaries, and roadmap.
 
 ```text
 pluginId: compforge/reqloop
-version:  0.2.4
+version:  0.2.5
 ```
 
 Install this Marketplace in Baton, install `compforge/reqloop`, then enable it
@@ -152,10 +151,9 @@ Forge / devloop / 需求平台 → 最新观察 → Resource status → Board / 
 ```
 
 Controller 负责让本地 Resource 与文件系统、代码平台、需求平台及 devloop review 结果持续收敛。
-ReqLoop 不直接驱动 Harness，也暂不代用户修改外部 Requirement。生命周期、reconcile 与恢复细节
-见 [Requirement Loop 设计](../../docs/reqloop.md)。
+ReqLoop 不直接驱动 Harness，也暂不代用户修改外部 Requirement。领域模型、reconcile、集成
+边界与长期方向见 [ReqLoop 架构索引](./AGENTS.md)。
 
-Forge 观察会读取各 repo 的 `.devloop/tool-calls.jsonl` 最近一小时窗口：明确的文件写入次数
-多于读取次数时，Source 才发现新的 PR/MR，已准入 PullRequest 每 30 秒观察一次；无时间线或
-以读取为主时不扩张集合，已有 PullRequest 降频为每 5 分钟观察一次。Connector 遇到限流会按
-服务端 retry 窗口在本地退避。
+Forge 准入与观察会使用 ReqLoop 对 devloop 原始工具活动的解释：明确的文件写入占优时，
+Source 才扩张 PR/MR 集合并提高观察频率；无活动或以读取为主时不扩张集合，已有
+PullRequest 仍以较低频率继续收敛。Connector 遇到限流会按服务端 retry 窗口在本地退避。

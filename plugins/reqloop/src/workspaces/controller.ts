@@ -25,7 +25,6 @@ import {
 } from "../repositories/resource.ts";
 import { discoverWorkspaceRepositories } from "./discovery.ts";
 import type {
-  WorkspaceDiscoveryError,
   WorkspaceRepository,
   WorkspaceSpec,
   WorkspaceStatus,
@@ -57,16 +56,13 @@ function sameDiscovery(
   status: WorkspaceStatus,
   repositories: readonly WorkspaceRepository[],
   openPullRequests: number,
-  discoveryErrors: readonly WorkspaceDiscoveryError[],
 ): boolean {
   return JSON.stringify({
     repositories: status.repositories ?? [],
     openPullRequests: status.openPullRequests ?? 0,
-    discoveryErrors: status.discoveryErrors ?? [],
   }) === JSON.stringify({
     repositories,
     openPullRequests,
-    discoveryErrors,
   });
 }
 
@@ -104,7 +100,6 @@ export function createWorkspaceController(
       }
 
       const repositories: WorkspaceRepository[] = [];
-      const discoveryErrors: WorkspaceDiscoveryError[] = [];
       const pullRequests = new Set<string>();
       const repositoryResources = await resources.list<
         RepositorySpec,
@@ -143,7 +138,6 @@ export function createWorkspaceController(
           resource.status,
           repositories,
           pullRequests.size,
-          discoveryErrors,
         )
       ) {
         return;
@@ -151,7 +145,6 @@ export function createWorkspaceController(
       await resources.patchStatus(resource, {
         repositories,
         openPullRequests: pullRequests.size,
-        discoveryErrors,
         observedAt: new Date().toISOString(),
       });
     },

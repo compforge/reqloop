@@ -13,13 +13,16 @@ plugins/<plugin-name>/
 │   ├── connectors/   # 可选：外部系统协议与 DTO 映射
 │   └── index.ts      # PluginPackage 导出入口
 ├── tests/
+├── AGENTS.md          # 可选：复杂 Plugin 的稳定边界与设计索引
+├── docs/              # 可选：由 AGENTS.md 引用的设计细节
 ├── package.json
 ├── tsconfig.json
 └── README.md
 ```
 
 目录按真实职责渐进创建，不要求空目录占位。一个 Plugin 内文件变多时，优先按领域 owner 收束，
-不要横向铺开 `handlers/`、`services/`、`utils/` 等语义模糊目录。
+不要横向铺开 `handlers/`、`services/`、`utils/` 等语义模糊目录。只有跨多个模块才能拼出的
+稳定设计进入 AGENTS/docs；当前字段、阈值和单文件行为仍以代码为事实来源。
 
 ## 新增 Plugin
 

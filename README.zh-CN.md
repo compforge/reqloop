@@ -14,8 +14,8 @@ Harness Plugin 则约束 Harness 内部的开发小闭环。
 
 ![Baton、Plugin 与 Harness](./docs/baton-plugin-harness.svg)
 
-ReqLoop 将需求、代码、review、CI 和部署系统接入同一条 Loop，把外部状态和用户的持久决定
-整理为 Resource，并从观察、建议和人工确认逐步走向范围明确的自动化。
+ReqLoop 当前接入需求平台、Forge 和 devloop observation，把外部状态和用户的持久决定整理为
+Resource。下图同时包含 Delivery、Evaluation 和受控自动化等长期方向；这些阶段尚未全部实现。
 
 ![ReqLoop 工作框图](./docs/reqloop-workflow.svg)
 
@@ -33,10 +33,10 @@ ReqLoop 将需求、代码、review、CI 和部署系统接入同一条 Loop，�
 
 ## 当前状态
 
-本仓库随 Baton 的 Plugin host 与 per-Binding Runner 进程一起演进。Hello 验证最小 Package 生命周期，
-Hello Counter 和 Turn Coach 验证 Resource/Reconcile、Baton-owned Resource watch 和持久
-Proposal；ReqLoop 是首个 Requirement Loop Package，提供 `/requirements` 并观察外部
-devloop review 状态。
+本仓库随 Baton 的 Plugin host 与 per-Binding Runner 进程一起演进。Hello 验证最小 Package
+生命周期，Hello Counter 和 Turn Coach 验证 Resource/Reconcile、Baton-owned Resource watch
+和持久 Proposal；ReqLoop 协调 Workspace、Repository、PullRequest 和 Requirement 四种
+Resource，并汇总需求平台、Forge 与 devloop observation。
 
 ## 在 Baton 中安装和使用
 
@@ -56,16 +56,17 @@ baton plugins marketplace add /path/to/reqloop
 ```
 
 安装 Package 后，启动 `baton`，输入 `/plugins`，进入 **Installed**，选择对应 Package，再执行
-**Enable in this session**。Turn Coach 会复盘已完成的 turn 并建议下一步；ReqLoop 会观察当前
-Session 仓库中的 devloop review 终态，对可处理 comments 只询问一次 accept 或 ignore，并仅在
-accept 后提供一条驱动当前 Harness 修复的建议输入。
+**Enable in this session**。Turn Coach 会复盘已完成的 turn 并建议下一步；ReqLoop 会观察
+Workspace 各 checkout 中的 devloop review 终态，对可处理 comments 只询问一次 accept 或
+ignore，并仅在 accept 后提供一条驱动当前 Harness 修复的建议输入。
 
 ## 仓库结构
 
 ```text
 .baton-plugin/marketplace.json  Marketplace 索引
 plugins/<plugin-name>/          一份独立版本的 Baton Plugin
-docs/reqloop.md                 Requirement Loop 领域模型与 Connector 设计
+plugins/reqloop/AGENTS.md       ReqLoop 架构约束与设计索引
+plugins/reqloop/docs/           ReqLoop 领域模型与 reconcile 细节
 docs/baton-plugin-harness.*     Baton Plugin 与 Harness 关系图
 docs/reqloop-workflow.*         ReqLoop 工作框图（SVG 与 PNG）
 CONTRIBUTING.md                 新 Plugin 接入规则
@@ -83,11 +84,11 @@ Binding、Resource/Controller 和 Proposal 契约。
   `baton.turn` Controller 的组合。
 - [Turn Coach](./plugins/turn-coach/README.md) — 验证 Baton-owned Resource replay、持久状态和
   proposed input 的端到端 canary。
-- [ReqLoop](./plugins/reqloop/README.md) — 需求级闭环协调；`0.2.3` 物化 Requirement
+- [ReqLoop](./plugins/reqloop/README.md) — 需求级闭环协调；`0.2.5` 物化 Requirement
   Resource，将活跃 Requirement 暴露为可搜索的 Harness context、通过 Repository
   Resource 发现 PullRequest，并只询问一次 PullRequest 是否关联 Requirement。
 
-领域模型、Connector 边界与 Harness 协作方式见
-[Requirement Loop 设计](./docs/reqloop.md)。
+领域模型、reconcile、Connector 边界与长期方向见
+[ReqLoop 架构索引](./plugins/reqloop/AGENTS.md)。
 
 新增 Plugin 前请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)。

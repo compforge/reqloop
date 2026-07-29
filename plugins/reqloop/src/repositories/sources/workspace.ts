@@ -15,9 +15,9 @@ const DEFAULT_RESYNC_INTERVAL_MS = 30_000;
  * The Connector remains an external protocol adapter; this Source owns the
  * decision to materialize the provider-neutral repository identity.
  */
-export class ForgeRepositorySource implements Source<RepositorySpec> {
+export class WorkspaceRepositorySource implements Source<RepositorySpec> {
   readonly type = "resource";
-  readonly sourceId = "forge";
+  readonly sourceId = "workspace";
   private readonly resyncIntervalMs: number;
   private refreshing?: Promise<void>;
 
@@ -34,7 +34,7 @@ export class ForgeRepositorySource implements Source<RepositorySpec> {
       this.resyncIntervalMs < 1
     ) {
       throw new Error(
-        "ForgeRepositorySource resyncIntervalMs must be a positive integer",
+        "WorkspaceRepositorySource resyncIntervalMs must be a positive integer",
       );
     }
   }

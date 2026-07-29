@@ -11,14 +11,8 @@ export interface WorkspaceRepository {
   readonly repository: ResourceRef;
 }
 
-export interface WorkspaceDiscoveryError {
-  readonly relativePath: string;
-  readonly message: string;
-}
-
 export interface WorkspaceStatus {
   readonly repositories?: readonly WorkspaceRepository[];
   readonly openPullRequests?: number;
   readonly observedAt?: string;
-  readonly discoveryErrors?: readonly WorkspaceDiscoveryError[];
 }
