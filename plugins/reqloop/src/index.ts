@@ -2,7 +2,7 @@ import type {
   PluginActivationContext,
   PluginPackage,
   Source,
-} from "@qiankun01/baton-plugin";
+} from "@compforge/baton-plugin";
 
 import {
   createRepositoryController,
@@ -42,7 +42,7 @@ import type { WorkspaceSpec } from "./workspaces/protocol.ts";
 import { WorkspaceSource } from "./workspaces/source.ts";
 
 export const REQLOOP_PLUGIN_ID = "qiankunli/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.1.18";
+export const REQLOOP_PACKAGE_VERSION = "0.2.0";
 
 function currentRepo(context: PluginActivationContext): string {
   const cwd = context.session.cwd;
@@ -93,14 +93,16 @@ export function createReqloopPackage(options: {
       const reviewConnector =
         options.reviewConnector ??
         new DevloopReviewConnector(cwd, {
-          workspaceCheckouts: () =>
-            discoverWorkspaceRepositories(cwd).map(({ path, identity }) => ({
-              path,
-              ...identity,
-            })),
+          workspaceCheckouts: async () =>
+            (await discoverWorkspaceRepositories(cwd)).map(
+              ({ path, identity }) => ({
+                path,
+                ...identity,
+              }),
+            ),
         });
-      for (const reviewBaseline of reviewConnector.listLatest()) {
-        upsertPullRequestReview(context.resources, reviewBaseline);
+      for (const reviewBaseline of await reviewConnector.listLatest()) {
+        await upsertPullRequestReview(context.resources, reviewBaseline);
       }
       context.registerController(
         createPullRequestController(

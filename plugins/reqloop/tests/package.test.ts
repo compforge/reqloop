@@ -24,7 +24,7 @@ import type {
   Resource,
   Source,
   SourceContext,
-} from "@qiankun01/baton-plugin";
+} from "@compforge/baton-plugin";
 
 import reqloop, {
   createReqloopPackage,
@@ -143,7 +143,7 @@ afterEach(() => {
 });
 
 describe("ReqLoop PluginPackage", () => {
-  test("keeps its runtime identity aligned with Package metadata", () => {
+  test("keeps its Package identity aligned with manifest metadata", () => {
     const manifest = JSON.parse(
       readFileSync(
         new URL("../.baton-plugin/plugin.json", import.meta.url),
@@ -160,7 +160,7 @@ describe("ReqLoop PluginPackage", () => {
     expect(manifest.entry).toBe("./src/index.ts");
   });
 
-  test("reads only the current checkout's latest terminal review", () => {
+  test("reads only the current checkout's latest terminal review", async () => {
     const root = testRoot();
     const path = historyPath(root);
     appendReview(path, {
@@ -201,7 +201,7 @@ describe("ReqLoop PluginPackage", () => {
       checkout: () => ({ headSha: "current-head", branch: "feature" }),
     });
 
-    expect(connector.listLatest()[0]).toMatchObject({
+    expect((await connector.listLatest())[0]).toMatchObject({
       identity: {
         source: "github.com",
         repository: "owner/repo",
@@ -218,7 +218,7 @@ describe("ReqLoop PluginPackage", () => {
     });
   });
 
-  test("reads review observations from every Workspace checkout", () => {
+  test("reads review observations from every Workspace checkout", async () => {
     const root = testRoot();
     const first = join(root, "repo-a");
     const second = join(root, "repo-b");
@@ -266,24 +266,26 @@ describe("ReqLoop PluginPackage", () => {
     });
 
     expect(
-      connector.listLatest().map(({ identity }) => identity.repository),
+      (await connector.listLatest()).map(
+        ({ identity }) => identity.repository,
+      ),
     ).toEqual(["owner/repo-a", "owner/repo-b"]);
-    expect(connector.latest({
+    expect((await connector.latest({
       source: "github.com",
       repository: "owner/repo-b",
       number: 8,
-    })?.count).toBe(2);
+    }))?.count).toBe(2);
   });
 
-  test("contributes the current checkout as a Repository", () => {
+  test("contributes the current checkout as a Repository", async () => {
     const root = testRoot();
     initializeRepository(root);
     const emitted: Parameters<SourceContext<RepositorySpec>["emit"]>[0][] = [];
     const source = new DevloopRepositorySource(root);
 
-    source.start({
+    await source.start({
       signal: new AbortController().signal,
-      emit(resource) {
+      async emit(resource) {
         emitted.push(resource);
       },
       reportError() {},
@@ -316,9 +318,9 @@ describe("ReqLoop PluginPackage", () => {
       watchIntervalMs: 10,
     });
 
-    source.start({
+    await source.start({
       signal: abort.signal,
-      emit(resource) {
+      async emit(resource) {
         emitted.push(resource);
       },
       reportError(error) {
@@ -716,17 +718,17 @@ describe("ReqLoop PluginPackage", () => {
     const workspaceSource: Source<WorkspaceSpec> = {
       type: "resource",
       sourceId: "workspace-test",
-      start() {},
+      async start() {},
     };
     const repositorySource: Source<RepositorySpec> = {
       type: "resource",
       sourceId: "repository-test",
-      start() {},
+      async start() {},
     };
     const pullRequestSource: Source<PullRequestSpec> = {
       type: "resource",
       sourceId: "pull-request-test",
-      start() {},
+      async start() {},
     };
     const controllers = new Map<
       string,
@@ -753,8 +755,8 @@ describe("ReqLoop PluginPackage", () => {
       repositorySources: [repositorySource],
       pullRequestSources: [pullRequestSource],
       reviewConnector: {
-        listLatest: () => [],
-        latest: () => undefined,
+        listLatest: async () => [],
+        latest: async () => undefined,
       },
     }).activate(context);
 

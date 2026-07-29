@@ -2,7 +2,7 @@ import type {
   ContextProvider,
   Resource,
   ResourceClient,
-} from "@qiankun01/baton-plugin";
+} from "@compforge/baton-plugin";
 
 import type {
   RequirementSpec,
@@ -84,12 +84,11 @@ export function createRequirementContextProvider(
 ): ContextProvider {
   return {
     kind: "requirement",
-    search(query) {
+    async search(query) {
       const normalizedQuery = query.trim().toLocaleLowerCase();
-      return resources
-        .list<RequirementSpec, RequirementStatus>(
-          REQUIREMENT_RESOURCE_TYPE,
-        )
+      return (await resources.list<RequirementSpec, RequirementStatus>(
+        REQUIREMENT_RESOURCE_TYPE,
+      ))
         .filter(isActive)
         .filter((resource) =>
           !normalizedQuery ||
@@ -112,11 +111,13 @@ export function createRequirementContextProvider(
           ].join(" · "),
         }));
     },
-    provide(id, { maxChars }) {
-      const resource = resources
-        .list<RequirementSpec, RequirementStatus>(
-          REQUIREMENT_RESOURCE_TYPE,
-        )
+    async provide(id, { maxChars }) {
+      const resource = (await resources.list<
+        RequirementSpec,
+        RequirementStatus
+      >(
+        REQUIREMENT_RESOURCE_TYPE,
+      ))
         .find(({ metadata }) => metadata.name === id);
       if (!resource) return;
       return requirementContext(resource).slice(0, maxChars);

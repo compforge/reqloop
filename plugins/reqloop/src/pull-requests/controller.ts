@@ -8,7 +8,7 @@ import type {
   ResourceClient,
   ResourceRef,
   Source,
-} from "@qiankun01/baton-plugin";
+} from "@compforge/baton-plugin";
 
 import type {
   RequirementSpec,
@@ -59,11 +59,11 @@ function interactionDecision(
   );
 }
 
-function activeRequirements(
+async function activeRequirements(
   resources: ResourceClient,
-): readonly Readonly<Resource<RequirementSpec, RequirementStatus>>[] {
-  return resources
-    .list<RequirementSpec, RequirementStatus>(REQUIREMENT_RESOURCE_TYPE)
+): Promise<readonly Readonly<Resource<RequirementSpec, RequirementStatus>>[]> {
+  return (await resources
+    .list<RequirementSpec, RequirementStatus>(REQUIREMENT_RESOURCE_TYPE))
     .filter(({ status }) =>
       status.externalState !== undefined &&
       status.externalState !== "completed" &&
@@ -82,11 +82,11 @@ function activeRequirement(resource: EventResource): boolean {
   );
 }
 
-function enqueuePendingAssociationPullRequests(
+async function enqueuePendingAssociationPullRequests(
   resources: ResourceClient,
-): readonly { readonly name: string }[] {
-  return resources
-    .list<PullRequestSpec, PullRequestStatus>(PULL_REQUEST_RESOURCE_TYPE)
+): Promise<readonly { readonly name: string }[]> {
+  return (await resources
+    .list<PullRequestSpec, PullRequestStatus>(PULL_REQUEST_RESOURCE_TYPE))
     .filter(({ status }) =>
       status.lifecycle === "open" &&
       (status.requirementAssociation === undefined ||
@@ -97,18 +97,18 @@ function enqueuePendingAssociationPullRequests(
 
 function activeRequirementHandler(resources: ResourceClient): EventHandler {
   const handler: EventHandler = {
-    create(event) {
+    async create(event) {
       return activeRequirement(event.object)
-        ? enqueuePendingAssociationPullRequests(resources)
+        ? await enqueuePendingAssociationPullRequests(resources)
         : [];
     },
-    update(event) {
+    async update(event) {
       return !activeRequirement(event.oldObject) &&
           activeRequirement(event.newObject)
-        ? enqueuePendingAssociationPullRequests(resources)
+        ? await enqueuePendingAssociationPullRequests(resources)
         : [];
     },
-    delete() {
+    async delete() {
       return [];
     },
   };
@@ -227,16 +227,18 @@ export function createPullRequestController(
       ) {
         // 0.1.15 persisted name-based refs. Resolve them once during upgrade;
         // every newly written association below is pinned to one incarnation.
-        const requirement = resources
-          .list<RequirementSpec, RequirementStatus>(
-            REQUIREMENT_RESOURCE_TYPE,
-          )
+        const requirement = (await resources.list<
+          RequirementSpec,
+          RequirementStatus
+        >(
+          REQUIREMENT_RESOURCE_TYPE,
+        ))
           .find(({ metadata }) =>
             metadata.namespace === legacyAssociation.requirement.namespace &&
             metadata.name === legacyAssociation.requirement.name
           );
         if (requirement) {
-          current = resources.patchStatus(current, {
+          current = await resources.patchStatus(current, {
             requirementAssociation: {
               state: "linked",
               requirement: requirementRef(requirement),
@@ -254,7 +256,7 @@ export function createPullRequestController(
         if (!sameIdentity(observation.identity, identity)) {
           throw new Error("ForgeConnector returned a different PullRequest");
         }
-        current = upsertPullRequest(resources, observation);
+        current = await upsertPullRequest(resources, observation);
       }
       if (
         current.status.lifecycle === "merged" ||
@@ -266,7 +268,7 @@ export function createPullRequestController(
       if (current.status.lifecycle === "open") {
         const association = current.status.requirementAssociation;
         if (!association || association.state === "prompted") {
-          const requirements = activeRequirements(resources);
+          const requirements = await activeRequirements(resources);
           const decisionKey = association?.decisionKey ??
             `associate-requirement:${current.metadata.name}`;
           const decision = interactionDecision(baton, decisionKey);
@@ -280,7 +282,7 @@ export function createPullRequestController(
             };
           } else if (decision?.outcome?.kind === "cancelled") {
             if (!association) {
-              current = resources.patchStatus(current, {
+              current = await resources.patchStatus(current, {
                 requirementAssociation: {
                   state: "prompted",
                   decisionKey,
@@ -290,7 +292,7 @@ export function createPullRequestController(
           } else if (decision?.outcome?.kind === "answered") {
             const selected = decision.outcome.values[0];
             if (selected === ASSOCIATION_STANDALONE) {
-              current = resources.patchStatus(current, {
+              current = await resources.patchStatus(current, {
                 requirementAssociation: { state: "standalone" },
               });
             } else if (selected?.startsWith(ASSOCIATION_REQUIREMENT_PREFIX)) {
@@ -303,7 +305,7 @@ export function createPullRequestController(
                   metadata.name === name
                 );
                 if (requirement) {
-                  current = resources.patchStatus(current, {
+                  current = await resources.patchStatus(current, {
                     requirementAssociation: {
                       state: "linked",
                       requirement: requirementRef(requirement),
@@ -313,7 +315,7 @@ export function createPullRequestController(
                   const retryDecisionKey =
                     `associate-requirement:${current.metadata.name}:retry:` +
                     current.metadata.resourceVersion;
-                  current = resources.patchStatus(current, {
+                  current = await resources.patchStatus(current, {
                     requirementAssociation: {
                       state: "prompted",
                       decisionKey: retryDecisionKey,
@@ -333,10 +335,10 @@ export function createPullRequestController(
         }
       }
 
-      const review = reviewConnector?.latest(identity);
+      const review = await reviewConnector?.latest(identity);
       if (!review) return;
       if (review.key !== current.status.review?.key) {
-        current = upsertPullRequestReview(resources, review);
+        current = await upsertPullRequestReview(resources, review);
       }
       if (!actionableReview(review)) return;
       if (current.status.reviewDecision?.reviewKey === review.key) return;
@@ -373,7 +375,7 @@ export function createPullRequestController(
       ) {
         return;
       }
-      resources.patchStatus(current, {
+      await resources.patchStatus(current, {
         reviewDecision: {
           reviewKey: review.key,
           choice,
@@ -388,7 +390,7 @@ export function createPullRequestController(
         };
       }
     },
-    present(resource) {
+    async present(resource) {
       if (
         resource.status.lifecycle !== "open" ||
         resource.status.requirementAssociation?.state === "linked"

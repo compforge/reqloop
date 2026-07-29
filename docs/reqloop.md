@@ -24,13 +24,13 @@ Requirement
 
 它解决两个问题：
 
-1. Baton 是通用 runtime，单独交付时用户不容易立即理解可以组装什么；
+1. Baton 是通用控制面，单独交付时用户不容易立即理解可以组装什么；
 2. Requirement Loop 需要稳定领域模型，但不能绑定 Meego、Teambition、某个部署平台或某种
    review 系统。
 
 因此采用两层边界：
 
-- **Baton**：只提供 Plugin runtime、Harness、事件、调度、权限、Board 和 Context；
+- **Baton**：只提供 Plugin host、Harness、事件、调度、权限、Board 和 Context；
 - **reqloop**：拥有 Requirement Loop 的领域模型、推进策略、完成条件与平台适配。
 
 reqloop 作为独立 Package 通过 reqloop Marketplace 发布，不是 Baton core：
@@ -302,7 +302,7 @@ blocked 或 inconclusive，并携带证据引用。review、e2e、eval 和 perf 
 ## 3. Connector：reqloop 的内部适配层
 
 Connector 是 reqloop 内部的领域 port，用于隔离外部平台差异。它不是 Baton 概念，也不注册为
-Baton runtime 中的独立组件。
+Baton host 中的独立组件。
 
 ```text
                         reqloop
@@ -574,7 +574,7 @@ RequirementController 可以调用自己拥有的 Connector，但外部写入使
 ## 9. 关键不变量
 
 1. Requirement、PullRequest、Deployment 和 Evaluation 只属于 reqloop，不进入 Baton core。
-2. Connector 只属于 reqloop 内部，不成为 Baton Plugin API 或 runtime identity。
+2. Connector 只属于 reqloop 内部，不成为 Baton Plugin API 或宿主身份。
 3. Controller 可以调用 reqloop Connector，但只能收敛已授权 spec，并对不确定外部写入先观察
    后重试。
 4. reqloop 只通过 Baton 的 Input、Event 和 Resource reference 与 Harness 协作；对 devloop
@@ -582,7 +582,7 @@ RequirementController 可以调用自己拥有的 Connector，但外部写入使
    Controller 调用 devloop 的 Harness 私有能力。
 5. Controller 用 `interaction` 取得由原 Resource 消费的持久决定，用 `proposed-input` 建议
    Harness 输入；只有用户提交 proposed input 后才形成普通 Input。
-6. 未来即使开放主动 Harness 调用，reqloop 也不直接持有 Harness runtime 或原生 session。
+6. 未来即使开放主动 Harness 调用，reqloop 也不直接持有 Harness 进程、SDK 句柄或原生 session。
 7. Requirement 是 session 级持久 Resource；Connector cursor 和私有 snapshot 只进入
    host-owned reqloop data 目录，Board 与二者都不是独立真相源。
 8. reqloop 通过独立 Marketplace Package 交付、可禁用、可升级；Baton core 在没有 reqloop 时

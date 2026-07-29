@@ -4,7 +4,7 @@ import type {
   ResourceClient,
   ResourceRef,
   Source,
-} from "@qiankun01/baton-plugin";
+} from "@compforge/baton-plugin";
 
 import {
   devloopStatePath,
@@ -88,8 +88,8 @@ export function createWorkspaceController(
       const repositories: WorkspaceRepository[] = [];
       const discoveryErrors: WorkspaceDiscoveryError[] = [];
       const pullRequests = new Set<string>();
-      for (const checkout of discoverWorkspaceRepositories(root)) {
-        const repository = ensureRepositoryResource(
+      for (const checkout of await discoverWorkspaceRepositories(root)) {
+        const repository = await ensureRepositoryResource(
           resources,
           checkout.identity,
         );
@@ -98,12 +98,12 @@ export function createWorkspaceController(
           repository: resourceRef(repository),
         });
 
-        const path = devloopStatePath(checkout.path, "pr.json");
+        const path = await devloopStatePath(checkout.path, "pr.json");
         if (!path) continue;
         try {
           for (const number of readOpenPullRequestNumbers(path)) {
             const identity = { ...checkout.identity, number };
-            ensurePullRequestResource(resources, identity);
+            await ensurePullRequestResource(resources, identity);
             pullRequests.add(pullRequestResourceId(identity));
           }
         } catch (error) {
@@ -124,14 +124,14 @@ export function createWorkspaceController(
       ) {
         return;
       }
-      resources.patchStatus(resource, {
+      await resources.patchStatus(resource, {
         repositories,
         openPullRequests: pullRequests.size,
         discoveryErrors,
         observedAt: new Date().toISOString(),
       });
     },
-    present(resource) {
+    async present(resource) {
       const repositoryCount = resource.status.repositories?.length ?? 0;
       const openPullRequests = resource.status.openPullRequests ?? 0;
       const discoveryErrors = resource.status.discoveryErrors?.length ?? 0;

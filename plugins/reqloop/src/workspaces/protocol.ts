@@ -1,4 +1,4 @@
-import type { ResourceRef } from "@qiankun01/baton-plugin";
+import type { ResourceRef } from "@compforge/baton-plugin";
 
 export interface WorkspaceSpec {
   readonly root: {

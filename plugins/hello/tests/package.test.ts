@@ -10,7 +10,7 @@ interface PluginManifest {
 }
 
 describe("Hello PluginPackage", () => {
-  test("keeps its runtime identity aligned with the Package manifest", () => {
+  test("keeps its Package identity aligned with the manifest", () => {
     const manifest = JSON.parse(
       readFileSync(new URL("../.baton-plugin/plugin.json", import.meta.url), "utf8"),
     ) as PluginManifest;
@@ -21,7 +21,7 @@ describe("Hello PluginPackage", () => {
     expect(typeof hello.activate).toBe("function");
   });
 
-  test("activates without registering optional capabilities", () => {
-    expect(() => hello.activate()).not.toThrow();
+  test("activates without registering optional capabilities", async () => {
+    await expect(hello.activate()).resolves.toBeUndefined();
   });
 });

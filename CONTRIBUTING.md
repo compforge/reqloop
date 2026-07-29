@@ -31,9 +31,12 @@ plugins/<plugin-name>/
 
 ## 边界
 
-- 只允许从 `@qiankun01/baton-plugin` 导入 Baton 公共 Plugin 类型；禁止依赖 Baton 仓库相对
-  路径、宿主包或内部模块。
+- 只允许以 `import type` 从 `@compforge/baton-plugin` 导入 Baton 公共 Plugin 类型；禁止依赖
+  Baton 仓库相对路径、宿主包、运行期 value 或内部模块。
 - Command 和 Controller 共用 Package、Instance 与 Binding 生命周期，不各自建设平行扩展体系。
+- Plugin 会在独立 Runner 进程执行；`activate`、Command、Context、Source、Watch、
+  `reconcile`、`present` 和 ResourceClient 调用保持 async，跨边界只返回可结构化传输的数据。
+- 产品代码不得使用同步子进程。Git/CLI 调用使用异步 API，并显式配置 timeout、取消和输出上限。
 - Resource 的 `spec` 保存用户认可的期望，`status` 保存可重新观测的事实；Connector 缓存不能
   成为第二真相源。
 - Controller 的外部写入必须使用稳定 operation key；超时后先观察实际状态，不能盲目重放。
@@ -41,7 +44,7 @@ plugins/<plugin-name>/
 
 ## 本地开发
 
-发布新版本时统一使用根目录 target，避免遗漏 Plugin manifest、运行时声明或说明文档：
+发布新版本时统一使用根目录 target，避免遗漏 Plugin manifest、执行声明或说明文档：
 
 ```bash
 make bump-version PLUGIN=hello-counter VERSION=0.0.3

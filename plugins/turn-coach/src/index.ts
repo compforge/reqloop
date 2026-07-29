@@ -2,10 +2,12 @@ import type {
   BatonTurnResourceData,
   PluginActivationContext,
   PluginPackage,
-} from "@qiankun01/baton-plugin";
-import {
-  BATON_TURN_RESOURCE_TYPE,
-} from "@qiankun01/baton-plugin";
+} from "@compforge/baton-plugin";
+
+const BATON_TURN_RESOURCE_TYPE = Object.freeze({
+  apiVersion: "baton.dev/v1alpha1",
+  kind: "Turn",
+} as const);
 
 interface TurnCoachSpec {
   enabled: boolean;
@@ -45,21 +47,21 @@ function proposedInput(userText: string): string {
 
 const turnCoach: PluginPackage = Object.freeze({
   pluginId: "qiankunli/turn-coach",
-  version: "0.0.3",
+  version: "0.1.0",
 
-  activate(context: PluginActivationContext): void {
-    let initialState = context.resources
-      .list<TurnCoachSpec, TurnCoachStatus>(RESOURCE_TYPE)
+  async activate(context: PluginActivationContext): Promise<void> {
+    let initialState = (await context.resources
+      .list<TurnCoachSpec, TurnCoachStatus>(RESOURCE_TYPE))
       .find((resource) => resource.metadata.name === RESOURCE_ID);
     if (!initialState) {
-      initialState = context.resources.create<TurnCoachSpec, TurnCoachStatus>(
+      initialState = await context.resources.create<TurnCoachSpec, TurnCoachStatus>(
         RESOURCE_TYPE,
         {
           name: RESOURCE_ID,
           spec: { enabled: true },
         },
       );
-      context.resources.patchStatus(initialState, {
+      await context.resources.patchStatus(initialState, {
         activatedAt: new Date().toISOString(),
         coachedTurns: 0,
         observedGeneration: initialState.metadata.generation,
@@ -70,7 +72,7 @@ const turnCoach: PluginPackage = Object.freeze({
       resourceType: RESOURCE_TYPE,
       async reconcile(_baton, resource) {
         if (resource.status.observedGeneration === resource.metadata.generation) return;
-        context.resources.patchStatus(resource, {
+        await context.resources.patchStatus(resource, {
           observedGeneration: resource.metadata.generation,
         });
       },
@@ -79,8 +81,8 @@ const turnCoach: PluginPackage = Object.freeze({
     context.registerController<Record<string, never>, BatonTurnResourceData>({
       resourceType: BATON_TURN_RESOURCE_TYPE,
       async reconcile(baton, turn) {
-        const state = context.resources
-          .list<TurnCoachSpec, TurnCoachStatus>(RESOURCE_TYPE)
+        const state = (await context.resources
+          .list<TurnCoachSpec, TurnCoachStatus>(RESOURCE_TYPE))
           .find((resource) => resource.metadata.name === RESOURCE_ID);
 
         if (!state) {
@@ -105,7 +107,7 @@ const turnCoach: PluginPackage = Object.freeze({
           turn.metadata.resourceVersion !==
             state.status.lastCoachedResourceVersion
         ) {
-          context.resources.patchStatus(state, {
+          await context.resources.patchStatus(state, {
             coachedTurns: baton.turns.length,
             lastCoachedAt: turn.metadata.creationTimestamp,
             lastCoachedResourceVersion: turn.metadata.resourceVersion,

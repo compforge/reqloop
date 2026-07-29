@@ -38,7 +38,8 @@ develop a plugin
 
 ## Status
 
-The repository grows with Baton's external plugin runtime. Hello validates the
+The repository grows with Baton's external Plugin host and per-Binding Runner
+processes. Hello validates the
 smallest Package lifecycle; Hello Counter and Turn Coach exercise
 Resource/Reconcile, Baton-owned Resource watches, and durable proposals; ReqLoop is
 the first requirement-loop Package, contributes `/requirements`, and observes
@@ -86,14 +87,14 @@ Proposal contracts.
 
 ## Plugins
 
-- [Hello](./plugins/hello/README.md) — a minimal `0.0.1` Package for validating
+- [Hello](./plugins/hello/README.md) — a minimal `0.1.0` Package for validating
   Marketplace discovery, installation, and loading.
 - [Hello Counter](./plugins/hello-counter/README.md) — demonstrates a writable
   Resource combined with a `baton.turn` Controller.
 - [Turn Coach](./plugins/turn-coach/README.md) — an end-to-end canary for
   Baton-owned Resource replay, persistent state, and proposed input.
 - [ReqLoop](./plugins/reqloop/README.md) — requirement-level coordination;
-  `0.1.18` connects Workspace, Repository, PullRequest, and Requirement
+  `0.2.0` connects Workspace, Repository, PullRequest, and Requirement
   Resources, exposes active requirements as Harness context, and aggregates
   delivery and review progress on the Board.
 

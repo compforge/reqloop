@@ -53,13 +53,13 @@ export function workspaceCandidates(root: string): readonly WorkspaceCandidate[]
   return candidates;
 }
 
-export function discoverWorkspaceRepositories(
+export async function discoverWorkspaceRepositories(
   root: string,
-): readonly WorkspaceRepositoryCheckout[] {
+): Promise<readonly WorkspaceRepositoryCheckout[]> {
   const repositories: WorkspaceRepositoryCheckout[] = [];
   for (const candidate of workspaceCandidates(root)) {
-    if (!isRepositoryRoot(candidate.path)) continue;
-    const identity = currentRepositoryIdentity(candidate.path);
+    if (!(await isRepositoryRoot(candidate.path))) continue;
+    const identity = await currentRepositoryIdentity(candidate.path);
     if (identity) repositories.push({ ...candidate, identity });
   }
   return repositories;

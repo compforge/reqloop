@@ -1,4 +1,4 @@
-import type { ResourceCondition } from "@qiankun01/baton-plugin";
+import type { ResourceCondition } from "@compforge/baton-plugin";
 
 export const REQUIREMENT_CONDITION = Object.freeze({
   observed: "Observed",

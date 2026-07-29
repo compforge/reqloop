@@ -20,7 +20,7 @@ import type {
   ResourceClient,
   ResourceType,
   SourceContext,
-} from "@qiankun01/baton-plugin";
+} from "@compforge/baton-plugin";
 
 import {
   createWorkspaceController,
@@ -73,20 +73,22 @@ function memoryResourceClient(): {
   const resources = new Map<string, Readonly<Resource<unknown, unknown>>>();
   const key = (type: ResourceType, name: string): string =>
     `${type.apiVersion}/${type.kind}/${name}`;
+  const listResources = <TSpec, TStatus>(type: ResourceType) =>
+    [...resources.values()]
+      .filter((resource) =>
+        resource.apiVersion === type.apiVersion &&
+        resource.kind === type.kind
+      ) as readonly Readonly<Resource<TSpec, TStatus>>[];
   const client: ResourceClient = {
-    get<TSpec, TStatus>(type: ResourceType, name: string) {
+    async get<TSpec, TStatus>(type: ResourceType, name: string) {
       const resource = resources.get(key(type, name));
       if (!resource) throw new Error(`missing Resource: ${type.kind}/${name}`);
       return resource as Readonly<Resource<TSpec, TStatus>>;
     },
-    list<TSpec, TStatus>(type: ResourceType) {
-      return [...resources.values()]
-        .filter((resource) =>
-          resource.apiVersion === type.apiVersion &&
-          resource.kind === type.kind
-        ) as readonly Readonly<Resource<TSpec, TStatus>>[];
+    async list<TSpec, TStatus>(type: ResourceType) {
+      return listResources<TSpec, TStatus>(type);
     },
-    create<TSpec, TStatus>(
+    async create<TSpec, TStatus>(
       type: ResourceType,
       input: { name: string; spec: TSpec },
     ) {
@@ -106,10 +108,10 @@ function memoryResourceClient(): {
       resources.set(key(type, input.name), resource);
       return resource;
     },
-    delete(type: ResourceType, name: string) {
+    async delete(type: ResourceType, name: string) {
       resources.delete(key(type, name));
     },
-    patchStatus<TSpec, TStatus>(
+    async patchStatus<TSpec, TStatus>(
       current: Readonly<Resource<TSpec, TStatus>>,
       patch: Partial<TStatus>,
     ) {
@@ -129,8 +131,7 @@ function memoryResourceClient(): {
   };
   return {
     client,
-    list: <TSpec, TStatus>(type: ResourceType) =>
-      client.list<TSpec, TStatus>(type),
+    list: listResources,
   };
 }
 
@@ -168,13 +169,13 @@ afterEach(() => {
 });
 
 describe("Workspace Resource", () => {
-  test("does not mistake directories inside a checkout for repositories", () => {
+  test("does not mistake directories inside a checkout for repositories", async () => {
     const root = testRoot();
     initializeRepository(root, "owner/root-repo");
     mkdirSync(join(root, "src"));
     mkdirSync(join(root, "node_modules"));
 
-    expect(discoverWorkspaceRepositories(root)).toEqual([{
+    expect(await discoverWorkspaceRepositories(root)).toEqual([{
       path: root,
       relativePath: ".",
       identity: {
@@ -206,7 +207,7 @@ describe("Workspace Resource", () => {
     writeFileSync(linkedState, "{");
 
     const resources = memoryResourceClient();
-    let workspace = resources.client.create<
+    let workspace = await resources.client.create<
       WorkspaceSpec,
       WorkspaceStatus
     >(WORKSPACE_RESOURCE_TYPE, {
@@ -216,7 +217,7 @@ describe("Workspace Resource", () => {
     const controller = createWorkspaceController(resources.client, root);
 
     await controller.reconcile(batonSnapshot(root), workspace);
-    workspace = resources.client.get(
+    workspace = await resources.client.get(
       WORKSPACE_RESOURCE_TYPE,
       WORKSPACE_RESOURCE_NAME,
     );
@@ -249,7 +250,7 @@ describe("Workspace Resource", () => {
       repository: "owner/repo-a",
       number: 7,
     }]);
-    expect(controller.present?.(workspace)).toEqual({
+    expect(await controller.present?.(workspace)).toEqual({
       title: "Workspace",
       status: "2 repositories · 1 open PR/MR",
       detail: "1 discovery error(s)",
@@ -259,10 +260,10 @@ describe("Workspace Resource", () => {
     const resourceVersion = workspace.metadata.resourceVersion;
     await controller.reconcile(batonSnapshot(root), workspace);
     expect(
-      resources.client.get<WorkspaceSpec, WorkspaceStatus>(
+      (await resources.client.get<WorkspaceSpec, WorkspaceStatus>(
         WORKSPACE_RESOURCE_TYPE,
         WORKSPACE_RESOURCE_NAME,
-      ).metadata.resourceVersion,
+      )).metadata.resourceVersion,
     ).toBe(resourceVersion);
   });
 
@@ -275,9 +276,9 @@ describe("Workspace Resource", () => {
     const abort = new AbortController();
     const source = new WorkspaceSource(root, { watchIntervalMs: 10 });
 
-    source.start({
+    await source.start({
       signal: abort.signal,
-      emit(resource) {
+      async emit(resource) {
         emitted.push(resource);
       },
       reportError(error) {

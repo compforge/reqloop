@@ -1,21 +1,21 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-const RUNTIME_VERSION_PATTERNS = [
+const PACKAGE_VERSION_PATTERNS = [
   /(\b(?:export\s+)?const\s+[A-Z][A-Z0-9_]*_PACKAGE_VERSION\s*=\s*")[^"]+(")/,
   /(\bversion:\s*")[^"]+(")/,
 ] as const;
 
-export function replaceRuntimeVersion(
+export function replacePackageVersion(
   source: string,
   version: string,
 ): string {
-  for (const pattern of RUNTIME_VERSION_PATTERNS) {
+  for (const pattern of PACKAGE_VERSION_PATTERNS) {
     if (pattern.test(source)) {
       return source.replace(pattern, `$1${version}$2`);
     }
   }
-  throw new Error("runtime version declaration not found");
+  throw new Error("Package version declaration not found");
 }
 
 function main(): void {
@@ -45,9 +45,9 @@ function main(): void {
 
   let nextEntry: string;
   try {
-    nextEntry = replaceRuntimeVersion(entry, version);
+    nextEntry = replacePackageVersion(entry, version);
   } catch (cause) {
-    throw new Error(`could not find runtime version in ${entryPath}`, {
+    throw new Error(`could not find Package version in ${entryPath}`, {
       cause,
     });
   }

@@ -8,7 +8,7 @@ import type {
   BatonSnapshot,
   Resource,
   ResourceClient,
-} from "@qiankun01/baton-plugin";
+} from "@compforge/baton-plugin";
 
 import {
   createRepositoryController,
@@ -242,14 +242,14 @@ const observation: PullRequest = {
 };
 
 describe("PullRequest Resource", () => {
-  test("uses one stable Resource for repeated external observations", () => {
+  test("uses one stable Resource for repeated external observations", async () => {
     const resources = resourceClient();
 
-    const created = upsertPullRequest(
+    const created = await upsertPullRequest(
       resources.client,
       observation,
     );
-    const repeated = upsertPullRequest(
+    const repeated = await upsertPullRequest(
       resources.client,
       observation,
     );
@@ -275,22 +275,22 @@ describe("PullRequest Resource", () => {
     expect(resources.current()).toEqual(repeated);
   });
 
-  test("shows only standalone open PullRequests on the Board", () => {
+  test("shows only standalone open PullRequests on the Board", async () => {
     const controller = createPullRequestController();
     const resources = resourceClient();
-    const pullRequest = upsertPullRequest(
+    const pullRequest = await upsertPullRequest(
       resources.client,
       observation,
     );
 
     expect(controller.resourceType).toBe(PULL_REQUEST_RESOURCE_TYPE);
-    expect(controller.present?.(pullRequest)).toEqual({
+    expect(await controller.present?.(pullRequest)).toEqual({
       title: "qiankunli/reqloop #17",
       status: "Unresolved review threads",
       detail: "Unassociated PullRequest",
       tone: "warning",
     });
-    expect(controller.present?.({
+    expect(await controller.present?.({
       ...pullRequest,
       status: {
         ...pullRequest.status,
@@ -305,7 +305,7 @@ describe("PullRequest Resource", () => {
         },
       },
     })).toBeUndefined();
-    expect(controller.present?.({
+    expect(await controller.present?.({
       ...pullRequest,
       status: { ...pullRequest.status, lifecycle: "merged" },
     })).toBeUndefined();
@@ -313,7 +313,7 @@ describe("PullRequest Resource", () => {
 
   test("refreshes a PullRequest through its configured Forge", async () => {
     const resources = resourceClient();
-    const pullRequest = upsertPullRequest(
+    const pullRequest = await upsertPullRequest(
       resources.client,
       observation,
     );
@@ -357,21 +357,21 @@ describe("PullRequest Resource", () => {
   test("asks once whether a PullRequest joins a Requirement", async () => {
     const resources = resourceClient();
     resources.addRequirement();
-    const pullRequest = upsertPullRequest(
+    const pullRequest = await upsertPullRequest(
       resources.client,
       observation,
     );
     const controller = createPullRequestController(resources.client);
-    const requirement = resources.client.list<
+    const requirement = (await resources.client.list<
       RequirementSpec,
       RequirementStatus
-    >(REQUIREMENT_RESOURCE_TYPE)[0]!;
+    >(REQUIREMENT_RESOURCE_TYPE))[0]!;
 
     expect(controller.watches?.[0]?.resourceType).toBe(
       REQUIREMENT_RESOURCE_TYPE,
     );
     expect(
-      controller.watches?.[0]?.handler.create({ object: requirement }),
+      await controller.watches?.[0]?.handler.create({ object: requirement }),
     ).toEqual([{ name: pullRequest.metadata.name }]);
 
     const prompted = await controller.reconcile(
@@ -434,14 +434,16 @@ describe("PullRequest Resource", () => {
         uid: "uid-req_active",
       },
     });
-    expect(controller.present?.(resources.current()!)).toBeUndefined();
+    expect(
+      await controller.present?.(resources.current()!),
+    ).toBeUndefined();
   });
 
   test("pins legacy Requirement associations to their current uid", async () => {
     const resources = resourceClient();
     resources.addRequirement();
-    const pullRequest = upsertPullRequest(resources.client, observation);
-    const legacy = resources.client.patchStatus(pullRequest, {
+    const pullRequest = await upsertPullRequest(resources.client, observation);
+    const legacy = await resources.client.patchStatus(pullRequest, {
       requirementAssociation: {
         state: "linked",
         requirement: {
@@ -476,7 +478,7 @@ describe("PullRequest Resource", () => {
       ] as const
     ) {
       const resources = resourceClient();
-      const terminal = upsertPullRequest(resources.client, {
+      const terminal = await upsertPullRequest(resources.client, {
         ...observation,
         ...status,
       });
@@ -504,7 +506,7 @@ describe("PullRequest Resource", () => {
 
   test("keeps observing merged PullRequests until review state settles", async () => {
     const resources = resourceClient();
-    const merged = upsertPullRequest(resources.client, {
+    const merged = await upsertPullRequest(resources.client, {
       ...observation,
       lifecycle: "merged",
       reviewThreads: "unknown",
@@ -541,7 +543,7 @@ describe("PullRequest Resource", () => {
 
   test("does not immediately repoll a fresh open observation", async () => {
     const resources = resourceClient();
-    const current = upsertPullRequest(resources.client, {
+    const current = await upsertPullRequest(resources.client, {
       ...observation,
       observedAt: new Date().toISOString(),
     });
@@ -568,15 +570,15 @@ describe("PullRequest Resource", () => {
 
   test("records an ignored review decision and does not remind again", async () => {
     const resources = resourceClient();
-    const pullRequest = upsertPullRequest(
+    const pullRequest = await upsertPullRequest(
       resources.client,
       observation,
     );
     const reviewConnector: PullRequestReviewConnector = {
-      listLatest() {
+      async listLatest() {
         return [];
       },
-      latest() {
+      async latest() {
         return {
           identity: observation.identity,
           key: "review_ignored",
@@ -658,7 +660,7 @@ describe("PullRequest Resource", () => {
       resources.client,
       [forge],
     );
-    const repository = resources.client.create<
+    const repository = await resources.client.create<
       RepositorySpec,
       RepositoryStatus
     >(REPOSITORY_RESOURCE_TYPE, {
@@ -674,7 +676,7 @@ describe("PullRequest Resource", () => {
     const observedWorkspace = resources.workspaceCurrent()!;
     const repositoryWatch = controller.watches?.[0];
     expect(
-      repositoryWatch?.handler.create({ object: observedWorkspace }),
+      await repositoryWatch?.handler.create({ object: observedWorkspace }),
     ).toEqual([{ name: repository.metadata.name }]);
 
     const result = await controller.reconcile({} as never, repository);
@@ -714,19 +716,21 @@ describe("PullRequest Resource", () => {
     expect(replay?.requeueAfterMs).toBeLessThanOrEqual(30_000);
 
     resources.clearWorkspace();
-    expect(repositoryWatch?.handler.update({
+    expect(await repositoryWatch?.handler.update({
       oldObject: observedWorkspace,
       newObject: resources.workspaceCurrent()!,
     })).toEqual([{ name: repository.metadata.name }]);
     expect(
-      repositoryWatch?.handler.delete({ object: observedWorkspace }),
+      await repositoryWatch?.handler.delete({ object: observedWorkspace }),
     ).toEqual([{ name: repository.metadata.name }]);
     await controller.reconcile(
       {} as never,
       resources.repositoryCurrent()!,
     );
     expect(resources.repositoryCurrent()?.status.inScope).toBe(false);
-    expect(controller.present?.(resources.repositoryCurrent()!)).toBeUndefined();
+    expect(
+      await controller.present?.(resources.repositoryCurrent()!),
+    ).toBeUndefined();
     expect(listCalls).toBe(1);
   });
 });

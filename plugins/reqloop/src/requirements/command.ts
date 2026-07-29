@@ -2,7 +2,7 @@ import type {
   Command,
   PluginCommandResult,
   ResourceClient,
-} from "@qiankun01/baton-plugin";
+} from "@compforge/baton-plugin";
 
 import type {
   Requirement,
@@ -102,7 +102,7 @@ export function createRequirementsCommand(
           );
         }
         const requirement = await connector.get(identity);
-        if (resources) upsertRequirement(resources, requirement);
+        if (resources) await upsertRequirement(resources, requirement);
         return message(requirementDetail(requirement));
       }
       const searchQuery =

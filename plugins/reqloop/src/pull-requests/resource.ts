@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import type {
   Resource,
   ResourceClient,
-} from "@qiankun01/baton-plugin";
+} from "@compforge/baton-plugin";
 
 import type {
   PullRequestIdentity,
@@ -64,15 +64,15 @@ export function pullRequestResourceId(
  * Materializes the latest Forge observation without making Connector state a
  * second source of truth. Re-observing the same PR/MR targets the same Resource.
  */
-export function upsertPullRequest(
+export async function upsertPullRequest(
   resources: ResourceClient,
   observation: PullRequest,
-): Readonly<Resource<PullRequestSpec, PullRequestStatus>> {
-  const resource = ensurePullRequestResource(
+): Promise<Readonly<Resource<PullRequestSpec, PullRequestStatus>>> {
+  const resource = await ensurePullRequestResource(
     resources,
     observation.identity,
   );
-  return resources.patchStatus(resource, {
+  return await resources.patchStatus(resource, {
     lifecycle: observation.lifecycle,
     reviewThreads: observation.reviewThreads,
     reviewActivityKey:
@@ -85,18 +85,18 @@ export function upsertPullRequest(
   });
 }
 
-export function ensurePullRequestResource(
+export async function ensurePullRequestResource(
   resources: ResourceClient,
   requestedIdentity: PullRequestIdentity,
-): Readonly<Resource<PullRequestSpec, PullRequestStatus>> {
+): Promise<Readonly<Resource<PullRequestSpec, PullRequestStatus>>> {
   const identity = normalizedIdentity(requestedIdentity);
   const name = pullRequestResourceId(identity);
-  let resource = resources
-    .list<PullRequestSpec, PullRequestStatus>(PULL_REQUEST_RESOURCE_TYPE)
+  let resource = (await resources
+    .list<PullRequestSpec, PullRequestStatus>(PULL_REQUEST_RESOURCE_TYPE))
     .find((candidate) => candidate.metadata.name === name);
 
   if (!resource) {
-    resource = resources.create<PullRequestSpec, PullRequestStatus>(
+    resource = await resources.create<PullRequestSpec, PullRequestStatus>(
       PULL_REQUEST_RESOURCE_TYPE,
       {
         name,
@@ -111,15 +111,15 @@ export function ensurePullRequestResource(
   return resource;
 }
 
-export function upsertPullRequestReview(
+export async function upsertPullRequestReview(
   resources: ResourceClient,
   observation: PullRequestReviewObservation,
-): Readonly<Resource<PullRequestSpec, PullRequestStatus>> {
-  const resource = ensurePullRequestResource(
+): Promise<Readonly<Resource<PullRequestSpec, PullRequestStatus>>> {
+  const resource = await ensurePullRequestResource(
     resources,
     observation.identity,
   );
-  return resources.patchStatus(resource, {
+  return await resources.patchStatus(resource, {
     review: {
       key: observation.key,
       status: observation.status,

@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import type {
   Resource,
   ResourceClient,
-} from "@qiankun01/baton-plugin";
+} from "@compforge/baton-plugin";
 
 import type {
   Requirement,
@@ -59,18 +59,18 @@ function sameIdentity(
   );
 }
 
-export function upsertRequirement(
+export async function upsertRequirement(
   resources: ResourceClient,
   requirement: Requirement,
-): Readonly<Resource<RequirementSpec, RequirementStatus>> {
+): Promise<Readonly<Resource<RequirementSpec, RequirementStatus>>> {
   const identity = normalizedIdentity(requirement);
   const name = requirementResourceId(identity);
-  let resource = resources
-    .list<RequirementSpec, RequirementStatus>(REQUIREMENT_RESOURCE_TYPE)
+  let resource = (await resources
+    .list<RequirementSpec, RequirementStatus>(REQUIREMENT_RESOURCE_TYPE))
     .find((candidate) => candidate.metadata.name === name);
 
   if (!resource) {
-    resource = resources.create<RequirementSpec, RequirementStatus>(
+    resource = await resources.create<RequirementSpec, RequirementStatus>(
       REQUIREMENT_RESOURCE_TYPE,
       {
         name,
@@ -97,7 +97,7 @@ export function upsertRequirement(
     reason: "ObservationSucceeded",
     message: `Requirement was observed from ${identity.source}.`,
   });
-  return resources.patchStatus(resource, {
+  return await resources.patchStatus(resource, {
     observedGeneration,
     conditions,
     externalState: requirement.state,

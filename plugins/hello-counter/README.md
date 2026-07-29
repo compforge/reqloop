@@ -10,7 +10,7 @@ Hello Counter is a Baton PluginPackage that demonstrates:
 
 ```text
 pluginId: qiankunli/hello-counter
-version:  0.0.5
+version:  0.1.0
 ```
 
 ## Features

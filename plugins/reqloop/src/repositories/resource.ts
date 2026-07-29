@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import type {
   Resource,
   ResourceClient,
-} from "@qiankun01/baton-plugin";
+} from "@compforge/baton-plugin";
 
 import type {
   RepositoryIdentity,
@@ -49,20 +49,19 @@ export function repositoryResourceName(
 }
 
 /** Ensures one observation owner exists for each external repository. */
-export function ensureRepositoryResource(
+export async function ensureRepositoryResource(
   resources: ResourceClient,
   requestedIdentity: RepositoryIdentity,
-): Readonly<Resource<RepositorySpec, RepositoryStatus>> {
+): Promise<Readonly<Resource<RepositorySpec, RepositoryStatus>>> {
   const identity = normalizedIdentity(requestedIdentity);
   const name = repositoryResourceName(identity);
-  let resource = resources
-    .list<RepositorySpec, RepositoryStatus>(
-      REPOSITORY_RESOURCE_TYPE,
-    )
+  let resource = (await resources.list<RepositorySpec, RepositoryStatus>(
+    REPOSITORY_RESOURCE_TYPE,
+  ))
     .find((candidate) => candidate.metadata.name === name);
 
   if (!resource) {
-    resource = resources.create<RepositorySpec, RepositoryStatus>(
+    resource = await resources.create<RepositorySpec, RepositoryStatus>(
       REPOSITORY_RESOURCE_TYPE,
       {
         name,

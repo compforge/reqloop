@@ -9,7 +9,7 @@ Marketplace 索引、跨 Plugin 约定和开发工具；`plugins/` 下每个子�
 reqloop 中的 Plugin 可以分别处理需求、交付、部署、评测或其他长期闭环，但 Requirement、
 Deployment、Evaluation 等领域类型仍归拥有它们的 Plugin，不进入 Baton core。Plugin 只依赖
 Baton 发布的公共 Plugin API，不能相对路径导入 Baton 源码或持有其内部 Store、Controller、
-Harness runtime。
+Harness 进程或 SDK 句柄。
 
 ## 代码地图与核心模块
 
@@ -41,7 +41,9 @@ reqloop/
 ## 关键约定
 
 1. Marketplace 只负责发现和交付不可变的 PluginPackage；PluginInstance、Binding、Resource、
-   Proposal 和调度状态归 BatonSession 及 Baton Manager。
+   Proposal 和调度状态归 BatonSession 及 Baton Manager。三方 Package 按活动 Binding 进入
+   Baton Runner 进程，`@compforge/baton-plugin` 只用 `import type`，所有公开回调保持 async；
+   Plugin 自建的 Git/CLI 子进程也必须使用异步 API，并显式设置 timeout、取消和输出上限。
 2. 每个 Plugin 的 manifest 声明稳定身份和可审阅权限；运行期能力通过 Command 与 Controller
    注册，Resource kind 在 Marketplace 内保持唯一。
 3. Plugin 的领域逻辑与外部 Connector 分离：Source 发现外部对象并贡献其 Controller 拥有的
