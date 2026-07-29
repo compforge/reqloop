@@ -51,6 +51,7 @@ file is `~/.baton/plugins/compforge%2Freqloop/config.json`:
     "llmops": {
       "provider": "meego",
       "projectKey": "<Meegle project key>",
+      "userKey": "<optional Meegle user_key>",
       "categories": ["story", "issue"]
     },
     "another-meego-source": {
@@ -80,6 +81,11 @@ file is `~/.baton/plugins/compforge%2Freqloop/config.json`:
 
 `categories` defaults to `["story", "issue"]`. Configuration is runtime data,
 not part of the PluginPackage, and must not be committed to this repository.
+When `userKey` is present, `/requirements` returns only work items where that
+user is a current participant; omitting it preserves the unfiltered behavior.
+Use `meegle user me` to read your own `user_key`, or resolve another person by
+name or email with
+`meegle user search --user-keys "<name-or-email>" --project-key <projectKey>`.
 The `forges` shape follows devloop: its map key is the PullRequest `source`,
 explicit `type` wins, `github.com` and `github.*` infer GitHub, and other hosts
 default to GitLab. `api_host` points an origin alias at the real API host.

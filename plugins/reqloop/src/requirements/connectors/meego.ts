@@ -23,6 +23,7 @@ export interface MeegoRequirementConfig {
   readonly provider: "meego";
   readonly projectKey: string;
   readonly profile?: string;
+  readonly userKey?: string;
   readonly categories: readonly string[];
 }
 
@@ -129,6 +130,10 @@ export function loadMeegoRequirementConfigs(
       profile: optionalString(
         `reqloop requirement source ${source} profile`,
         requirement.profile,
+      ),
+      userKey: optionalString(
+        `reqloop requirement source ${source} userKey`,
+        requirement.userKey,
       ),
       categories: Object.freeze(configuredCategories),
     }));
@@ -446,6 +451,16 @@ function workItemUrl(
   ).toString();
 }
 
+function mqlUserKeyLiteral(userKey: string): string {
+  // `<id:...>` makes MQL resolve the value as a userkey, not a display name.
+  return `'<id:${userKey.replaceAll("'", "''")}>'`;
+}
+
+function participantFilter(userKey: string): string {
+  return "WHERE array_contains(" +
+    `participate_persons(), ${mqlUserKeyLiteral(userKey)})`;
+}
+
 function stringList(value: unknown): readonly string[] | undefined {
   if (Array.isArray(value)) {
     const values = value
@@ -494,6 +509,9 @@ export class MeegleCliRequirementConnector
           "SELECT `work_item_id`, `name`, `current_status_operator`,",
           "`work_item_status`, `updated_at`",
           `FROM \`${this.config.projectKey}\`.\`${category}\``,
+          ...(this.config.userKey
+            ? [participantFilter(this.config.userKey)]
+            : []),
           "ORDER BY `updated_at` DESC",
           "LIMIT 50",
         ].join(" ");
