@@ -1,4 +1,5 @@
 import type {
+  PluginLogger,
   Source,
   SourceContext,
 } from "@compforge/baton-plugin";
@@ -18,6 +19,7 @@ const DEFAULT_MAX_RESOURCES = 20;
 const DEFAULT_RESYNC_INTERVAL_MS = 30_000;
 
 interface ForgePullRequestSourceOptions {
+  readonly logger?: PluginLogger;
   readonly maxPerRepository?: number;
   readonly maxResources?: number;
   readonly resyncIntervalMs?: number;
@@ -46,10 +48,13 @@ export class ForgePullRequestSource implements Source<PullRequestSpec> {
   private readonly maxPerRepository: number;
   private readonly maxResources: number;
   private readonly resyncIntervalMs: number;
+  private readonly logger?: PluginLogger;
   private readonly shouldTrack: (
     checkout: WorkspaceRepositoryCheckout,
   ) => Promise<boolean>;
   private readonly failureKeys = new Map<string, string>();
+  private lastScopeKey?: string;
+  private lastResultKey?: string;
   private refreshing?: Promise<void>;
 
   constructor(
@@ -75,6 +80,7 @@ export class ForgePullRequestSource implements Source<PullRequestSpec> {
       "ForgePullRequestSource resyncIntervalMs",
       options.resyncIntervalMs ?? DEFAULT_RESYNC_INTERVAL_MS,
     );
+    this.logger = options.logger;
     this.shouldTrack = options.shouldTrack ?? (async () => true);
   }
 
@@ -107,20 +113,51 @@ export class ForgePullRequestSource implements Source<PullRequestSpec> {
   private async refresh(
     context: SourceContext<PullRequestSpec>,
   ): Promise<void> {
+    const checkouts = await discoverWorkspaceRepositories(this.root);
+    const tracked: {
+      readonly checkout: WorkspaceRepositoryCheckout;
+      readonly connector: ForgeConnector;
+    }[] = [];
+    let skippedByActivity = 0;
+    let skippedWithoutConnector = 0;
+    for (const checkout of checkouts) {
+      if (context.signal.aborted) return;
+      if (!(await this.shouldTrack(checkout))) {
+        skippedByActivity += 1;
+        continue;
+      }
+      const connector = this.connectors.get(checkout.identity.source);
+      if (!connector) {
+        skippedWithoutConnector += 1;
+        continue;
+      }
+      tracked.push({ checkout, connector });
+    }
+    this.logScope(
+      checkouts.length,
+      tracked.map(({ checkout }) => checkout),
+      skippedByActivity,
+      skippedWithoutConnector,
+    );
+
     const pullRequests: PullRequestIdentity[] = [];
     const rateLimitedSources = new Set<string>();
-    for (const checkout of await discoverWorkspaceRepositories(this.root)) {
+    let listedRepositories = 0;
+    let failedRepositories = 0;
+    let skippedAfterRateLimit = 0;
+    for (const { checkout, connector } of tracked) {
       if (context.signal.aborted) return;
-      if (!(await this.shouldTrack(checkout))) continue;
       const { identity } = checkout;
-      if (rateLimitedSources.has(identity.source)) continue;
-      const connector = this.connectors.get(identity.source);
-      if (!connector) continue;
+      if (rateLimitedSources.has(identity.source)) {
+        skippedAfterRateLimit += 1;
+        continue;
+      }
       try {
         const observations = await connector.list(identity.repository, {
           state: "open",
           limit: this.maxPerRepository,
         });
+        listedRepositories += 1;
         this.failureKeys.delete(
           `${identity.source}/${identity.repository}`,
         );
@@ -129,6 +166,7 @@ export class ForgePullRequestSource implements Source<PullRequestSpec> {
           return pullRequest;
         }));
       } catch (error) {
+        failedRepositories += 1;
         this.reportFailure(context, identity, error);
         if (isForgeRateLimitError(error)) {
           rateLimitedSources.add(identity.source);
@@ -136,13 +174,86 @@ export class ForgePullRequestSource implements Source<PullRequestSpec> {
       }
     }
 
-    for (const identity of pullRequests.slice(0, this.maxResources)) {
+    const admitted = pullRequests.slice(0, this.maxResources);
+    for (const identity of admitted) {
       if (context.signal.aborted) return;
       await context.emit({
         name: pullRequestResourceId(identity),
         spec: { identity },
       });
     }
+    this.logResult({
+      admitted,
+      discovered: pullRequests.length,
+      failedRepositories,
+      listedRepositories,
+      skippedAfterRateLimit,
+    });
+  }
+
+  private logScope(
+    checkoutCount: number,
+    tracked: readonly WorkspaceRepositoryCheckout[],
+    skippedByActivity: number,
+    skippedWithoutConnector: number,
+  ): void {
+    const repositories = tracked.map(({ identity }) =>
+      `${identity.source}/${identity.repository}`
+    ).sort();
+    const key = JSON.stringify([
+      checkoutCount,
+      repositories,
+      skippedByActivity,
+      skippedWithoutConnector,
+    ]);
+    if (key === this.lastScopeKey) return;
+    this.lastScopeKey = key;
+    this.logger?.write({
+      level: "info",
+      component: "pull-request-source.forge",
+      message: "Forge PullRequest discovery scope updated",
+      details: {
+        discoveredCheckouts: checkoutCount,
+        trackedRepositories: tracked.length,
+        skippedByActivity,
+        skippedWithoutConnector,
+        repositories: repositories.join(",") || null,
+      },
+    });
+  }
+
+  private logResult(result: {
+    readonly admitted: readonly PullRequestIdentity[];
+    readonly discovered: number;
+    readonly failedRepositories: number;
+    readonly listedRepositories: number;
+    readonly skippedAfterRateLimit: number;
+  }): void {
+    const pullRequests = result.admitted.map((identity) =>
+      `${identity.source}/${identity.repository}#${identity.number}`
+    ).sort();
+    const key = JSON.stringify([
+      pullRequests,
+      result.discovered,
+      result.failedRepositories,
+      result.listedRepositories,
+      result.skippedAfterRateLimit,
+    ]);
+    if (key === this.lastResultKey) return;
+    this.lastResultKey = key;
+    this.logger?.write({
+      level: "info",
+      component: "pull-request-source.forge",
+      message: "Forge PullRequest discovery completed",
+      details: {
+        listedRepositories: result.listedRepositories,
+        failedRepositories: result.failedRepositories,
+        skippedAfterRateLimit: result.skippedAfterRateLimit,
+        discoveredPullRequests: result.discovered,
+        admittedPullRequests: result.admitted.length,
+        pullRequests: pullRequests.join(",") || null,
+      },
+    });
   }
 
   private assertWithinRepository(

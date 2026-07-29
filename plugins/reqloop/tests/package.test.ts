@@ -21,6 +21,7 @@ import type {
   ContextProvider,
   Controller,
   PluginActivationContext,
+  PluginLogEntry,
   Resource,
   Source,
   SourceContext,
@@ -51,6 +52,9 @@ import reqloop, {
 } from "../src/index.ts";
 
 const roots: string[] = [];
+const noopLogger = {
+  write() {},
+};
 
 function testRoot(): string {
   const root = mkdtempSync(join(tmpdir(), "reqloop-review-"));
@@ -349,8 +353,14 @@ describe("ReqLoop PluginPackage", () => {
     const pullRequestEmits: Parameters<
       SourceContext<PullRequestSpec>["emit"]
     >[0][] = [];
+    const logs: PluginLogEntry[] = [];
     const pullRequestAbort = new AbortController();
     const pullRequestSource = new ForgePullRequestSource(root, [forge], {
+      logger: {
+        write(entry) {
+          logs.push(entry);
+        },
+      },
       maxPerRepository: 2,
       maxResources: 1,
       resyncIntervalMs: 60_000,
@@ -387,6 +397,23 @@ describe("ReqLoop PluginPackage", () => {
         },
       },
     }]);
+    expect(logs).toEqual([
+      expect.objectContaining({
+        level: "info",
+        message: "Forge PullRequest discovery scope updated",
+        details: expect.objectContaining({
+          trackedRepositories: 1,
+        }),
+      }),
+      expect.objectContaining({
+        level: "info",
+        message: "Forge PullRequest discovery completed",
+        details: expect.objectContaining({
+          admittedPullRequests: 1,
+          discoveredPullRequests: 2,
+        }),
+      }),
+    ]);
   });
 
   test("interprets only recent started tool calls and requires write dominance", () => {
@@ -486,8 +513,14 @@ describe("ReqLoop PluginPackage", () => {
       SourceContext<PullRequestSpec>["emit"]
     >[0][] = [];
     const errors: unknown[] = [];
+    const logs: PluginLogEntry[] = [];
     const abort = new AbortController();
     const source = new DevloopPullRequestSource(root, {
+      logger: {
+        write(entry) {
+          logs.push(entry);
+        },
+      },
       path,
       watchIntervalMs: 10,
     });
@@ -525,6 +558,14 @@ describe("ReqLoop PluginPackage", () => {
         },
       },
     }]);
+    expect(logs).toContainEqual(expect.objectContaining({
+      level: "info",
+      message: "Observed open PullRequests in devloop state",
+      details: expect.objectContaining({
+        openPullRequests: 1,
+        pullRequests: "30",
+      }),
+    }));
   });
 
   test("Devloop Source admits review observations without creating in the Connector", async () => {
@@ -604,9 +645,15 @@ describe("ReqLoop PluginPackage", () => {
     let command: Command | undefined;
     let contextProvider: ContextProvider | undefined;
     const resourceTypes: { apiVersion: string; kind: string }[] = [];
+    const logs: PluginLogEntry[] = [];
     let workspaceController: Controller<unknown, unknown> | undefined;
     const context = {
       session: { batonSessionId: "bs_test", cwd: root },
+      logger: {
+        write(entry: PluginLogEntry) {
+          logs.push(entry);
+        },
+      },
       registerCommand(contribution: Command) {
         command = contribution;
       },
@@ -640,6 +687,16 @@ describe("ReqLoop PluginPackage", () => {
     expect(workspaceController?.sources?.[0]).toBeInstanceOf(
       WorkspaceSource,
     );
+    expect(logs).toContainEqual({
+      level: "info",
+      component: "lifecycle",
+      message: "ReqLoop activated",
+      details: {
+        cwd: root,
+        requirementConnectors: 1,
+        forgeConnectors: 0,
+      },
+    });
     expect(contextProvider?.kind).toBe("requirement");
     expect(await command!.execute({ argument: "intake" })).toMatchObject({
       kind: "picker",
@@ -935,6 +992,7 @@ describe("ReqLoop PluginPackage", () => {
     let command: Command | undefined;
     const context = {
       session: { batonSessionId: "bs_test", cwd: testRoot() },
+      logger: noopLogger,
       registerCommand(contribution: Command) {
         command = contribution;
       },
@@ -1001,6 +1059,7 @@ describe("ReqLoop PluginPackage", () => {
           return [];
         },
       },
+      logger: noopLogger,
       registerCommand() {},
       registerContextProvider() {},
       registerController(controller: Controller<unknown, unknown>) {
@@ -1160,6 +1219,7 @@ describe("ReqLoop PluginPackage", () => {
       },
       session: { batonSessionId: "bs_test", cwd: root },
       resources,
+      logger: noopLogger,
       registerCommand() {},
       registerContextProvider() {},
       registerController(

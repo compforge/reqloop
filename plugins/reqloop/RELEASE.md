@@ -1,6 +1,12 @@
 # ReqLoop releases
 
-Current version: `0.2.7`
+Current version: `0.2.8`
+
+## 0.2.8
+
+- Add low-noise lifecycle and PullRequest discovery diagnostics.
+- Document durable Resource observations and limits on unnecessary external
+  API calls.
 
 ## 0.2.7
 

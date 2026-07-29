@@ -49,7 +49,7 @@ import { WorkspaceSource } from "./workspaces/source.ts";
 import { withUserDeletionPolicy } from "./retention.ts";
 
 export const REQLOOP_PLUGIN_ID = "compforge/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.2.7";
+export const REQLOOP_PACKAGE_VERSION = "0.2.8";
 
 function currentRepo(context: PluginActivationContext): string {
   const cwd = context.session.cwd;
@@ -119,9 +119,11 @@ export function createReqloopPackage(options: {
       ];
       const pullRequestSources = options.pullRequestSources ?? [
         new ForgePullRequestSource(cwd, forgeConnectors, {
+          logger: context.logger,
           shouldTrack: ({ path }) => toolActivity.shouldTrackCheckout(path),
         }),
         new DevloopPullRequestSource(cwd, {
+          logger: context.logger,
           reviewObservations: () => reviewConnector.listLatest(),
         }),
       ];
@@ -157,6 +159,16 @@ export function createReqloopPackage(options: {
           ),
         ),
       );
+      context.logger.write({
+        level: "info",
+        component: "lifecycle",
+        message: "ReqLoop activated",
+        details: {
+          cwd,
+          requirementConnectors: requirementConnectors.length,
+          forgeConnectors: forgeConnectors.length,
+        },
+      });
     },
   });
 }
