@@ -155,19 +155,8 @@ export function createWorkspaceController(
         observedAt: new Date().toISOString(),
       });
     },
-    async present(resource) {
-      const repositoryCount = resource.status.repositories?.length ?? 0;
-      const openPullRequests = resource.status.openPullRequests ?? 0;
-      const discoveryErrors = resource.status.discoveryErrors?.length ?? 0;
-      return {
-        title: "Workspace",
-        status:
-          `${repositoryCount} repositories · ${openPullRequests} open PR/MR`,
-        detail: discoveryErrors > 0
-          ? `${discoveryErrors} discovery error(s)`
-          : "BatonSession cwd",
-        tone: discoveryErrors > 0 ? "warning" : "muted",
-      };
+    async present() {
+      return undefined;
     },
   };
 }

@@ -1,7 +1,7 @@
 import {
   jsonObject,
   loadReqloopConfig,
-  REQLOOP_CONFIG_PATH,
+  type ReqloopConfigPaths,
 } from "../../config.ts";
 import type { Fetch } from "./http.ts";
 import { GitHubForgeConnector } from "./github.ts";
@@ -63,10 +63,10 @@ function environmentToken(
 
 /** Parses the devloop-compatible host-keyed `forges` registry. */
 export function loadForgeConfigs(
-  path: string = REQLOOP_CONFIG_PATH,
+  paths: ReqloopConfigPaths,
   environment: Environment = process.env,
 ): readonly ForgeConfig[] {
-  const config = loadReqloopConfig(path);
+  const config = loadReqloopConfig(paths);
   if (!config) return [];
   const forges = config.forges === undefined
     ? {}
@@ -101,14 +101,14 @@ export function loadForgeConfigs(
 }
 
 export function createForgeConnectors(
-  path: string = REQLOOP_CONFIG_PATH,
+  paths: ReqloopConfigPaths,
   options: {
     readonly environment?: Environment;
     readonly fetch?: Fetch;
   } = {},
 ): readonly ForgeConnector[] {
   const connectors: ForgeConnector[] = [];
-  for (const config of loadForgeConfigs(path, options.environment)) {
+  for (const config of loadForgeConfigs(paths, options.environment)) {
     if (!config.token) continue;
     connectors.push(
       config.provider === "github"

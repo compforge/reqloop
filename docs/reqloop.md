@@ -143,7 +143,8 @@ checkout 执行准入并按稳定 identity emit Repository，`DevloopRepositoryS
 多个发现入口指向同一仓库时复用同一 Resource；发现 PR/MR 或创建 Requirement 本身都不是新建
 Repository 的理由。
 RepositoryController Watches Workspace 的旧、新成员引用；默认 Workspace 入口不再引用某个
-Repository 时，将其标记为离开观察范围并从 Board 隐藏，重新进入时复用原 Resource。
+Repository 时，将其标记为离开观察范围，重新进入时复用原 Resource。Workspace 与 Repository
+都是内部观察和聚合 Resource，`present()` 固定返回空，不进入 Board。
 
 `DevloopPullRequestSource` 读取 `.devloop/pr.json`，作为当前 PR 的本地低延迟入口；
 `ForgePullRequestSource` 周期性调用 `ForgeConnector.list()`，按自己的有界准入策略贡献近期开放
@@ -197,7 +198,7 @@ Controller 只有看到 Baton 已持久化的 Interaction snapshot 后才写最�
 `prompted` 但 Interaction 尚未落盘，则幂等返回同一 `decisionKey`，避免崩溃窗口丢失问题。
 PullRequestController 还 Watches Requirement 从非活跃变为活跃，把尚待关联的开放 PR 重新入队。
 
-Board 展示活跃 Requirement，也单独展示孤立的活跃 PullRequest。PullRequest 关联 Requirement
+Board 当前只展示活跃 Requirement 和孤立的活跃 PullRequest。PullRequest 关联 Requirement
 后仍保持独立 Resource 和生命周期，但 Board 以 Requirement 为主，不再重复生成 PR 卡片；
 Requirement status 汇总关联 PR 的 lifecycle、merge conflict 和 unresolved review thread。
 merged 和 closed 的 PullRequest 都从 Board 消失；closed 与 review 状态已收敛的 merged
@@ -212,8 +213,8 @@ terminating 删除流程。用户还可以为任一 reqloop Resource 设置绝�
 
 | Resource | 进入系统 | 活跃期收敛 | 当前退出行为 |
 |---|---|---|---|
-| Workspace | `WorkspaceSource` 为当前 session emit 单例 | `WorkspaceController` 重扫本地范围并投影已准入对象 | 默认保留；设置 `delete-after` 后到期删除 |
-| Repository | `ForgeRepositorySource` 与 `DevloopRepositorySource` 按稳定 identity 准入 | `RepositoryController` 汇总已存在 PR 并维护 `inScope` | 离开 workspace 时设为 `inScope=false` 并从 Board 隐藏；默认保留，可设置期限 |
+| Workspace | `WorkspaceSource` 为当前 session emit 单例 | `WorkspaceController` 重扫本地范围并投影已准入对象；不进入 Board | 默认保留；设置 `delete-after` 后到期删除 |
+| Repository | `ForgeRepositorySource` 与 `DevloopRepositorySource` 按稳定 identity 准入 | `RepositoryController` 汇总已存在 PR 并维护 `inScope`；不进入 Board | 离开 workspace 时设为 `inScope=false`；默认保留，可设置期限 |
 | PullRequest | `ForgePullRequestSource` 与 `DevloopPullRequestSource` 各自按有界策略准入 | `PullRequestController` 用 `ForgeConnector.get()` 与 review observation 更新 status | merged / closed 后从 Board 隐藏并按现有条件停止轮询；默认保留，可设置期限 |
 | Requirement | 用户通过 `/requirements` 明确选择后由 Command 创建或恢复 | `RequirementController` 观察外部需求并汇总关联 PR | completed / closed 后从 Board 隐藏；默认保留，可设置期限 |
 
@@ -421,15 +422,16 @@ Discussions API，并只把 `resolvable` discussion 当作 review thread。相�
 部署目标和多个 evaluation source。配置 schema 和使用方式由 reqloop 定义；Credential 当前随
 具名 Connector 存在本机配置中，后续再迁移到 Baton 的 secret binding。
 
-首版用户级连接配置临时独立存放在 `~/.baton/plugins/reqloop.json`，以 source 为 key
-同时启用多个 Connector；Meego source 只保存 `projectKey`、可选 CLI profile 和 category
-列表，OAuth token 由 Meegle CLI 管理。`forges` 沿用 devloop 的 host-keyed registry：
+连接配置使用 Baton 注入的 Plugin data directories，在 `global`、`project`、`session` 三个
+scope 中分别读取 `config.json`，并按由宽到窄的顺序递归覆盖；Instance scope 不承载配置。
+配置以 source 为 key 同时启用多个 Connector；Meego source 只保存 `projectKey`、可选 CLI
+profile 和 category 列表，OAuth token 由 Meegle CLI 管理。`forges` 沿用 devloop 的
+host-keyed registry：
 map key 同时是 PullRequest `source`，显式 `type` 优先；`github.com` / `github.*` 默认识别为
 GitHub，其余默认 GitLab；`api_host` 可将 SSH alias 或 mirror 指向真实 API host。GitHub token
 按 `GITHUB_TOKEN`、`GH_TOKEN`、配置 `token` 的顺序读取，GitLab 按 `GITLAB_TOKEN`、配置
-`token` 的顺序读取。它不与其它 Plugin 混入同一个配置文件。待 Baton
-提供正式的 Plugin config/data 路径契约后再迁移，reqloop 的运行时状态仍不能进入配置文件。
-Requirement 始终是 BatonSession-scoped Resource。
+`token` 的顺序读取。每个 scope 的目录已经按 `pluginId` 隔离，不与其它 Plugin 混用；
+reqloop 的运行时状态仍不能进入配置文件。Requirement 始终是 BatonSession-scoped Resource。
 
 首版 Connector 随 reqloop package 交付，不急于开放第三方 Connector SDK。等出现独立发布、
 版本兼容和多团队贡献的真实需求后，再设计 reqloop 自己的扩展机制，避免提前在 Baton 中恢复

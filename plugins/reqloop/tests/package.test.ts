@@ -531,7 +531,10 @@ describe("ReqLoop PluginPackage", () => {
       },
     } as unknown as PluginActivationContext;
 
-    await createReqloopPackage({ requirementConnector }).activate(context);
+    await createReqloopPackage({
+      requirementConnector,
+      forgeConnectors: [],
+    }).activate(context);
     expect(command).toMatchObject({
       commandId: "requirements",
       name: "requirements",
@@ -602,8 +605,8 @@ describe("ReqLoop PluginPackage", () => {
     ]);
   });
 
-  test("loads multiple Meego requirement sources from standalone config", () => {
-    const path = join(testRoot(), "reqloop.json");
+  test("loads multiple Meego requirement sources from config", () => {
+    const path = join(testRoot(), "config.json");
     writeFileSync(
       path,
       JSON.stringify({
@@ -812,6 +815,7 @@ describe("ReqLoop PluginPackage", () => {
         connector("primary", "story", "REQ-1"),
         connector("secondary", "issue", "BUG-2"),
       ],
+      forgeConnectors: [],
     }).activate(context);
 
     expect(await command!.execute({ argument: "" })).toMatchObject({

@@ -4,6 +4,7 @@ import type {
   Source,
 } from "@compforge/baton-plugin";
 
+import { reqloopConfigPaths } from "./config.ts";
 import {
   createRepositoryController,
 } from "./repositories/controller.ts";
@@ -46,7 +47,7 @@ import { WorkspaceSource } from "./workspaces/source.ts";
 import { withUserDeletionPolicy } from "./retention.ts";
 
 export const REQLOOP_PLUGIN_ID = "compforge/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.2.1";
+export const REQLOOP_PACKAGE_VERSION = "0.2.2";
 
 function currentRepo(context: PluginActivationContext): string {
   const cwd = context.session.cwd;
@@ -73,7 +74,9 @@ export function createReqloopPackage(options: {
         options.requirementConnectors ??
         (options.requirementConnector
           ? [options.requirementConnector]
-          : createMeegoRequirementConnectors());
+          : createMeegoRequirementConnectors(
+            reqloopConfigPaths(context.dataDirs),
+          ));
       context.registerCommand(
         createRequirementsCommand(requirementConnectors, context.resources),
       );
@@ -91,7 +94,9 @@ export function createReqloopPackage(options: {
         ),
       );
       const forgeConnectors =
-        options.forgeConnectors ?? createForgeConnectors();
+        options.forgeConnectors ?? createForgeConnectors(
+          reqloopConfigPaths(context.dataDirs),
+        );
       const cwd = currentRepo(context);
       const workspaceSources =
         options.workspaceSources ?? [new WorkspaceSource(cwd)];

@@ -51,8 +51,9 @@ reqloop/
    Connector 只负责协议调用和 DTO 映射，不能反向拥有 loop。
    Requirement/Forge 等对象保持 provider-neutral，provider 属于 Connector 或其绑定的
    repository，不摊进每个领域对象。连接参数归 Plugin 配置，cursor/cache 归 Baton 注入的
-   host-owned data 目录，Requirement 等 loop 状态归 session Resource；data 目录契约落地前
-   不得在 Plugin 内硬编码 `~/.baton` 路径。Source omission 和 Board 隐藏不触发删除；用户可用
+   host-owned data 目录，Requirement 等 loop 状态归 session Resource；配置只从
+   `context.dataDirs` 的 global/project/session scope 读取，Instance 不承载配置。Source omission
+   和 Board 隐藏不触发删除；用户可用
    `delete-after` annotation 给出明确期限，默认仍保留 Resource。
 4. 本地开发可以使用 link 来源，但发布版本必须不可变；来源 provenance 不进入 `pluginId` 或
    PluginInstance 身份。
