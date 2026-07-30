@@ -5,7 +5,6 @@ import {
   test,
 } from "bun:test";
 import {
-  appendFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -24,7 +23,6 @@ import type {
   PluginLogContext,
   PluginLogger,
   PluginLogLevel,
-  Resource,
   Source,
   SourceContext,
 } from "@compforge/baton-plugin";
@@ -32,8 +30,9 @@ import type {
 import reqloop, {
   createReqloopPackage,
   DevloopPullRequestSource,
-  DevloopReviewConnector,
   DevloopToolActivityPolicy,
+  EVALUATION_RESOURCE_TYPE,
+  type EvaluationSpec,
   type ForgeConnector,
   ForgePullRequestSource,
   interpretToolActivity,
@@ -41,9 +40,7 @@ import reqloop, {
   loadMeegoRequirementConfigs,
   MeegleCliRequirementConnector,
   PULL_REQUEST_RESOURCE_TYPE,
-  pullRequestResourceId,
   type PullRequestSpec,
-  type PullRequestStatus,
   type RepositorySpec,
   type RequirementConnector,
   REQUIREMENT_RESOURCE_TYPE,
@@ -86,18 +83,6 @@ function testRoot(): string {
   return root;
 }
 
-function historyPath(root: string): string {
-  return join(root, ".devloop", "review-history.jsonl");
-}
-
-function appendReview(
-  path: string,
-  record: Record<string, unknown>,
-): void {
-  mkdirSync(dirname(path), { recursive: true });
-  appendFileSync(path, `${JSON.stringify(record)}\n`);
-}
-
 function initializeRepository(root: string): void {
   for (const args of [
     ["init"],
@@ -112,32 +97,6 @@ function initializeRepository(root: string): void {
       throw new Error(result.stderr.toString());
     }
   }
-}
-
-function commitRepository(root: string): string {
-  const commit = Bun.spawnSync([
-    "git",
-    "-c",
-    "user.name=ReqLoop Test",
-    "-c",
-    "user.email=reqloop@example.com",
-    "commit",
-    "--allow-empty",
-    "-m",
-    "initial",
-  ], {
-    cwd: root,
-    stdout: "ignore",
-    stderr: "pipe",
-  });
-  if (commit.exitCode !== 0) throw new Error(commit.stderr.toString());
-  const head = Bun.spawnSync(["git", "rev-parse", "HEAD"], {
-    cwd: root,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  if (head.exitCode !== 0) throw new Error(head.stderr.toString());
-  return head.stdout.toString().trim();
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {
@@ -191,123 +150,6 @@ describe("ReqLoop PluginPackage", () => {
     expect(reqloop.version).toBe(manifest.version);
     expect(packageJson.version).toBe(manifest.version);
     expect(manifest.entry).toBe("./src/index.ts");
-  });
-
-  test("reads only the current checkout's latest terminal review", async () => {
-    const root = testRoot();
-    const path = historyPath(root);
-    appendReview(path, {
-      ts: 1,
-      status: "success",
-      sha: "current-head",
-      count: 1,
-      failed: 0,
-      pull_request: {
-        source: "github.com",
-        repository: "owner/repo",
-        number: 7,
-      },
-      findings: [{ path: "src/app.ts", msg: "missing cancellation" }],
-    });
-    appendReview(path, {
-      ts: 2,
-      status: "success",
-      sha: "another-worktree",
-      branch: "feature",
-      count: 2,
-      failed: 0,
-      pull_request: {
-        source: "github.com",
-        repository: "owner/repo",
-        number: 8,
-      },
-    });
-    appendReview(path, {
-      ts: 3,
-      status: "success",
-      sha: "current-head",
-      count: 9,
-      failed: 0,
-    });
-    const connector = new DevloopReviewConnector(root, {
-      historyPath: path,
-      checkout: () => ({ headSha: "current-head", branch: "feature" }),
-    });
-
-    expect((await connector.listLatest())[0]).toMatchObject({
-      identity: {
-        source: "github.com",
-        repository: "owner/repo",
-        number: 7,
-      },
-      sha: "current-head",
-      count: 1,
-      findings: [
-        {
-          path: "src/app.ts",
-          message: "missing cancellation",
-        },
-      ],
-    });
-  });
-
-  test("reads review observations from every Workspace checkout", async () => {
-    const root = testRoot();
-    const first = join(root, "repo-a");
-    const second = join(root, "repo-b");
-    mkdirSync(first);
-    mkdirSync(second);
-    initializeRepository(first);
-    initializeRepository(second);
-    const firstHead = commitRepository(first);
-    const secondHead = commitRepository(second);
-    appendReview(historyPath(first), {
-      status: "success",
-      sha: firstHead,
-      count: 1,
-      failed: 0,
-      pull_request: {
-        source: "github.com",
-        repository: "owner/repo-a",
-        number: 7,
-      },
-    });
-    appendReview(historyPath(second), {
-      status: "success",
-      sha: secondHead,
-      count: 2,
-      failed: 0,
-      pull_request: {
-        source: "github.com",
-        repository: "owner/repo-b",
-        number: 8,
-      },
-    });
-    const connector = new DevloopReviewConnector(root, {
-      workspaceCheckouts: () => [
-        {
-          path: first,
-          source: "github.com",
-          repository: "owner/repo-a",
-        },
-        {
-          path: second,
-          source: "github.com",
-          repository: "owner/repo-b",
-        },
-      ],
-    });
-
-    expect(
-      (await connector.listLatest()).map(
-        ({ identity }) => identity.repository,
-      ),
-    ).toEqual(["owner/repo-a", "owner/repo-b"]);
-    expect((await connector.latest({
-      source: "github.com",
-      repository: "owner/repo-b",
-      number: 8,
-    }))?.count).toBe(2);
   });
 
   test("contributes the current checkout through the Workspace Source", async () => {
@@ -616,48 +458,6 @@ describe("ReqLoop PluginPackage", () => {
     }));
   });
 
-  test("Devloop Source admits review observations without creating in the Connector", async () => {
-    const root = testRoot();
-    initializeRepository(root);
-    const emitted: Parameters<
-      SourceContext<PullRequestSpec>["emit"]
-    >[0][] = [];
-    const source = new DevloopPullRequestSource(root, {
-      reviewObservations: async () => [{
-        identity: {
-          source: "github.com",
-          repository: "compforge/reqloop",
-          number: 31,
-        },
-        key: "review-31",
-        status: "success",
-        sha: "head",
-        count: 1,
-        failed: 0,
-        findings: [],
-      }],
-    });
-
-    await source.start({
-      signal: new AbortController().signal,
-      async emit(resource) {
-        emitted.push(resource);
-      },
-      reportError() {},
-    });
-
-    expect(emitted).toEqual([{
-      name: expect.stringMatching(/^pr_/),
-      spec: {
-        identity: {
-          source: "github.com",
-          repository: "compforge/reqloop",
-          number: 31,
-        },
-      },
-    }]);
-  });
-
   test("lists provider-neutral requirements and reads the selected requirement", async () => {
     const root = testRoot();
     const calls: string[] = [];
@@ -725,6 +525,7 @@ describe("ReqLoop PluginPackage", () => {
     expect(resourceTypes).toEqual([
       REQUIREMENT_RESOURCE_TYPE,
       PULL_REQUEST_RESOURCE_TYPE,
+      EVALUATION_RESOURCE_TYPE,
       REPOSITORY_RESOURCE_TYPE,
       WORKSPACE_RESOURCE_TYPE,
     ]);
@@ -1094,6 +895,11 @@ describe("ReqLoop PluginPackage", () => {
       sourceId: "pull-request-test",
       async start() {},
     };
+    const evaluationSource: Source<EvaluationSpec> = {
+      type: "resource",
+      sourceId: "evaluation-test",
+      async start() {},
+    };
     const controllers = new Map<
       string,
       Controller<unknown, unknown>
@@ -1119,10 +925,7 @@ describe("ReqLoop PluginPackage", () => {
       workspaceSources: [workspaceSource],
       repositorySources: [repositorySource],
       pullRequestSources: [pullRequestSource],
-      reviewConnector: {
-        listLatest: async () => [],
-        latest: async () => undefined,
-      },
+      evaluationSources: [evaluationSource],
     }).activate(context);
 
     expect(controllers.get(REPOSITORY_RESOURCE_TYPE.kind)?.sources).toEqual([
@@ -1131,6 +934,9 @@ describe("ReqLoop PluginPackage", () => {
     expect(
       controllers.get(PULL_REQUEST_RESOURCE_TYPE.kind)?.sources?.[0],
     ).toBe(pullRequestSource);
+    expect(
+      controllers.get(EVALUATION_RESOURCE_TYPE.kind)?.sources,
+    ).toEqual([evaluationSource]);
     expect(controllers.get(WORKSPACE_RESOURCE_TYPE.kind)?.sources).toEqual([
       workspaceSource,
       {
@@ -1170,10 +976,6 @@ describe("ReqLoop PluginPackage", () => {
     await createReqloopPackage({
       requirementConnectors: [],
       forgeConnectors: [],
-      reviewConnector: {
-        listLatest: async () => [],
-        latest: async () => undefined,
-      },
     }).activate(context);
     expect(
       controllers.get(REPOSITORY_RESOURCE_TYPE.kind)?.sources?.map(
@@ -1184,204 +986,4 @@ describe("ReqLoop PluginPackage", () => {
     ]);
   });
 
-  test("persists the activation baseline and proposes actionable follow-up", async () => {
-    const root = testRoot();
-    const path = historyPath(root);
-    appendReview(path, {
-      status: "success",
-      sha: "baseline",
-      count: 1,
-      failed: 0,
-      pull_request: {
-        source: "github.com",
-        repository: "owner/repo",
-        number: 7,
-      },
-    });
-    let headSha = "baseline";
-    const connector = new DevloopReviewConnector(root, {
-      historyPath: path,
-      checkout: () => ({ headSha }),
-    });
-    let resource:
-      | Resource<PullRequestSpec, PullRequestStatus>
-      | undefined;
-    let controller:
-      | Controller<PullRequestSpec, PullRequestStatus>
-      | undefined;
-
-    const resources = {
-      list(type: { apiVersion: string; kind: string }) {
-        return type.kind === PULL_REQUEST_RESOURCE_TYPE.kind && resource
-          ? [resource]
-          : [];
-      },
-      create(
-        type: { apiVersion: string; kind: string },
-        input: { name: string; spec: PullRequestSpec },
-      ) {
-        resource = {
-          ...type,
-          metadata: {
-            name: input.name,
-            namespace: "pi_reqloop",
-            uid: `uid-${input.name}`,
-            generation: 1,
-            resourceVersion: "1",
-            creationTimestamp: new Date(0).toISOString(),
-          },
-          spec: input.spec,
-          status: {},
-        };
-        return resource;
-      },
-      patchStatus(
-        current: NonNullable<typeof resource>,
-        patch: Partial<PullRequestStatus>,
-      ) {
-        resource = {
-          ...current,
-          metadata: {
-            ...current.metadata,
-            resourceVersion: String(
-              Number(current.metadata.resourceVersion) + 1,
-            ),
-          },
-          status: { ...current.status, ...patch },
-        };
-        return resource;
-      },
-    };
-    const context = {
-      instance: {
-        pluginInstanceId: "pi_reqloop",
-        batonSessionId: "bs_test",
-        pluginId: reqloop.pluginId,
-        packageVersion: reqloop.version,
-        enabled: true,
-        config: {},
-        createdAt: new Date(0).toISOString(),
-        updatedAt: new Date(0).toISOString(),
-      },
-      session: { batonSessionId: "bs_test", cwd: root },
-      resources,
-      logger: noopLogger,
-      registerCommand() {},
-      registerContextProvider() {},
-      registerController(
-        candidate: Controller<unknown, unknown>,
-      ) {
-        if (
-          candidate.resourceType.kind ===
-            PULL_REQUEST_RESOURCE_TYPE.kind
-        ) {
-          controller = candidate as Controller<
-            PullRequestSpec,
-            PullRequestStatus
-          >;
-        }
-      },
-      onClose() {},
-    } as unknown as PluginActivationContext;
-    const plugin = createReqloopPackage({
-      reviewConnector: connector,
-      requirementConnectors: [],
-      forgeConnectors: [],
-    });
-
-    await plugin.activate(context);
-    expect(resource).toBeUndefined();
-    expect(controller?.resourceType).toBe(PULL_REQUEST_RESOURCE_TYPE);
-    expect(controller?.sources?.map(({ type, sourceId }) => ({
-      type,
-      sourceId,
-    }))).toEqual([
-      { type: "resource", sourceId: "forge" },
-      { type: "resource", sourceId: "devloop" },
-      { type: "cron", sourceId: "pull-request-poll" },
-    ]);
-    const identity = {
-      source: "github.com",
-      repository: "owner/repo",
-      number: 7,
-    };
-    await resources.create(PULL_REQUEST_RESOURCE_TYPE, {
-      name: pullRequestResourceId(identity),
-      spec: { identity },
-    });
-    await controller!.reconcile(batonSnapshot(), resource!);
-    expect(resource?.status.review?.sha).toBe("baseline");
-
-    headSha = "new-review";
-    appendReview(path, {
-      status: "success",
-      sha: "new-review",
-      count: 1,
-      failed: 0,
-      pull_request: {
-        source: "github.com",
-        repository: "owner/repo",
-        number: 7,
-      },
-      findings: [{ path: "src/app.ts", msg: "missing cancellation" }],
-    });
-    const result = await controller!.reconcile(batonSnapshot(), resource!);
-
-    expect(resource?.status.review?.sha).toBe("new-review");
-    expect(result?.output).toMatchObject({
-      kind: "interaction",
-      title: "Review comments found",
-      options: [
-        {
-          optionId: "accept",
-          label: "Accept",
-        },
-        {
-          optionId: "ignore",
-          label: "Ignore",
-          role: "reject",
-        },
-      ],
-    });
-    if (result?.output?.kind !== "interaction") {
-      throw new Error("expected review Interaction");
-    }
-    const decisionKey = result.output.decisionKey;
-    const reviewKey = resource?.status.review?.key;
-    if (!reviewKey) throw new Error("expected persisted review");
-    const accepted = await controller!.reconcile(
-      batonSnapshot([
-        {
-          interactionId: "ix_accept",
-          decisionKey,
-          resource: {
-            ...PULL_REQUEST_RESOURCE_TYPE,
-            namespace: resource!.metadata.namespace,
-            name: resource!.metadata.name,
-          },
-          outcome: { kind: "answered", values: ["accept"] },
-        },
-      ]),
-      resource!,
-    );
-    expect(resource?.status.reviewDecision).toEqual({
-      reviewKey,
-      choice: "accept",
-    });
-    expect(accepted?.output?.kind).toBe("proposed-input");
-    if (accepted?.output?.kind !== "proposed-input") {
-      throw new Error("expected review follow-up");
-    }
-    expect(accepted.output.text).toContain(
-      "devloop review completed for owner/repo PR/MR 7",
-    );
-    expect(accepted.output.text).toContain("Fix the real findings");
-    expect(accepted.output.text).toContain(
-      "src/app.ts — missing cancellation",
-    );
-    expect(accepted.requeueAfterMs).toBeUndefined();
-    expect(
-      await controller!.reconcile(batonSnapshot(), resource!),
-    ).toBeUndefined();
-  });
 });

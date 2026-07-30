@@ -1,4 +1,5 @@
 import type {
+  ForgeComment,
   ForgeConnector,
   PullRequestIdentity,
   PullRequestListQuery,
@@ -20,6 +21,7 @@ import {
 } from "./http.ts";
 
 const MAX_REVIEW_THREAD_PAGES = 20;
+const MAX_COMMENT_PAGES = 20;
 const MAX_PULL_REQUEST_PAGES = 20;
 const PULL_REQUEST_PAGE_SIZE = 100;
 
@@ -198,6 +200,63 @@ export class GitHubForgeConnector implements ForgeConnector {
     };
   }
 
+  async comments(
+    identity: PullRequestIdentity,
+  ): Promise<readonly ForgeComment[]> {
+    this.#assertSource(identity);
+    const base =
+      `${this.#restBase}/repos/${repositoryPath(identity.repository)}`;
+    const [conversation, review] = await Promise.all([
+      this.#commentRows(`${base}/issues/${identity.number}/comments`),
+      this.#commentRows(`${base}/pulls/${identity.number}/comments`),
+    ]);
+    const rows = [
+      ...conversation.map((comment) => ({ comment, anchored: false })),
+      ...review.map((comment) => ({ comment, anchored: true })),
+    ].sort((left, right) =>
+      String(left.comment.created_at ?? "")
+        .localeCompare(String(right.comment.created_at ?? ""))
+    );
+    return rows.map(({ comment, anchored }, index) => {
+      const id = comment.id;
+      if (
+        (typeof id !== "number" && typeof id !== "string") ||
+        id === ""
+      ) {
+        throw new Error(`GitHub comments[${index}].id is invalid`);
+      }
+      const createdAt = nonEmptyString(
+        `GitHub comments[${index}].created_at`,
+        comment.created_at,
+      );
+      const parent = comment.in_reply_to_id;
+      const parentId = parent === undefined || parent === null
+        ? undefined
+        : String(parent);
+      const commentId = String(id);
+      return {
+        id: commentId,
+        body: typeof comment.body === "string" ? comment.body : "",
+        ...(typeof (comment.user as Record<string, unknown> | undefined)
+              ?.login === "string"
+          ? {
+            author: (comment.user as Record<string, unknown>).login as string,
+          }
+          : {}),
+        ...(anchored ? { threadId: parentId ?? commentId } : {}),
+        ...(parentId ? { replyTo: parentId } : {}),
+        ...(anchored && typeof comment.path === "string"
+          ? { path: comment.path }
+          : {}),
+        ...(anchored &&
+            Number.isSafeInteger(comment.line ?? comment.original_line)
+          ? { line: (comment.line ?? comment.original_line) as number }
+          : {}),
+        createdAt,
+      };
+    });
+  }
+
   #headers(): HeadersInit {
     return {
       Accept: "application/vnd.github+json",
@@ -213,6 +272,26 @@ export class GitHubForgeConnector implements ForgeConnector {
         `PullRequest source ${identity.source} does not match ${this.source}`,
       );
     }
+  }
+
+  async #commentRows(
+    endpoint: string,
+  ): Promise<readonly Record<string, unknown>[]> {
+    const result: Record<string, unknown>[] = [];
+    for (let page = 1; page <= MAX_COMMENT_PAGES; page += 1) {
+      const separator = endpoint.includes("?") ? "&" : "?";
+      const { data, headers } = await this.#http.request(
+        "GET",
+        `${endpoint}${separator}per_page=100&page=${page}`,
+        { headers: this.#headers() },
+      );
+      result.push(...records("GitHub comments", data));
+      const hasNextPage = headers.get("link")
+        ?.split(",")
+        .some((link) => /;\s*rel="next"/.test(link)) ?? false;
+      if (!hasNextPage) return result;
+    }
+    throw new Error("GitHub comment pagination limit exceeded");
   }
 
   async #reviewThreads(

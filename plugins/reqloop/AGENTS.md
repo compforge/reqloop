@@ -3,8 +3,8 @@
 ## 项目定位与边界
 
 `compforge/reqloop` 是 reqloop Marketplace 中负责 Requirement Loop 的 Baton Plugin。它在
-Baton core 之外拥有 Requirement、Workspace、Repository 和 PullRequest 领域模型，通过
-Baton 的 Resource、Controller、Source、Watch、Board、Context 和 Plugin Output 契约运行。
+Baton core 之外拥有 Requirement、Workspace、Repository、PullRequest 和 Evaluation 领域模型，
+通过 Baton 的 Resource、Controller、Source、Watch、Board、Context 和 Plugin Output 契约运行。
 
 当前阶段以观察、关联、提醒和建议为主：可以读取需求平台、Forge 与 devloop 产出的事实，
 但不直接修改外部 Requirement、不合并 PR/MR、不部署环境，也不主动驱动 Harness。长期方向
@@ -36,6 +36,7 @@ plugins/reqloop/
 │   ├── workspaces/               # Session 本地观察根与 checkout 发现
 │   ├── repositories/             # 仓库观察范围与 PR 集合汇总
 │   ├── pull-requests/            # PR/MR 准入、Forge/devloop 观察与用户决定
+│   ├── evaluations/              # 评估任务、结果、用户决定与短期生命周期
 │   └── requirements/             # 需求选择、外部观察、Context 与完成条件
 ├── tests/                        # Resource、Controller、Source、Connector 契约测试
 ├── docs/                         # 当前设计细节与长期方向
@@ -51,7 +52,8 @@ plugins/reqloop/
 
 1. **Resource 身份与事实 owner 唯一**：Workspace 是 Session 逻辑观察根，Repository 按
    `source + repository` 共享，PullRequest 按 `source + repository + number` 独立存在，
-   Requirement 按 `source + category + id` 唯一。PR 与 Requirement 的归属只写
+   Requirement 按 `source + category + id` 唯一；code-review Evaluation 按目标 PR 与一次
+   review run 唯一。PR 与 Requirement 的归属只写
    `PullRequest.status.requirementAssociation`，一份 PR 最多关联一份 Requirement；
    Requirement 只保存派生汇总，不反向双写关联列表。
 2. **Source 准入，Controller 收敛**：只有 Command 或 Source 可以让外部对象成为 Resource；
@@ -59,11 +61,13 @@ plugins/reqloop/
    不用 `Connector.list()` 扩张集合；Connector 不持有 `ResourceClient`，也不拥有 loop。
 3. **事实、人的决定和展示分层**：外部观测写 status，用户决定通过 durable Interaction
    持久化后再写领域状态；Board 与 Context 都从 Resource 派生，不成为第二事实源。
-   devloop 文件由 `DevloopXxxSource` / `DevloopReviewConnector` 作为内部适配边界读取，
-   Baton core 不解析这些格式，reqloop 也不调用 devloop 的 Harness 私有能力。
+   devloop 本地文件由 `DevloopXxxSource` 读取；已发布 AI review 则通过现有
+   `ForgeConnector.comments()` 读取 devloop marker，不另设 review connector。Baton core
+   不解析这些格式，reqloop 也不调用 devloop 的 Harness 私有能力。
 4. **保留优先于猜测删除**：Source omission、离开 Workspace、进入 terminal 或从 Board
    隐藏都不是删除证据。默认保留 Resource；只有用户显式设置删除期限后，才通过 Baton 的
-   terminating 生命周期删除。Workspace 是逻辑观察根，不是其它 Resource 的结构 owner。
+   terminating 生命周期删除。短期 AI code-review Evaluation 是明确的例外：决定后立即隐藏，
+   到领域 TTL 后删除。Workspace 是逻辑观察根，不是其它 Resource 的结构 owner。
 5. **外部对象保持 provider-neutral**：provider 与凭据属于具名 Connector；运行配置只从
    Plugin 的 global/project/session data 目录读取，Instance data 不承载配置。外部调用失败、
    限流或重启后重新观察并幂等收敛，不能把缓存、事件或触发原因当作事实。
@@ -72,7 +76,7 @@ plugins/reqloop/
 
 - `README.md` — 安装、配置和当前用户能力
 - `RELEASE.md` — 当前版本与发布记录
-- `docs/domain-model.md` — 四种 Resource 的身份、owner 与 Board 语义
+- `docs/domain-model.md` — 五种 Resource 的身份、owner 与 Board 语义
 - `docs/reconcile.md` — Command/Source/Watch/Controller 流程、保留与恢复
 - `docs/integrations.md` — Requirement/Forge/devloop/Harness 集成边界
 - `docs/roadmap.md` — 尚未实现的长期闭环与引入新概念的条件

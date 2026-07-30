@@ -28,14 +28,15 @@ ReqLoop。Harness 负责智能执行，devloop 约束 Harness 内的开发小闭
 
 当前已落地：
 
-- Requirement、Workspace、Repository、PullRequest 四种 Resource；
+- Requirement、Workspace、Repository、PullRequest、Evaluation 五种 Resource；
 - 需求选择、Forge/devloop 观察、PR 与 Requirement 的持久关联；
-- review 决定、修复建议、Board/Context 投影和本地关闭确认；
+- `Evaluation(kind=code-review)` 的 Forge comment 准入、review 决定、修复建议和短期 TTL；
+- Board/Context 投影和本地关闭确认；
 - 用户显式删除期限与重启恢复。
 
 当前未落地：
 
-- Delivery、Deployment、Evaluation、Run/Attempt Resource；
+- Delivery、Deployment、Run/Attempt Resource，以及 e2e/eval/perf 等其它 Evaluation 类型；
 - Requirement 目标仓库、环境和通用 CompletionPolicy；
 - DevelopmentOutcome 等 Baton 归一事件；
 - 外部 Requirement 更新/关闭、PR 合并、部署或评测写操作；
@@ -50,7 +51,8 @@ README、AGENTS 和当前设计文档不得把这些方向写成现有能力。
 
 - Delivery 需要能稳定标识一次可部署交付物，并独立于 PR 生命周期；
 - Deployment 需要区分目标环境、输入 Delivery、尝试状态和外部运行引用；
-- Evaluation 需要对 Delivery 或 Deployment 给出结构化 verdict 与证据；
+- 新 Evaluation 类型需要有稳定 target/run identity，并对 PullRequest、Delivery 或 Deployment
+  给出结构化 verdict 与证据；
 - Run/Attempt 只有在一项 Requirement 同时存在多个独立执行实例时才成立。
 
 在这些条件出现前，继续使用现有 Resource status、Interaction 和 proposed-input，避免为未来

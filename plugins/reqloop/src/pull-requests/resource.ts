@@ -8,7 +8,6 @@ import type {
 import type {
   PullRequestIdentity,
   PullRequest,
-  PullRequestReviewObservation,
   PullRequestSpec,
   PullRequestStatus,
 } from "./protocol.ts";
@@ -107,26 +106,4 @@ async function existingPullRequestResource(
     );
   }
   return resource;
-}
-
-export async function updatePullRequestReviewObservation(
-  resources: ResourceClient,
-  observation: PullRequestReviewObservation,
-): Promise<Readonly<Resource<PullRequestSpec, PullRequestStatus>>> {
-  const resource = await existingPullRequestResource(
-    resources,
-    observation.identity,
-  );
-  return await resources.patchStatus(resource, {
-    review: {
-      key: observation.key,
-      status: observation.status,
-      sha: observation.sha,
-      findingCount: observation.count,
-      failedFileCount: observation.failed,
-      ...(observation.completedAt !== undefined
-        ? { completedAt: observation.completedAt }
-        : {}),
-    },
-  });
 }

@@ -1,4 +1,5 @@
 import type {
+  ForgeComment,
   ForgeConnector,
   PullRequestIdentity,
   PullRequestListQuery,
@@ -203,6 +204,84 @@ export class GitLabForgeConnector implements ForgeConnector {
       mergeability: mergeability(mergeRequest),
       observedAt: this.#now().toISOString(),
     };
+  }
+
+  async comments(
+    identity: PullRequestIdentity,
+  ): Promise<readonly ForgeComment[]> {
+    this.#assertSource(identity);
+    const result: ForgeComment[] = [];
+    let page = 1;
+    for (let count = 0; count < MAX_DISCUSSION_PAGES; count += 1) {
+      const { data, headers } = await this.#http.request(
+        "GET",
+        `${this.#projectBase(identity.repository)}` +
+          `/merge_requests/${identity.number}/discussions` +
+          `?per_page=100&page=${page}`,
+        { headers: this.#headers() },
+      );
+      const discussions = records("GitLab discussions", data);
+      for (const discussion of discussions) {
+        const notes = records("GitLab discussion notes", discussion.notes)
+          .filter((note) => note.system !== true);
+        const root = notes[0];
+        const threaded = discussion.individual_note !== true;
+        for (const [index, note] of notes.entries()) {
+          const id = note.id;
+          if (
+            (typeof id !== "number" && typeof id !== "string") ||
+            id === ""
+          ) {
+            throw new Error(`GitLab comment ${index} has no id`);
+          }
+          const position = note.position &&
+              typeof note.position === "object" &&
+              !Array.isArray(note.position)
+            ? note.position as Record<string, unknown>
+            : undefined;
+          const author = note.author &&
+              typeof note.author === "object" &&
+              !Array.isArray(note.author)
+            ? note.author as Record<string, unknown>
+            : undefined;
+          const rootId = root?.id;
+          const reply = threaded && rootId !== undefined && id !== rootId;
+          result.push({
+            id: String(id),
+            body: typeof note.body === "string" ? note.body : "",
+            ...(typeof author?.username === "string"
+              ? { author: author.username }
+              : {}),
+            ...(threaded && typeof discussion.id === "string"
+              ? { threadId: discussion.id }
+              : {}),
+            ...(reply ? { replyTo: String(rootId) } : {}),
+            ...(typeof position?.new_path === "string"
+              ? { path: position.new_path }
+              : {}),
+            ...(Number.isSafeInteger(position?.new_line)
+              ? { line: position!.new_line as number }
+              : {}),
+            createdAt: nonEmptyString(
+              `GitLab comment ${id} created_at`,
+              note.created_at,
+            ),
+          });
+        }
+      }
+      const nextPage = headers.get("x-next-page");
+      if (!nextPage) {
+        return result.sort((left, right) =>
+          left.createdAt.localeCompare(right.createdAt)
+        );
+      }
+      const parsed = Number(nextPage);
+      if (!Number.isSafeInteger(parsed) || parsed <= page) {
+        throw new Error("GitLab comment pagination is invalid");
+      }
+      page = parsed;
+    }
+    throw new Error("GitLab comment pagination limit exceeded");
   }
 
   #headers(): HeadersInit {
