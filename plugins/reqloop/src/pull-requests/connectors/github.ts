@@ -258,7 +258,12 @@ export class GitHubForgeConnector implements ForgeConnector {
       const parent = row.in_reply_to_id;
       if (parent !== undefined && parent !== null) {
         const parentId = String(parent);
-        replies.set(parentId, [...(replies.get(parentId) ?? []), comment]);
+        const siblings = replies.get(parentId);
+        if (siblings) {
+          siblings.push(comment);
+        } else {
+          replies.set(parentId, [comment]);
+        }
       } else {
         roots.push(comment);
       }
