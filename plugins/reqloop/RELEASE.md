@@ -1,6 +1,14 @@
 # ReqLoop releases
 
-Current version: `0.2.9`
+Current version: `0.2.10`
+
+## 0.2.10
+
+- Add independent CodeReview Resources backed by devloop review signals and
+  Forge comment findings and labels.
+- Project pending reviews through their PullRequest Board cards, retaining
+  merged PullRequests as lower-priority candidates until review labeling
+  completes or expires.
 
 ## 0.2.9
 

@@ -72,6 +72,9 @@ plugins/reqloop/
 5. **外部对象保持 provider-neutral**：provider 与凭据属于具名 Connector；运行配置只从
    Plugin 的 global/project/session data 目录读取，Instance data 不承载配置。外部调用失败、
    限流或重启后重新观察并幂等收敛，不能把缓存、事件或触发原因当作事实。
+   修改本 Plugin 的代码时，同一变更必须通过 `make bump-version`
+   （`PLUGIN=reqloop VERSION=<next>`）同步 Package、manifest、package.json 与发布记录；
+   纯文档改动不单独 bump。
 
 ## References
 
