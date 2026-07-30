@@ -125,11 +125,13 @@ GitLab; a per-forge `token` field is the fallback.
 
 ## Resources and flow
 
-ReqLoop owns four provider-neutral Resources:
+ReqLoop owns five provider-neutral Resources:
 
 - `Workspace` — the BatonSession working directory and its discovered checkouts.
 - `Repository` — one external repository currently in the observation scope.
-- `PullRequest` — a GitHub PR or GitLab MR and its delivery/review state.
+- `PullRequest` — a GitHub PR or GitLab MR and its Forge state.
+- `Evaluation` — one bounded evaluation run; currently a devloop AI code review
+  published as Forge comments.
 - `Requirement` — a selected requirement and the aggregate progress of its
   associated PullRequests.
 
@@ -137,16 +139,18 @@ The main data flow is:
 
 ```text
 BatonSession cwd → Workspace → Repository → PullRequest
+                                            └→ Evaluation
 /requirements   → Requirement ← associated PullRequests
 Forge/devloop   → latest observations → Resource status → Board / context
 ```
 
 Controllers keep these Resources aligned with the filesystem, Forge,
-requirement platform, and devloop review ledger. When user judgment is needed,
+requirement platform, and Forge comments published by devloop. When user judgment is needed,
 ReqLoop opens a durable Interaction; accepted decisions can become a
 `proposed-input` for the current Harness. ReqLoop does not directly drive a
 Harness or mutate external Requirement state. The Board currently presents only
-active Requirements and unlinked active PullRequests; PullRequest and
+active Requirements, unlinked active PullRequests, and actionable AI review
+Evaluations; PullRequest and
 Requirement cards link to their external source and show the external title on
 a single marquee line only when it overflows. Workspace and Repository remain
 internal observation Resources.
@@ -170,23 +174,26 @@ for the BatonSession that owns the repository.
 
 ---
 
-ReqLoop 在 Baton core 之外拥有需求级闭环，核心有四种 Resource：
+ReqLoop 在 Baton core 之外拥有需求级闭环，核心有五种 Resource：
 
 - `Workspace`：当前 BatonSession 的工作目录及其中发现的 checkout；
 - `Repository`：进入当前观察范围的外部仓库；
-- `PullRequest`：GitHub PR / GitLab MR 及其交付、review 状态；
+- `PullRequest`：GitHub PR / GitLab MR 及其 Forge 状态；
+- `Evaluation`：一次有界评估运行；当前实现 devloop 发布到 Forge comment 的 AI code review；
 - `Requirement`：用户选择的需求，以及关联 PullRequest 的聚合进度。
 
 整体数据流与控制流如下：
 
 ```text
 BatonSession cwd → Workspace → Repository → PullRequest
+                                            └→ Evaluation
 /requirements   → Requirement ← 关联的 PullRequests
 Forge / devloop / 需求平台 → 最新观察 → Resource status → Board / context
 需要用户判断 → durable Interaction → Resource status / proposed-input
 ```
 
-Controller 负责让本地 Resource 与文件系统、代码平台、需求平台及 devloop review 结果持续收敛。
+Controller 负责让本地 Resource 与文件系统、代码平台、需求平台及 devloop 发布到 Forge 的
+review comments 持续收敛。
 ReqLoop 不直接驱动 Harness，也暂不代用户修改外部 Requirement。领域模型、reconcile、集成
 边界与长期方向见 [ReqLoop 架构索引](./AGENTS.md)。
 

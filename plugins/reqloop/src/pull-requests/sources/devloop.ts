@@ -16,10 +16,7 @@ import {
   devloopStatePath,
   readOpenPullRequestNumbers,
 } from "../devloop-state.ts";
-import type {
-  PullRequestReviewObservation,
-  PullRequestSpec,
-} from "../protocol.ts";
+import type { PullRequestSpec } from "../protocol.ts";
 import { pullRequestResourceId } from "../resource.ts";
 
 /**
@@ -32,9 +29,6 @@ export class DevloopPullRequestSource implements Source<PullRequestSpec> {
   readonly path?: string;
   private readonly watchIntervalMs: number;
   private readonly logger?: PluginLogger;
-  private readonly reviewObservations?: () => Promise<
-    readonly PullRequestReviewObservation[]
-  >;
   private lastFailureKey?: string;
   private lastPullRequestKey?: string;
 
@@ -44,37 +38,14 @@ export class DevloopPullRequestSource implements Source<PullRequestSpec> {
       readonly logger?: PluginLogger;
       readonly path?: string;
       readonly watchIntervalMs?: number;
-      readonly reviewObservations?: () => Promise<
-        readonly PullRequestReviewObservation[]
-      >;
     } = {},
   ) {
     this.path = options.path?.trim() || undefined;
     this.watchIntervalMs = options.watchIntervalMs ?? 1_000;
     this.logger = options.logger;
-    this.reviewObservations = options.reviewObservations;
   }
 
   async start(context: SourceContext<PullRequestSpec>): Promise<void> {
-    const reviewObservations = await this.reviewObservations?.() ?? [];
-    for (const observation of reviewObservations) {
-      if (context.signal.aborted) return;
-      await this.emit(context, observation.identity);
-    }
-    this.logger?.info("Loaded devloop review observations", {
-      component: "pull-request-source.devloop",
-      attributes: {
-        observations: reviewObservations.length,
-      },
-    });
-    this.logger?.debug("Loaded devloop review PullRequests", {
-      component: "pull-request-source.devloop",
-      attributes: {
-        pullRequests: reviewObservations.map(({ identity }) =>
-          `${identity.source}/${identity.repository}#${identity.number}`
-        ).sort(),
-      },
-    });
     const path = this.path ?? await devloopStatePath(this.cwd, "pr.json");
     if (!path) {
       this.logger?.debug(

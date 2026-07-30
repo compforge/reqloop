@@ -10,8 +10,7 @@ Command / Source / Controller
              ▼
   provider-neutral Connector port
        ├── RequirementConnector ── Meegle CLI
-       ├── ForgeConnector ──────── GitHub / GitLab API
-       └── PullRequestReviewConnector ── devloop review ledger
+       └── ForgeConnector ──────── GitHub / GitLab API
 ```
 
 Connector 负责调用外部协议、校验响应并映射为 ReqLoop 领域对象。它不持有
@@ -46,9 +45,11 @@ Resource 缓存表达“最后已知状态”，不能被当作永久新鲜的�
 
 ### Forge
 
-`ForgeConnector` 提供 PullRequest 列表和单项读取。GitHub/GitLab adapter 平级实现同一
-provider-neutral port；平台 DTO 和词汇不穿透到 Resource。review thread 不可用时使用 unknown，
-不能把普通 conversation comment 推断为可解决的 review thread。
+`ForgeConnector` 提供 PullRequest 列表、单项读取和 comments 读取。GitHub/GitLab adapter
+平级实现同一 provider-neutral port；平台 DTO 和词汇不穿透到 Resource。comments 同时归一
+conversation 与 diff/discussion comment，保留 comment/thread identity、path、line 和时间。
+review thread 不可用时使用 unknown，不能把普通 conversation comment 推断为可解决的
+review thread。
 
 HTTP adapter 显式处理超时、响应大小、非法 JSON 和 rate limit。限流优先服从服务端 retry
 窗口并在 Connector 内暂停后续请求；权限不足可以按契约降级为 unknown，但不能吞掉限流或
@@ -57,17 +58,19 @@ HTTP adapter 显式处理超时、响应大小、非法 JSON 和 rate limit。�
 ## devloop 产出
 
 devloop 负责 Harness 内的开发小闭环；ReqLoop 不导入其实现，也不调用其 skill、hook 或
-Harness 私有能力。二者通过本地持久产出形成 producer/consumer 边界：
+Harness 私有能力。当前 PR 通过本地持久产出接入，已发布 review 通过 Forge comment 接入：
 
 | 适配器 | 消费的事实 | 用途 |
 |---|---|---|
-| `DevloopPullRequestSource` | 当前 PR 状态与 review observation | 快速准入 PullRequest |
+| `DevloopPullRequestSource` | 当前 PR 状态 | 快速准入 PullRequest |
 | `DevloopToolActivityPolicy` | 原始 tool-call 时间线 | ReqLoop 自己解释读写活动，控制 Forge 发现与观察频率 |
-| `DevloopReviewConnector` | append-only review history | 映射为与当前 checkout HEAD、branch 和 PR identity 对齐的 review observation |
+| `ForgeEvaluationSource` | 带 devloop marker 的 Forge comments | 准入与一次 code-review run 对应的 Evaluation |
 
-这些适配器的命名明确表达 devloop 数据来源。格式解析和兼容性只存在于 ReqLoop 内部；
-Baton core 不识别 `.devloop` 文件。未知工具和命令信封保持 neutral，ReqLoop 不根据模糊名称
-猜测写入意图。
+devloop finding comment 使用 `ccr:fp` marker，summary comment 使用
+`devloop code-review` header。ReqLoop 只解释已经发布到 Forge 的这份持久事实，不读取
+review ledger，也不新增 review 专用 Connector。clean review 不发布 comment，因此不产生
+Evaluation。格式解析和兼容性只存在于 ReqLoop 内部；Baton core 不识别 `.devloop` 文件。
+未知工具和命令信封保持 neutral，ReqLoop 不根据模糊名称猜测写入意图。
 
 ## 配置
 
@@ -88,16 +91,17 @@ ReqLoop 当前向 Baton 注册：
 
 - `/requirements` Command；
 - `requirement` ContextProvider；
-- Workspace、Repository、PullRequest、Requirement 四个 Controller 及其 Source/Watch；
-- Requirement 与孤立 PullRequest 的 Board presentation。
+- Workspace、Repository、PullRequest、Evaluation、Requirement 五个 Controller 及其
+  Source/Watch；
+- Requirement、孤立 PullRequest 与 actionable Evaluation 的 Board presentation。
 
 ContextProvider 只搜索当前 BatonSession 已物化且仍活跃的 Requirement，不在用户输入 `@`
 时访问外部平台；选中后按 Baton 给出的字符预算向一次 Harness turn 注入内容。
 
-需要人的领域判断时，PullRequestController 返回 `interaction`；用户确认处理 merge conflict
-或 review 时返回对应的 `proposed-input`。Baton 持久化决定并负责 composer、Input、Attempt
-与 Harness 路由。ReqLoop 不持有 Harness 进程、SDK 句柄或原生 session，也不会在无人输入时
-启动 Harness。
+需要人的领域判断时，PullRequestController 为 merge conflict 返回 `interaction`，
+EvaluationController 为 actionable AI review 返回 `interaction`；用户接受后返回对应的
+`proposed-input`。Baton 持久化决定并负责 composer、Input、Attempt 与 Harness 路由。
+ReqLoop 不持有 Harness 进程、SDK 句柄或原生 session，也不会在无人输入时启动 Harness。
 
 RequirementController 当前只观察、汇总，并在 ReadyToClose 后让用户确认是否结束本地跟踪；
 确认结果以 `ClosureRequested` Condition 持久化并发送 toast。外部 Requirement 写入、

@@ -20,7 +20,6 @@ import {
   PULL_REQUEST_RESOURCE_TYPE,
   pullRequestResourceId,
   type PullRequest,
-  type PullRequestReviewConnector,
   type PullRequestSpec,
   type PullRequestStatus,
   REQUIREMENT_CONDITION,
@@ -715,68 +714,6 @@ describe("PullRequest Resource", () => {
     });
   });
 
-  test("continues an actionable review after the PullRequest is merged", async () => {
-    const resources = resourceClient();
-    const merged = await materializePullRequest(resources, {
-      ...observation,
-      lifecycle: "merged",
-    });
-    const reviewConnector: PullRequestReviewConnector = {
-      async listLatest() {
-        return [];
-      },
-      async latest() {
-        return {
-          identity: observation.identity,
-          key: "review_after_merge",
-          status: "success",
-          sha: "merged-head",
-          count: 1,
-          failed: 0,
-          findings: [{
-            path: "src/app.ts",
-            message: "review comment after merge",
-          }],
-        };
-      },
-    };
-    const controller = createPullRequestController(
-      resources.client,
-      [],
-      reviewConnector,
-    );
-    const prompted = await controller.reconcile(
-      batonSnapshot(),
-      merged,
-    );
-    if (prompted?.output?.kind !== "interaction") {
-      throw new Error("expected review Interaction");
-    }
-
-    const accepted = await controller.reconcile(
-      batonSnapshot([{
-        interactionId: "ix_accept_after_merge",
-        decisionKey: prompted.output.decisionKey,
-        resource: {
-          ...PULL_REQUEST_RESOURCE_TYPE,
-          namespace: merged.metadata.namespace,
-          name: merged.metadata.name,
-        },
-        outcome: { kind: "answered", values: ["accept"] },
-      }]),
-      resources.current()!,
-    );
-
-    expect(resources.current()?.status.reviewDecision).toEqual({
-      reviewKey: "review_after_merge",
-      choice: "accept",
-    });
-    expect(accepted?.output).toMatchObject({
-      kind: "proposed-input",
-      text: expect.stringContaining("review comment after merge"),
-    });
-  });
-
   test("does not immediately repoll a fresh open observation", async () => {
     const resources = resourceClient();
     const current = await materializePullRequest(resources, {
@@ -823,7 +760,6 @@ describe("PullRequest Resource", () => {
     await createPullRequestController(
       resources.client,
       [forge],
-      undefined,
       [],
       async () => false,
     ).reconcile(batonSnapshot(), current);
@@ -853,76 +789,11 @@ describe("PullRequest Resource", () => {
     await createPullRequestController(
       resources.client,
       [forge],
-      undefined,
       [],
       async () => false,
     ).reconcile(batonSnapshot(), current);
 
     expect(calls).toBe(0);
-  });
-
-  test("records an ignored review decision and does not remind again", async () => {
-    const resources = resourceClient();
-    const pullRequest = await materializePullRequest(
-      resources,
-      observation,
-    );
-    const reviewConnector: PullRequestReviewConnector = {
-      async listLatest() {
-        return [];
-      },
-      async latest() {
-        return {
-          identity: observation.identity,
-          key: "review_ignored",
-          status: "success",
-          sha: "head",
-          count: 1,
-          failed: 0,
-          findings: [{
-            path: "src/app.ts",
-            message: "review comment",
-          }],
-        };
-      },
-    };
-    const controller = createPullRequestController(
-      resources.client,
-      [],
-      reviewConnector,
-    );
-    const prompted = await controller.reconcile(
-      batonSnapshot(),
-      pullRequest,
-    );
-    if (prompted?.output?.kind !== "interaction") {
-      throw new Error("expected review Interaction");
-    }
-
-    await controller.reconcile(
-      batonSnapshot([{
-        interactionId: "ix_ignore",
-        decisionKey: prompted.output.decisionKey,
-        resource: {
-          ...PULL_REQUEST_RESOURCE_TYPE,
-          namespace: pullRequest.metadata.namespace,
-          name: pullRequest.metadata.name,
-        },
-        outcome: { kind: "answered", values: ["ignore"] },
-      }]),
-      resources.current()!,
-    );
-
-    expect(resources.current()?.status.reviewDecision).toEqual({
-      reviewKey: "review_ignored",
-      choice: "ignore",
-    });
-    expect(
-      await controller.reconcile(
-        batonSnapshot(),
-        resources.current()!,
-      ),
-    ).toBeUndefined();
   });
 
   test("Repository reconciliation never expands the PullRequest set", async () => {

@@ -478,6 +478,78 @@ describe("GitHubForgeConnector", () => {
     expect(second.reviewActivityKey).toEqual(expect.any(String));
     expect(second.reviewActivityKey).not.toBe(first.reviewActivityKey);
   });
+
+  test("unifies conversation and diff-anchored comments", async () => {
+    const fetch: Fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("/issues/5/comments")) {
+        return json([{
+          id: 20,
+          body: "summary",
+          user: { login: "review-bot" },
+          created_at: "2026-07-30T09:31:00Z",
+        }]);
+      }
+      if (url.includes("/pulls/5/comments")) {
+        return json([
+          {
+            id: 10,
+            body: "finding",
+            user: { login: "review-bot" },
+            path: "src/app.ts",
+            original_line: 42,
+            created_at: "2026-07-30T09:30:00Z",
+          },
+          {
+            id: 11,
+            in_reply_to_id: 10,
+            body: "ccr:label=wrong",
+            user: { login: "owner" },
+            path: "src/app.ts",
+            created_at: "2026-07-30T09:32:00Z",
+          },
+        ]);
+      }
+      return new Response("not found", { status: 404 });
+    };
+    const connector = new GitHubForgeConnector({
+      source: "github.com",
+      provider: "github",
+      host: "github.com",
+      token: "secret",
+    }, { fetch });
+
+    await expect(connector.comments!({
+      source: "github.com",
+      repository: "owner/repo",
+      number: 5,
+    })).resolves.toEqual([
+      {
+        id: "10",
+        body: "finding",
+        author: "review-bot",
+        threadId: "10",
+        path: "src/app.ts",
+        line: 42,
+        createdAt: "2026-07-30T09:30:00Z",
+      },
+      {
+        id: "20",
+        body: "summary",
+        author: "review-bot",
+        createdAt: "2026-07-30T09:31:00Z",
+      },
+      {
+        id: "11",
+        body: "ccr:label=wrong",
+        author: "owner",
+        threadId: "10",
+        replyTo: "10",
+        path: "src/app.ts",
+        createdAt: "2026-07-30T09:32:00Z",
+      },
+    ]);
+  });
 });
 
 describe("GitLabForgeConnector", () => {
@@ -732,5 +804,79 @@ describe("GitLabForgeConnector", () => {
     expect(url.searchParams.get("author_id")).toBeNull();
     expect(url.searchParams.get("author_username")).toBeNull();
     expect(url.searchParams.get("per_page")).toBe("100");
+  });
+
+  test("maps GitLab discussions onto provider-neutral comments", async () => {
+    const fetch: Fetch = async () =>
+      json([
+        {
+          id: "discussion-1",
+          individual_note: false,
+          notes: [
+            {
+              id: 10,
+              body: "finding",
+              author: { username: "review-bot" },
+              created_at: "2026-07-30T09:30:00Z",
+              position: {
+                new_path: "src/app.ts",
+                new_line: 42,
+              },
+            },
+            {
+              id: 11,
+              body: "ccr:label=wrong",
+              author: { username: "owner" },
+              created_at: "2026-07-30T09:31:00Z",
+            },
+          ],
+        },
+        {
+          id: "plain",
+          individual_note: true,
+          notes: [{
+            id: 20,
+            body: "summary",
+            author: { username: "review-bot" },
+            created_at: "2026-07-30T09:32:00Z",
+          }],
+        },
+      ]);
+    const connector = new GitLabForgeConnector({
+      source: "gitlab.example.com",
+      provider: "gitlab",
+      host: "gitlab.example.com",
+      token: "secret",
+    }, { fetch });
+
+    await expect(connector.comments!({
+      source: "gitlab.example.com",
+      repository: "group/repo",
+      number: 5,
+    })).resolves.toEqual([
+      {
+        id: "10",
+        body: "finding",
+        author: "review-bot",
+        threadId: "discussion-1",
+        path: "src/app.ts",
+        line: 42,
+        createdAt: "2026-07-30T09:30:00Z",
+      },
+      {
+        id: "11",
+        body: "ccr:label=wrong",
+        author: "owner",
+        threadId: "discussion-1",
+        replyTo: "10",
+        createdAt: "2026-07-30T09:31:00Z",
+      },
+      {
+        id: "20",
+        body: "summary",
+        author: "review-bot",
+        createdAt: "2026-07-30T09:32:00Z",
+      },
+    ]);
   });
 });

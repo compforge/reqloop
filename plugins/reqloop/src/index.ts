@@ -15,8 +15,12 @@ import {
   WorkspaceRepositorySource,
 } from "./repositories/sources/workspace.ts";
 import {
-  DevloopReviewConnector,
-} from "./pull-requests/connectors/devloop-review.ts";
+  createEvaluationController,
+} from "./evaluations/controller.ts";
+import type { EvaluationSpec } from "./evaluations/protocol.ts";
+import {
+  ForgeEvaluationSource,
+} from "./evaluations/sources/forge.ts";
 import type { RequirementConnector } from "./requirements/protocol.ts";
 import { createRequirementsCommand } from "./requirements/command.ts";
 import {
@@ -37,13 +41,11 @@ import {
 import type {
   ForgeConnector,
   PullRequestSpec,
-  PullRequestReviewConnector,
 } from "./pull-requests/protocol.ts";
 import { DevloopPullRequestSource } from "./pull-requests/sources/devloop.ts";
 import { ForgePullRequestSource } from "./pull-requests/sources/forge.ts";
 import { DevloopToolActivityPolicy } from "./pull-requests/devloop-activity.ts";
 import { createWorkspaceController } from "./workspaces/controller.ts";
-import { discoverWorkspaceRepositories } from "./workspaces/discovery.ts";
 import type { WorkspaceSpec } from "./workspaces/protocol.ts";
 import { WorkspaceSource } from "./workspaces/source.ts";
 import { withUserDeletionPolicy } from "./retention.ts";
@@ -60,7 +62,7 @@ function currentRepo(context: PluginActivationContext): string {
 }
 
 export function createReqloopPackage(options: {
-  reviewConnector?: PullRequestReviewConnector;
+  evaluationSources?: readonly Source<EvaluationSpec>[];
   requirementConnector?: RequirementConnector;
   requirementConnectors?: readonly RequirementConnector[];
   forgeConnectors?: readonly ForgeConnector[];
@@ -103,17 +105,6 @@ export function createReqloopPackage(options: {
       const toolActivity = new DevloopToolActivityPolicy(cwd);
       const workspaceSources =
         options.workspaceSources ?? [new WorkspaceSource(cwd)];
-      const reviewConnector =
-        options.reviewConnector ??
-        new DevloopReviewConnector(cwd, {
-          workspaceCheckouts: async () =>
-            (await discoverWorkspaceRepositories(cwd)).map(
-              ({ path, identity }) => ({
-                path,
-                ...identity,
-              }),
-            ),
-        });
       const repositorySources = options.repositorySources ?? [
         new WorkspaceRepositorySource(cwd),
       ];
@@ -124,7 +115,6 @@ export function createReqloopPackage(options: {
         }),
         new DevloopPullRequestSource(cwd, {
           logger: context.logger,
-          reviewObservations: () => reviewConnector.listLatest(),
         }),
       ];
       context.registerController(
@@ -133,9 +123,25 @@ export function createReqloopPackage(options: {
           createPullRequestController(
             context.resources,
             forgeConnectors,
-            reviewConnector,
             pullRequestSources,
             (identity) => toolActivity.shouldTrackIdentity(identity),
+          ),
+        ),
+      );
+      const evaluationSources = options.evaluationSources ?? [
+        new ForgeEvaluationSource(
+          context.resources,
+          forgeConnectors,
+          { logger: context.logger },
+        ),
+      ];
+      context.registerController(
+        withUserDeletionPolicy(
+          context.resources,
+          createEvaluationController(
+            context.resources,
+            forgeConnectors,
+            evaluationSources,
           ),
         ),
       );
@@ -179,17 +185,20 @@ export * from "./repositories/controller.ts";
 export * from "./repositories/protocol.ts";
 export * from "./repositories/resource.ts";
 export * from "./repositories/sources/workspace.ts";
+export * from "./evaluations/code-review.ts";
+export * from "./evaluations/controller.ts";
+export * from "./evaluations/protocol.ts";
+export * from "./evaluations/resource.ts";
+export * from "./evaluations/sources/forge.ts";
 export * from "./pull-requests/sources/devloop.ts";
 export * from "./pull-requests/sources/forge.ts";
 export * from "./pull-requests/devloop-activity.ts";
 export * from "./pull-requests/connectors/config.ts";
-export * from "./pull-requests/connectors/devloop-review.ts";
 export * from "./pull-requests/connectors/github.ts";
 export * from "./pull-requests/connectors/gitlab.ts";
 export type { Fetch } from "./pull-requests/connectors/http.ts";
 export * from "./pull-requests/controller.ts";
 export * from "./pull-requests/protocol.ts";
-export * from "./pull-requests/review.ts";
 export * from "./pull-requests/resource.ts";
 export * from "./retention.ts";
 export * from "./requirements/connectors/meego.ts";

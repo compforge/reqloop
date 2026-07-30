@@ -54,12 +54,6 @@ export interface PullRequestStatus {
    * `prompted` retains a cancelled or recovery decision key.
    */
   readonly requirementAssociation?: PullRequestRequirementAssociation;
-  readonly review?: PullRequestReviewStatus;
-  /** One user decision per devloop review observation; either choice is final. */
-  readonly reviewDecision?: {
-    readonly reviewKey: string;
-    readonly choice: "accept" | "ignore";
-  };
   /** One durable user decision for the current merge-conflict episode. */
   readonly mergeConflictDecision?: {
     readonly decisionKey: string;
@@ -78,42 +72,16 @@ export interface PullRequest {
   readonly observedAt: string;
 }
 
-export interface PullRequestReviewFinding {
-  readonly path: string;
-  readonly message: string;
-  readonly status?: string;
-}
-
-export interface PullRequestReviewObservation {
-  readonly identity: PullRequestIdentity;
-  readonly key: string;
-  readonly status: string;
-  readonly sha: string;
-  readonly count: number;
-  readonly failed: number;
-  readonly findings: readonly PullRequestReviewFinding[];
-  readonly reviewedRange?: string;
-  readonly posted?: string;
-  readonly completedAt?: number;
-  readonly branch?: string;
-}
-
-export interface PullRequestReviewStatus {
-  readonly key: string;
-  readonly status: string;
-  readonly sha: string;
-  readonly findingCount: number;
-  readonly failedFileCount: number;
-  readonly completedAt?: number;
-}
-
-export interface PullRequestReviewConnector {
-  /** Latest checkout-matching observation for each repository in the Workspace. */
-  listLatest(): Promise<readonly PullRequestReviewObservation[]>;
-  /** Latest checkout-matching observation for one PullRequest. */
-  latest(
-    identity: PullRequestIdentity,
-  ): Promise<PullRequestReviewObservation | undefined>;
+/** Provider-neutral comment across conversation and diff-anchored surfaces. */
+export interface ForgeComment {
+  readonly id: string;
+  readonly body: string;
+  readonly author?: string;
+  readonly threadId?: string;
+  readonly replyTo?: string;
+  readonly path?: string;
+  readonly line?: number;
+  readonly createdAt: string;
 }
 
 export interface PullRequestListQuery {
@@ -152,4 +120,8 @@ export interface ForgeConnector {
     query: PullRequestListQuery,
   ): Promise<readonly PullRequestIdentity[]>;
   get(identity: PullRequestIdentity): Promise<PullRequest>;
+  /** Reads both conversation and diff-anchored comments in creation order. */
+  comments?(
+    identity: PullRequestIdentity,
+  ): Promise<readonly ForgeComment[]>;
 }

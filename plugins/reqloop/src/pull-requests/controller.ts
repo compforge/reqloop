@@ -22,27 +22,19 @@ import { REQUIREMENT_RESOURCE_TYPE } from "../requirements/resource.ts";
 import type {
   ForgeConnector,
   PullRequestIdentity,
-  PullRequestReviewConnector,
   PullRequestSpec,
   PullRequestStatus,
 } from "./protocol.ts";
 import {
   PULL_REQUEST_RESOURCE_TYPE,
   updatePullRequestObservation,
-  updatePullRequestReviewObservation,
 } from "./resource.ts";
-import {
-  actionableReview,
-  reviewFollowUpText,
-} from "./review.ts";
 
 const PULL_REQUEST_POLL_CRON = "*/30 * * * * *";
 const PULL_REQUEST_ACTIVE_POLL_INTERVAL_MS = 30_000;
 const PULL_REQUEST_IDLE_POLL_INTERVAL_MS = 5 * 60_000;
 const MERGE_CONFLICT_ACTION_ACCEPT = "accept";
 const MERGE_CONFLICT_ACTION_IGNORE = "ignore";
-const REVIEW_ACTION_ACCEPT = "accept";
-const REVIEW_ACTION_IGNORE = "ignore";
 const ASSOCIATION_STANDALONE = "standalone";
 const ASSOCIATION_REQUIREMENT_PREFIX = "requirement:";
 
@@ -202,7 +194,6 @@ function mergeConflictFollowUpText(
 export function createPullRequestController(
   resources?: ResourceClient,
   connectors: readonly ForgeConnector[] = [],
-  reviewConnector?: PullRequestReviewConnector,
   sources: readonly Source<PullRequestSpec>[] = [],
   hasRecentWriteActivity: (
     identity: PullRequestIdentity,
@@ -221,7 +212,7 @@ export function createPullRequestController(
   const controllerSources: ControllerSource<PullRequestSpec>[] = [
     ...sources,
   ];
-  if (resources && (connectors.length > 0 || reviewConnector)) {
+  if (resources && connectors.length > 0) {
     controllerSources.push({
       type: "cron",
       sourceId: "pull-request-poll",
@@ -288,8 +279,6 @@ export function createPullRequestController(
           current = await updatePullRequestObservation(resources, observation);
         }
       }
-      // A freshly observed merge must not skip actionable review feedback:
-      // unresolved reviews still continue into the decision/proposal flow below.
       if (observationComplete(current.status)) return;
 
       if (
@@ -440,61 +429,6 @@ export function createPullRequestController(
             }
           }
         }
-      }
-
-      const review = await reviewConnector?.latest(identity);
-      if (!review) return;
-      if (review.key !== current.status.review?.key) {
-        current = await updatePullRequestReviewObservation(resources, review);
-      }
-      if (!actionableReview(review)) return;
-      if (current.status.reviewDecision?.reviewKey === review.key) return;
-
-      const decisionKey = `handle-review:${review.key}`;
-      const decision = interactionDecision(baton, decisionKey);
-      if (!decision) {
-        return {
-          output: {
-            kind: "interaction",
-            decisionKey,
-            title: "Review comments found",
-            prompt: `Ask the current Harness to evaluate and fix the review comments for ${identity.repository} PR/MR ${identity.number}?`,
-            options: [
-              {
-                optionId: REVIEW_ACTION_ACCEPT,
-                label: "Accept",
-                description: "Ask the current Harness to evaluate and fix them.",
-              },
-              {
-                optionId: REVIEW_ACTION_IGNORE,
-                label: "Ignore",
-                role: "reject",
-              },
-            ],
-          },
-        };
-      }
-      if (decision.outcome?.kind !== "answered") return;
-      const choice = decision.outcome.values[0];
-      if (
-        choice !== REVIEW_ACTION_ACCEPT &&
-        choice !== REVIEW_ACTION_IGNORE
-      ) {
-        return;
-      }
-      await resources.patchStatus(current, {
-        reviewDecision: {
-          reviewKey: review.key,
-          choice,
-        },
-      });
-      if (choice === REVIEW_ACTION_ACCEPT) {
-        return {
-          output: {
-            kind: "proposed-input",
-            text: reviewFollowUpText(review),
-          },
-        };
       }
     },
     async present(resource) {
