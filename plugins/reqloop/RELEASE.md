@@ -1,6 +1,13 @@
 # ReqLoop releases
 
-Current version: `0.2.8`
+Current version: `0.2.9`
+
+## 0.2.9
+
+- Require `@compforge/baton-plugin` 0.2.4 and adopt its structured logger.
+- Keep lifecycle and discovery summaries at `info`, move paths and entity lists
+  to `debug`, and report recoverable source failures as structured `warn`
+  records.
 
 ## 0.2.8
 

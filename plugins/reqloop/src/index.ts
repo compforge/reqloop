@@ -49,7 +49,7 @@ import { WorkspaceSource } from "./workspaces/source.ts";
 import { withUserDeletionPolicy } from "./retention.ts";
 
 export const REQLOOP_PLUGIN_ID = "compforge/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.2.8";
+export const REQLOOP_PACKAGE_VERSION = "0.2.9";
 
 function currentRepo(context: PluginActivationContext): string {
   const cwd = context.session.cwd;
@@ -159,11 +159,9 @@ export function createReqloopPackage(options: {
           ),
         ),
       );
-      context.logger.write({
-        level: "info",
+      context.logger.info("ReqLoop activated", {
         component: "lifecycle",
-        message: "ReqLoop activated",
-        details: {
+        attributes: {
           cwd,
           requirementConnectors: requirementConnectors.length,
           forgeConnectors: forgeConnectors.length,

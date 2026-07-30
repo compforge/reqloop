@@ -61,32 +61,34 @@ export class DevloopPullRequestSource implements Source<PullRequestSpec> {
       if (context.signal.aborted) return;
       await this.emit(context, observation.identity);
     }
-    this.logger?.write({
-      level: "info",
+    this.logger?.info("Loaded devloop review observations", {
       component: "pull-request-source.devloop",
-      message: "Loaded devloop review observations",
-      details: {
+      attributes: {
         observations: reviewObservations.length,
+      },
+    });
+    this.logger?.debug("Loaded devloop review PullRequests", {
+      component: "pull-request-source.devloop",
+      attributes: {
         pullRequests: reviewObservations.map(({ identity }) =>
           `${identity.source}/${identity.repository}#${identity.number}`
-        ).sort().join(",") || null,
+        ).sort(),
       },
     });
     const path = this.path ?? await devloopStatePath(this.cwd, "pr.json");
     if (!path) {
-      this.logger?.write({
-        level: "info",
-        component: "pull-request-source.devloop",
-        message: "Devloop PR state is unavailable for this workspace root",
-        details: { cwd: this.cwd },
-      });
+      this.logger?.debug(
+        "Devloop PR state is unavailable for this workspace root",
+        {
+          component: "pull-request-source.devloop",
+          attributes: { cwd: this.cwd },
+        },
+      );
       return;
     }
-    this.logger?.write({
-      level: "info",
+    this.logger?.debug("Watching devloop PR state", {
       component: "pull-request-source.devloop",
-      message: "Watching devloop PR state",
-      details: { path },
+      attributes: { path },
     });
     const listener = (): void => {
       void this.emitCurrent(context, path).catch((error) =>
@@ -131,13 +133,16 @@ export class DevloopPullRequestSource implements Source<PullRequestSpec> {
     const pullRequestKey = JSON.stringify(numbers);
     if (pullRequestKey !== this.lastPullRequestKey) {
       this.lastPullRequestKey = pullRequestKey;
-      this.logger?.write({
-        level: "info",
+      this.logger?.info("Observed open PullRequests in devloop state", {
         component: "pull-request-source.devloop",
-        message: "Observed open PullRequests in devloop state",
-        details: {
+        attributes: {
           openPullRequests: numbers.length,
-          pullRequests: numbers.join(",") || null,
+        },
+      });
+      this.logger?.debug("Observed devloop PullRequest identities", {
+        component: "pull-request-source.devloop",
+        attributes: {
+          pullRequests: numbers,
           path,
         },
       });
@@ -167,6 +172,11 @@ export class DevloopPullRequestSource implements Source<PullRequestSpec> {
   ): void {
     if (this.lastFailureKey === key) return;
     this.lastFailureKey = key;
+    this.logger?.warn("Could not read devloop PR state", {
+      component: "pull-request-source.devloop",
+      error,
+      attributes: { path },
+    });
     context.reportError(
       error instanceof Error
         ? error

@@ -11,7 +11,7 @@
     "check": "tsc --noEmit && bun test"
   },
   "devDependencies": {
-    "@compforge/baton-plugin": "0.2.3",
+    "@compforge/baton-plugin": "0.2.4",
     "@types/bun": "^1.3.0",
     "typescript": "^5.9.0"
   },
