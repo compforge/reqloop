@@ -1,5 +1,5 @@
 import type {
-  ForgeComment,
+  Comment,
   ForgeConnector,
   PullRequestIdentity,
   PullRequestListQuery,
@@ -202,7 +202,7 @@ export class GitHubForgeConnector implements ForgeConnector {
 
   async comments(
     identity: PullRequestIdentity,
-  ): Promise<readonly ForgeComment[]> {
+  ): Promise<readonly Comment[]> {
     this.#assertSource(identity);
     const base =
       `${this.#restBase}/repos/${repositoryPath(identity.repository)}`;
@@ -210,15 +210,12 @@ export class GitHubForgeConnector implements ForgeConnector {
       this.#commentRows(`${base}/issues/${identity.number}/comments`),
       this.#commentRows(`${base}/pulls/${identity.number}/comments`),
     ]);
-    const rows = [
-      ...conversation.map((comment) => ({ comment, anchored: false })),
-      ...review.map((comment) => ({ comment, anchored: true })),
-    ].sort((left, right) =>
-      String(left.comment.created_at ?? "")
-        .localeCompare(String(right.comment.created_at ?? ""))
-    );
-    return rows.map(({ comment, anchored }, index) => {
-      const id = comment.id;
+    const toComment = (
+      row: Record<string, unknown>,
+      anchored: boolean,
+      index: number,
+    ): Comment => {
+      const id = row.id;
       if (
         (typeof id !== "number" && typeof id !== "string") ||
         id === ""
@@ -227,34 +224,60 @@ export class GitHubForgeConnector implements ForgeConnector {
       }
       const createdAt = nonEmptyString(
         `GitHub comments[${index}].created_at`,
-        comment.created_at,
+        row.created_at,
       );
-      const parent = comment.in_reply_to_id;
-      const parentId = parent === undefined || parent === null
-        ? undefined
-        : String(parent);
-      const commentId = String(id);
       return {
-        id: commentId,
-        body: typeof comment.body === "string" ? comment.body : "",
-        ...(typeof (comment.user as Record<string, unknown> | undefined)
+        id: String(id),
+        body: typeof row.body === "string" ? row.body : "",
+        ...(typeof (row.user as Record<string, unknown> | undefined)
               ?.login === "string"
           ? {
-            author: (comment.user as Record<string, unknown>).login as string,
+            author: (row.user as Record<string, unknown>).login as string,
           }
           : {}),
-        ...(anchored ? { threadId: parentId ?? commentId } : {}),
-        ...(parentId ? { replyTo: parentId } : {}),
-        ...(anchored && typeof comment.path === "string"
-          ? { path: comment.path }
+        replyable: false,
+        replies: [],
+        ...(anchored && typeof row.path === "string"
+          ? { path: row.path }
           : {}),
         ...(anchored &&
-            Number.isSafeInteger(comment.line ?? comment.original_line)
-          ? { line: (comment.line ?? comment.original_line) as number }
+            Number.isSafeInteger(row.line ?? row.original_line)
+          ? { line: (row.line ?? row.original_line) as number }
           : {}),
         createdAt,
       };
-    });
+    };
+
+    const comments = conversation.map((row, index) =>
+      toComment(row, false, index)
+    );
+    const replies = new Map<string, Comment[]>();
+    const roots: Comment[] = [];
+    for (const [index, row] of review.entries()) {
+      const comment = toComment(row, true, conversation.length + index);
+      const parent = row.in_reply_to_id;
+      if (parent !== undefined && parent !== null) {
+        const parentId = String(parent);
+        const siblings = replies.get(parentId);
+        if (siblings) {
+          siblings.push(comment);
+        } else {
+          replies.set(parentId, [comment]);
+        }
+      } else {
+        roots.push(comment);
+      }
+    }
+    comments.push(...roots.map((root) => ({
+      ...root,
+      replyable: true,
+      replies: (replies.get(root.id) ?? []).sort((left, right) =>
+        left.createdAt.localeCompare(right.createdAt)
+      ),
+    })));
+    return comments.sort((left, right) =>
+      left.createdAt.localeCompare(right.createdAt)
+    );
   }
 
   #headers(): HeadersInit {

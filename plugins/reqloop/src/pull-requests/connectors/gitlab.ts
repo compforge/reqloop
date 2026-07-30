@@ -1,5 +1,5 @@
 import type {
-  ForgeComment,
+  Comment,
   ForgeConnector,
   PullRequestIdentity,
   PullRequestListQuery,
@@ -208,9 +208,9 @@ export class GitLabForgeConnector implements ForgeConnector {
 
   async comments(
     identity: PullRequestIdentity,
-  ): Promise<readonly ForgeComment[]> {
+  ): Promise<readonly Comment[]> {
     this.#assertSource(identity);
-    const result: ForgeComment[] = [];
+    const result: Comment[] = [];
     let page = 1;
     for (let count = 0; count < MAX_DISCUSSION_PAGES; count += 1) {
       const { data, headers } = await this.#http.request(
@@ -224,9 +224,10 @@ export class GitLabForgeConnector implements ForgeConnector {
       for (const discussion of discussions) {
         const notes = records("GitLab discussion notes", discussion.notes)
           .filter((note) => note.system !== true);
-        const root = notes[0];
-        const threaded = discussion.individual_note !== true;
-        for (const [index, note] of notes.entries()) {
+        const toComment = (
+          note: Record<string, unknown>,
+          index: number,
+        ): Comment => {
           const id = note.id;
           if (
             (typeof id !== "number" && typeof id !== "string") ||
@@ -244,18 +245,14 @@ export class GitLabForgeConnector implements ForgeConnector {
               !Array.isArray(note.author)
             ? note.author as Record<string, unknown>
             : undefined;
-          const rootId = root?.id;
-          const reply = threaded && rootId !== undefined && id !== rootId;
-          result.push({
+          return {
             id: String(id),
             body: typeof note.body === "string" ? note.body : "",
             ...(typeof author?.username === "string"
               ? { author: author.username }
               : {}),
-            ...(threaded && typeof discussion.id === "string"
-              ? { threadId: discussion.id }
-              : {}),
-            ...(reply ? { replyTo: String(rootId) } : {}),
+            replyable: false,
+            replies: [],
             ...(typeof position?.new_path === "string"
               ? { path: position.new_path }
               : {}),
@@ -266,8 +263,21 @@ export class GitLabForgeConnector implements ForgeConnector {
               `GitLab comment ${id} created_at`,
               note.created_at,
             ),
-          });
+          };
+        };
+        if (discussion.individual_note === true) {
+          result.push(...notes.map(toComment));
+          continue;
         }
+        const [root, ...replies] = notes.map(toComment);
+        if (!root) continue;
+        result.push({
+          ...root,
+          replyable: true,
+          replies: replies.sort((left, right) =>
+            left.createdAt.localeCompare(right.createdAt)
+          ),
+        });
       }
       const nextPage = headers.get("x-next-page");
       if (!nextPage) {

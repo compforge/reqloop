@@ -33,8 +33,7 @@ export interface CodeReviewFinding {
   readonly status?: string;
   readonly fingerprint?: string;
   readonly commentId?: string;
-  readonly threadId?: string;
-  /** First valid ccr:label reply observed in this Forge thread. */
+  /** First valid ccr:label reply observed on this Forge comment. */
   readonly label?: CodeReviewLabel;
 }
 
