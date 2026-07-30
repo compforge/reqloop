@@ -208,16 +208,14 @@ export class ForgePullRequestSource implements Source<PullRequestSpec> {
     ]);
     if (key === this.lastScopeKey) return;
     this.lastScopeKey = key;
-    this.logger?.write({
-      level: "info",
+    this.logger?.debug("Forge PullRequest discovery scope updated", {
       component: "pull-request-source.forge",
-      message: "Forge PullRequest discovery scope updated",
-      details: {
+      attributes: {
         discoveredCheckouts: checkoutCount,
         trackedRepositories: tracked.length,
         skippedByActivity,
         skippedWithoutConnector,
-        repositories: repositories.join(",") || null,
+        repositories,
       },
     });
   }
@@ -241,17 +239,20 @@ export class ForgePullRequestSource implements Source<PullRequestSpec> {
     ]);
     if (key === this.lastResultKey) return;
     this.lastResultKey = key;
-    this.logger?.write({
-      level: "info",
+    this.logger?.info("Forge PullRequest discovery completed", {
       component: "pull-request-source.forge",
-      message: "Forge PullRequest discovery completed",
-      details: {
+      attributes: {
         listedRepositories: result.listedRepositories,
         failedRepositories: result.failedRepositories,
         skippedAfterRateLimit: result.skippedAfterRateLimit,
         discoveredPullRequests: result.discovered,
         admittedPullRequests: result.admitted.length,
-        pullRequests: pullRequests.join(",") || null,
+      },
+    });
+    this.logger?.debug("Discovered Forge PullRequests", {
+      component: "pull-request-source.forge",
+      attributes: {
+        pullRequests,
       },
     });
   }
@@ -281,6 +282,11 @@ export class ForgePullRequestSource implements Source<PullRequestSpec> {
       : String(error);
     if (this.failureKeys.get(repositoryKey) === key) return;
     this.failureKeys.set(repositoryKey, key);
+    this.logger?.warn("Could not list Forge PullRequests", {
+      component: "pull-request-source.forge",
+      error,
+      attributes: { repository: repositoryKey },
+    });
     context.reportError(new Error(
       `Could not list Forge PullRequests for ${repository.repository}`,
       { cause: error },

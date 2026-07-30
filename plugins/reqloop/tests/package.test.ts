@@ -21,7 +21,9 @@ import type {
   ContextProvider,
   Controller,
   PluginActivationContext,
-  PluginLogEntry,
+  PluginLogContext,
+  PluginLogger,
+  PluginLogLevel,
   Resource,
   Source,
   SourceContext,
@@ -52,9 +54,31 @@ import reqloop, {
 } from "../src/index.ts";
 
 const roots: string[] = [];
-const noopLogger = {
-  write() {},
+const noopLogger: PluginLogger = {
+  debug() {},
+  info() {},
+  warn() {},
+  error() {},
 };
+
+interface CapturedLog {
+  readonly level: PluginLogLevel;
+  readonly message: string;
+  readonly context?: PluginLogContext;
+}
+
+function recordingLogger(logs: CapturedLog[]): PluginLogger {
+  const capture = (level: PluginLogLevel) =>
+    (message: string, context?: PluginLogContext): void => {
+      logs.push({ level, message, context });
+    };
+  return {
+    debug: capture("debug"),
+    info: capture("info"),
+    warn: capture("warn"),
+    error: capture("error"),
+  };
+}
 
 function testRoot(): string {
   const root = mkdtempSync(join(tmpdir(), "reqloop-review-"));
@@ -353,14 +377,10 @@ describe("ReqLoop PluginPackage", () => {
     const pullRequestEmits: Parameters<
       SourceContext<PullRequestSpec>["emit"]
     >[0][] = [];
-    const logs: PluginLogEntry[] = [];
+    const logs: CapturedLog[] = [];
     const pullRequestAbort = new AbortController();
     const pullRequestSource = new ForgePullRequestSource(root, [forge], {
-      logger: {
-        write(entry) {
-          logs.push(entry);
-        },
-      },
+      logger: recordingLogger(logs),
       maxPerRepository: 2,
       maxResources: 1,
       resyncIntervalMs: 60_000,
@@ -399,18 +419,31 @@ describe("ReqLoop PluginPackage", () => {
     }]);
     expect(logs).toEqual([
       expect.objectContaining({
-        level: "info",
+        level: "debug",
         message: "Forge PullRequest discovery scope updated",
-        details: expect.objectContaining({
-          trackedRepositories: 1,
+        context: expect.objectContaining({
+          attributes: expect.objectContaining({
+            trackedRepositories: 1,
+          }),
         }),
       }),
       expect.objectContaining({
         level: "info",
         message: "Forge PullRequest discovery completed",
-        details: expect.objectContaining({
-          admittedPullRequests: 1,
-          discoveredPullRequests: 2,
+        context: expect.objectContaining({
+          attributes: expect.objectContaining({
+            admittedPullRequests: 1,
+            discoveredPullRequests: 2,
+          }),
+        }),
+      }),
+      expect.objectContaining({
+        level: "debug",
+        message: "Discovered Forge PullRequests",
+        context: expect.objectContaining({
+          attributes: {
+            pullRequests: ["github.com/compforge/reqloop#30"],
+          },
         }),
       }),
     ]);
@@ -513,14 +546,10 @@ describe("ReqLoop PluginPackage", () => {
       SourceContext<PullRequestSpec>["emit"]
     >[0][] = [];
     const errors: unknown[] = [];
-    const logs: PluginLogEntry[] = [];
+    const logs: CapturedLog[] = [];
     const abort = new AbortController();
     const source = new DevloopPullRequestSource(root, {
-      logger: {
-        write(entry) {
-          logs.push(entry);
-        },
-      },
+      logger: recordingLogger(logs),
       path,
       watchIntervalMs: 10,
     });
@@ -561,9 +590,28 @@ describe("ReqLoop PluginPackage", () => {
     expect(logs).toContainEqual(expect.objectContaining({
       level: "info",
       message: "Observed open PullRequests in devloop state",
-      details: expect.objectContaining({
-        openPullRequests: 1,
-        pullRequests: "30",
+      context: expect.objectContaining({
+        attributes: expect.objectContaining({
+          openPullRequests: 1,
+        }),
+      }),
+    }));
+    expect(logs).toContainEqual(expect.objectContaining({
+      level: "debug",
+      message: "Observed devloop PullRequest identities",
+      context: expect.objectContaining({
+        attributes: expect.objectContaining({
+          pullRequests: [30],
+          path,
+        }),
+      }),
+    }));
+    expect(logs).toContainEqual(expect.objectContaining({
+      level: "warn",
+      message: "Could not read devloop PR state",
+      context: expect.objectContaining({
+        error: expect.any(Error),
+        attributes: { path },
       }),
     }));
   });
@@ -645,15 +693,11 @@ describe("ReqLoop PluginPackage", () => {
     let command: Command | undefined;
     let contextProvider: ContextProvider | undefined;
     const resourceTypes: { apiVersion: string; kind: string }[] = [];
-    const logs: PluginLogEntry[] = [];
+    const logs: CapturedLog[] = [];
     let workspaceController: Controller<unknown, unknown> | undefined;
     const context = {
       session: { batonSessionId: "bs_test", cwd: root },
-      logger: {
-        write(entry: PluginLogEntry) {
-          logs.push(entry);
-        },
-      },
+      logger: recordingLogger(logs),
       registerCommand(contribution: Command) {
         command = contribution;
       },
@@ -689,12 +733,14 @@ describe("ReqLoop PluginPackage", () => {
     );
     expect(logs).toContainEqual({
       level: "info",
-      component: "lifecycle",
       message: "ReqLoop activated",
-      details: {
-        cwd: root,
-        requirementConnectors: 1,
-        forgeConnectors: 0,
+      context: {
+        component: "lifecycle",
+        attributes: {
+          cwd: root,
+          requirementConnectors: 1,
+          forgeConnectors: 0,
+        },
       },
     });
     expect(contextProvider?.kind).toBe("requirement");
