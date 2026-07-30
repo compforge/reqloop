@@ -1,6 +1,6 @@
 {
   "name": "@compforge/baton-plugin-reqloop",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "private": true,
   "description": "Requirement-loop coordination plugin for Baton.",
   "type": "module",
