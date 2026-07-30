@@ -28,12 +28,14 @@ import type {
 } from "@compforge/baton-plugin";
 
 import reqloop, {
+  CODE_REVIEW_RESOURCE_TYPE,
+  type CodeReviewSpec,
   createReqloopPackage,
+  DevloopCodeReviewSource,
   DevloopPullRequestSource,
   DevloopToolActivityPolicy,
-  EVALUATION_RESOURCE_TYPE,
-  type EvaluationSpec,
   type ForgeConnector,
+  ForgeCodeReviewSource,
   ForgePullRequestSource,
   interpretToolActivity,
   REPOSITORY_RESOURCE_TYPE,
@@ -525,7 +527,7 @@ describe("ReqLoop PluginPackage", () => {
     expect(resourceTypes).toEqual([
       REQUIREMENT_RESOURCE_TYPE,
       PULL_REQUEST_RESOURCE_TYPE,
-      EVALUATION_RESOURCE_TYPE,
+      CODE_REVIEW_RESOURCE_TYPE,
       REPOSITORY_RESOURCE_TYPE,
       WORKSPACE_RESOURCE_TYPE,
     ]);
@@ -895,9 +897,9 @@ describe("ReqLoop PluginPackage", () => {
       sourceId: "pull-request-test",
       async start() {},
     };
-    const evaluationSource: Source<EvaluationSpec> = {
+    const codeReviewSource: Source<CodeReviewSpec> = {
       type: "resource",
-      sourceId: "evaluation-test",
+      sourceId: "code-review-test",
       async start() {},
     };
     const controllers = new Map<
@@ -925,7 +927,7 @@ describe("ReqLoop PluginPackage", () => {
       workspaceSources: [workspaceSource],
       repositorySources: [repositorySource],
       pullRequestSources: [pullRequestSource],
-      evaluationSources: [evaluationSource],
+      codeReviewSources: [codeReviewSource],
     }).activate(context);
 
     expect(controllers.get(REPOSITORY_RESOURCE_TYPE.kind)?.sources).toEqual([
@@ -935,8 +937,8 @@ describe("ReqLoop PluginPackage", () => {
       controllers.get(PULL_REQUEST_RESOURCE_TYPE.kind)?.sources?.[0],
     ).toBe(pullRequestSource);
     expect(
-      controllers.get(EVALUATION_RESOURCE_TYPE.kind)?.sources,
-    ).toEqual([evaluationSource]);
+      controllers.get(CODE_REVIEW_RESOURCE_TYPE.kind)?.sources,
+    ).toEqual([codeReviewSource]);
     expect(controllers.get(WORKSPACE_RESOURCE_TYPE.kind)?.sources).toEqual([
       workspaceSource,
       {
@@ -963,7 +965,10 @@ describe("ReqLoop PluginPackage", () => {
       controllers.get(PULL_REQUEST_RESOURCE_TYPE.kind)?.watches?.map(
         ({ resourceType }) => resourceType,
       ),
-    ).toEqual([REQUIREMENT_RESOURCE_TYPE]);
+    ).toEqual([
+      REQUIREMENT_RESOURCE_TYPE,
+      CODE_REVIEW_RESOURCE_TYPE,
+    ]);
     expect(
       controllers.get(REPOSITORY_RESOURCE_TYPE.kind)?.watches?.map(
         ({ resourceType }) => resourceType,
@@ -984,6 +989,14 @@ describe("ReqLoop PluginPackage", () => {
     ).toEqual([
       { type: "resource", sourceId: "workspace" },
     ]);
+    const defaultCodeReviewSources =
+      controllers.get(CODE_REVIEW_RESOURCE_TYPE.kind)?.sources;
+    expect(defaultCodeReviewSources?.[0]).toBeInstanceOf(
+      ForgeCodeReviewSource,
+    );
+    expect(defaultCodeReviewSources?.[1]).toBeInstanceOf(
+      DevloopCodeReviewSource,
+    );
   });
 
 });

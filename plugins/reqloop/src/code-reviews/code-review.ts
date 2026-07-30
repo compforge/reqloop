@@ -1,7 +1,8 @@
 import type {
+  CodeReviewLabel,
   CodeReviewObservation,
-  CodeReviewEvaluationSpec,
-  EvaluationStatus,
+  CodeReviewSpec,
+  CodeReviewStatus,
 } from "./protocol.ts";
 import type { ForgeComment } from "../pull-requests/protocol.ts";
 
@@ -12,12 +13,25 @@ const SUMMARY_RE =
 const FINDING_COUNT_RE = /\*\*(\d+) finding\(s\)\*\*/i;
 const FAILED_COUNT_RE = /(\d+) 个文件未能 review/i;
 const FINGERPRINT_RE = /ccr:fp=([A-Za-z0-9_-]+)/;
+const LABEL_RE = /ccr:label=([A-Za-z]+)/;
+const CODE_REVIEW_LABELS = new Set<CodeReviewLabel>([
+  "important",
+  "minor",
+  "debatable",
+  "wrong",
+]);
 
 export function codeReviewExpiresAt(
   observation: CodeReviewObservation,
   ttlMs: number = CODE_REVIEW_ACTIVE_TTL_MS,
 ): number {
-  return Date.parse(observation.completedAt) + ttlMs;
+  const completedAt = Date.parse(observation.completedAt);
+  if (!Number.isFinite(completedAt)) {
+    throw new Error(
+      `Code review comment has invalid createdAt: ${observation.completedAt}`,
+    );
+  }
+  return completedAt + ttlMs;
 }
 
 function summary(
@@ -40,6 +54,7 @@ function summary(
 
 function commentFinding(
   comment: ForgeComment,
+  labels: ReadonlyMap<string, CodeReviewLabel>,
 ): CodeReviewObservation["findings"][number] | undefined {
   if (!comment.threadId || comment.replyTo) return;
   const fingerprint = FINGERPRINT_RE.exec(comment.body)?.[1];
@@ -54,7 +69,28 @@ function commentFinding(
     fingerprint,
     commentId: comment.id,
     threadId: comment.threadId,
+    ...(labels.has(comment.threadId)
+      ? { label: labels.get(comment.threadId)! }
+      : {}),
   };
+}
+
+function threadLabels(
+  comments: readonly ForgeComment[],
+): ReadonlyMap<string, CodeReviewLabel> {
+  const labels = new Map<string, CodeReviewLabel>();
+  for (const comment of comments) {
+    if (!comment.threadId || !comment.replyTo) continue;
+    const label = LABEL_RE.exec(comment.body)?.[1];
+    if (
+      label &&
+      CODE_REVIEW_LABELS.has(label as CodeReviewLabel) &&
+      !labels.has(comment.threadId)
+    ) {
+      labels.set(comment.threadId, label as CodeReviewLabel);
+    }
+  }
+  return labels;
 }
 
 function observationAt(
@@ -73,10 +109,11 @@ function observationAt(
       break;
     }
   }
+  const labels = threadLabels(comments);
   const findings = comments
     .slice(previousSummaryIndex + 1, summaryIndex)
     .flatMap((candidate) => {
-      const finding = commentFinding(candidate);
+      const finding = commentFinding(candidate, labels);
       return finding ? [finding] : [];
     });
   return {
@@ -96,25 +133,35 @@ export function latestCodeReviewObservation(
   pullRequest: CodeReviewObservation["pullRequest"],
   comments: readonly ForgeComment[],
 ): CodeReviewObservation | undefined {
-  for (let index = comments.length - 1; index >= 0; index -= 1) {
+  return codeReviewObservations(pullRequest, comments).at(-1);
+}
+
+/** Every published actionable review run, ordered by its summary comment. */
+export function codeReviewObservations(
+  pullRequest: CodeReviewObservation["pullRequest"],
+  comments: readonly ForgeComment[],
+): readonly CodeReviewObservation[] {
+  const observations: CodeReviewObservation[] = [];
+  for (let index = 0; index < comments.length; index += 1) {
     const observation = observationAt(pullRequest, comments, index);
-    if (observation) return observation;
+    if (observation) observations.push(observation);
   }
+  return observations;
 }
 
 export function codeReviewObservation(
-  spec: CodeReviewEvaluationSpec,
+  spec: CodeReviewSpec,
   comments: readonly ForgeComment[],
 ): CodeReviewObservation | undefined {
   const index = comments.findIndex(({ id }) => id === spec.runKey);
   if (index < 0) return;
-  return observationAt(spec.target.identity, comments, index);
+  return observationAt(spec.pullRequest, comments, index);
 }
 
 export function codeReviewStatus(
   observation: CodeReviewObservation,
   ttlMs: number = CODE_REVIEW_ACTIVE_TTL_MS,
-): EvaluationStatus {
+): CodeReviewStatus {
   const completedAt = Date.parse(observation.completedAt);
   if (!Number.isFinite(completedAt)) {
     throw new Error(
@@ -128,7 +175,6 @@ export function codeReviewStatus(
     phase: "completed",
     verdict,
     result: {
-      kind: "code-review",
       findingCount: observation.count,
       failedFileCount: observation.failed,
       findings: observation.findings,
@@ -145,19 +191,46 @@ export function codeReviewStatus(
   };
 }
 
-export function actionableCodeReview(status: EvaluationStatus): boolean {
+export function actionableCodeReview(status: CodeReviewStatus): boolean {
   return status.verdict === "failed" ||
     status.verdict === "action-required";
 }
 
+export function codeReviewLabelProgress(
+  status: CodeReviewStatus,
+): {
+  readonly labeled: number;
+  readonly total: number;
+  readonly complete: boolean;
+} {
+  const findings = status.result?.findings ?? [];
+  const labeled = findings.filter(({ label }) => label !== undefined).length;
+  return {
+    labeled,
+    total: findings.length,
+    complete: findings.length > 0 && labeled === findings.length,
+  };
+}
+
+/** Whether this review should still occupy Board attention. */
+export function codeReviewNeedsAttention(
+  status: CodeReviewStatus,
+): boolean {
+  if (!actionableCodeReview(status)) return false;
+  const progress = codeReviewLabelProgress(status);
+  return !progress.complete &&
+    status.decision?.choice !== "ignore" &&
+    !(status.decision?.choice === "accept" && progress.total === 0);
+}
+
 export function codeReviewFollowUpText(
-  spec: CodeReviewEvaluationSpec,
-  status: EvaluationStatus,
+  spec: CodeReviewSpec,
+  status: CodeReviewStatus,
 ): string {
-  const identity = spec.target.identity;
+  const identity = spec.pullRequest;
   const result = status.result;
   if (!result) {
-    throw new Error("Code review Evaluation is missing its result");
+    throw new Error("CodeReview is missing its result");
   }
   const subject = `${identity.repository} PR/MR ${identity.number}`;
   const outcomes = [
@@ -171,6 +244,7 @@ export function codeReviewFollowUpText(
   const lines = [
     `devloop review completed for ${subject}: ${outcomes.join(", ")}.`,
     "Evaluate the review comments against the current code. Fix the real findings, explain any false positives, and run the relevant lint and tests.",
+    "Use the devloop label-review workflow to mark every published finding thread with ccr:label=important, minor, debatable, or wrong after checking the actual code.",
   ];
   for (const finding of result.findings.slice(0, 30)) {
     const detail = finding.message.replace(/\s+/g, " ").slice(0, 300);

@@ -1,31 +1,31 @@
 import type { PullRequestIdentity } from "../pull-requests/protocol.ts";
 
-export interface CodeReviewEvaluationSpec {
-  readonly kind: "code-review";
-  readonly target: {
-    readonly kind: "pull-request";
-    readonly identity: PullRequestIdentity;
-  };
-  /** Stable identity of one AI review run. */
+export interface CodeReviewSpec {
+  /** PullRequest reviewed by this run. */
+  readonly pullRequest: PullRequestIdentity;
+  /** Stable identity of one published AI review run. */
   readonly runKey: string;
   /** Immutable revision reviewed by this run. */
   readonly revision: string;
 }
 
-/** Extend this union only when another Evaluation kind is implemented. */
-export type EvaluationSpec = CodeReviewEvaluationSpec;
-
-export type EvaluationPhase =
+export type CodeReviewPhase =
   | "pending"
   | "running"
   | "completed"
   | "failed";
 
-export type EvaluationVerdict =
+export type CodeReviewVerdict =
   | "passed"
   | "action-required"
   | "skipped"
   | "failed";
+
+export type CodeReviewLabel =
+  | "important"
+  | "minor"
+  | "debatable"
+  | "wrong";
 
 export interface CodeReviewFinding {
   readonly path: string;
@@ -34,26 +34,26 @@ export interface CodeReviewFinding {
   readonly fingerprint?: string;
   readonly commentId?: string;
   readonly threadId?: string;
+  /** First valid ccr:label reply observed in this Forge thread. */
+  readonly label?: CodeReviewLabel;
 }
 
-export interface CodeReviewEvaluationResult {
-  readonly kind: "code-review";
+export interface CodeReviewResult {
   readonly findingCount: number;
   readonly failedFileCount: number;
   readonly findings: readonly CodeReviewFinding[];
   readonly summaryCommentId: string;
   readonly reviewedRange?: string;
   /**
-   * Human-readable producer result for optional Forge publication. Evaluation
-   * identity does not depend on whether any comment was posted.
+   * Human-readable producer result published on the Forge.
    */
   readonly publicationSummary?: string;
 }
 
-export interface EvaluationStatus {
-  readonly phase?: EvaluationPhase;
-  readonly verdict?: EvaluationVerdict;
-  readonly result?: CodeReviewEvaluationResult;
+export interface CodeReviewStatus {
+  readonly phase?: CodeReviewPhase;
+  readonly verdict?: CodeReviewVerdict;
+  readonly result?: CodeReviewResult;
   readonly completedAt?: string;
   readonly expiresAt?: string;
   readonly decision?: {
@@ -62,7 +62,7 @@ export interface EvaluationStatus {
   };
 }
 
-/** Terminal devloop fact mapped into a code-review Evaluation. */
+/** Terminal devloop review run reconstructed from its Forge comments. */
 export interface CodeReviewObservation {
   readonly pullRequest: PullRequestIdentity;
   readonly key: string;

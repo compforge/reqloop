@@ -12,15 +12,16 @@ import type {
 } from "@compforge/baton-plugin";
 
 import {
-  codeReviewEvaluationSpec,
-  createEvaluationController,
-  EVALUATION_RESOURCE_TYPE,
-  evaluationResourceName,
-  type EvaluationSpec,
-  type EvaluationStatus,
+  CODE_REVIEW_RESOURCE_TYPE,
+  codeReviewNeedsAttention,
+  codeReviewResourceName,
+  codeReviewSpec,
+  type CodeReviewSpec,
+  type CodeReviewStatus,
+  createCodeReviewController,
   type ForgeComment,
   type ForgeConnector,
-  ForgeEvaluationSource,
+  ForgeCodeReviewSource,
   latestCodeReviewObservation,
   PULL_REQUEST_RESOURCE_TYPE,
   type PullRequestSpec,
@@ -58,6 +59,48 @@ function reviewComments(): readonly ForgeComment[] {
         "**1 finding(s)**（1 条已锚到 diff）",
       ].join("\n"),
       createdAt: "2026-07-30T09:30:00.000Z",
+    },
+  ];
+}
+
+function repeatedReviewComments(): readonly ForgeComment[] {
+  return [
+    ...reviewComments(),
+    {
+      id: "finding-2",
+      threadId: "finding-2",
+      body: [
+        "🤖 **devloop code-review**",
+        "",
+        "missing timeout",
+        "",
+        "<sub>ccr:fp=fp2</sub>",
+      ].join("\n"),
+      path: "src/worker.ts",
+      line: 18,
+      createdAt: "2026-07-30T09:39:00.000Z",
+    },
+    {
+      id: "summary-2",
+      body: [
+        "🤖 **devloop code-review** · `origin/main..HEAD` · `abc123def`",
+        "",
+        "**1 finding(s)**（1 条已锚到 diff）",
+      ].join("\n"),
+      createdAt: "2026-07-30T09:40:00.000Z",
+    },
+  ];
+}
+
+function labeledReviewComments(): readonly ForgeComment[] {
+  return [
+    ...reviewComments(),
+    {
+      id: "label-1",
+      threadId: "finding-1",
+      replyTo: "finding-1",
+      body: "ccr:label=important — confirmed against the current code",
+      createdAt: "2026-07-30T09:35:00.000Z",
     },
   ];
 }
@@ -118,12 +161,15 @@ function batonSnapshot(
   };
 }
 
-function evaluationClient(
-  resource: Readonly<Resource<EvaluationSpec, EvaluationStatus>>,
+function codeReviewClient(
+  resource: Readonly<Resource<CodeReviewSpec, CodeReviewStatus>>,
+  pullRequests: readonly Readonly<
+    Resource<PullRequestSpec, PullRequestStatus>
+  >[] = [],
 ): {
   readonly client: ResourceClient;
   readonly current: () => Readonly<
-    Resource<EvaluationSpec, EvaluationStatus>
+    Resource<CodeReviewSpec, CodeReviewStatus>
   >;
   readonly deleted: readonly string[];
 } {
@@ -131,6 +177,11 @@ function evaluationClient(
   const deleted: string[] = [];
   return {
     client: {
+      async list(type) {
+        return type.kind === PULL_REQUEST_RESOURCE_TYPE.kind
+          ? pullRequests
+          : [];
+      },
       async patchStatus(candidate, patch) {
         current = {
           ...candidate,
@@ -153,7 +204,7 @@ function evaluationClient(
   };
 }
 
-describe("Evaluation Resource", () => {
+describe("CodeReview Resource", () => {
   test("maps one devloop review summary and its Forge finding comments", () => {
     const observation = latestCodeReviewObservation(
       PULL_REQUEST,
@@ -177,12 +228,12 @@ describe("Evaluation Resource", () => {
       publicationSummary: expect.stringContaining("1 finding(s)"),
       completedAt: "2026-07-30T09:30:00.000Z",
     });
-    expect(evaluationResourceName(
-      codeReviewEvaluationSpec(observation!),
-    )).toMatch(/^evaluation-/);
+    expect(codeReviewResourceName(
+      codeReviewSpec(observation!),
+    )).toMatch(/^code-review-/);
   });
 
-  test("does not invent an Evaluation when Forge has no review comment", () => {
+  test("does not invent a CodeReview when Forge has no review comment", () => {
     expect(latestCodeReviewObservation(PULL_REQUEST, [])).toBeUndefined();
     expect(latestCodeReviewObservation(PULL_REQUEST, [{
       id: "ordinary",
@@ -191,8 +242,22 @@ describe("Evaluation Resource", () => {
     }])).toBeUndefined();
   });
 
-  test("admits a recent Evaluation even after the PullRequest merged", async () => {
-    const emitted: Parameters<SourceContext<EvaluationSpec>["emit"]>[0][] = [];
+  test("joins the first valid ccr label reply onto its finding thread", () => {
+    const observation = latestCodeReviewObservation(
+      PULL_REQUEST,
+      labeledReviewComments(),
+    );
+
+    expect(observation?.findings).toEqual([
+      expect.objectContaining({
+        threadId: "finding-1",
+        label: "important",
+      }),
+    ]);
+  });
+
+  test("admits every recent run after merge, including a same-revision rerun", async () => {
+    const emitted: Parameters<SourceContext<CodeReviewSpec>["emit"]>[0][] = [];
     const abort = new AbortController();
     const resources = {
       async list(type: { kind: string }) {
@@ -201,9 +266,9 @@ describe("Evaluation Resource", () => {
           : [];
       },
     } as unknown as ResourceClient;
-    const source = new ForgeEvaluationSource(
+    const source = new ForgeCodeReviewSource(
       resources,
-      [forge(reviewComments())],
+      [forge(repeatedReviewComments())],
       {
         now: () => new Date(NOW),
         resyncIntervalMs: 60_000,
@@ -221,18 +286,25 @@ describe("Evaluation Resource", () => {
     });
     abort.abort();
 
-    expect(emitted).toEqual([{
-      name: expect.stringMatching(/^evaluation-/),
-      spec: {
-        kind: "code-review",
-        target: {
-          kind: "pull-request",
-          identity: PULL_REQUEST,
+    expect(emitted).toEqual([
+      {
+        name: expect.stringMatching(/^code-review-/),
+        spec: {
+          pullRequest: PULL_REQUEST,
+          runKey: "summary-1",
+          revision: "abc123def",
         },
-        runKey: "summary-1",
-        revision: "abc123def",
       },
-    }]);
+      {
+        name: expect.stringMatching(/^code-review-/),
+        spec: {
+          pullRequest: PULL_REQUEST,
+          runKey: "summary-2",
+          revision: "abc123def",
+        },
+      },
+    ]);
+    expect(emitted[0]?.name).not.toBe(emitted[1]?.name);
   });
 
   test("offers advisory follow-up once and expires independently", async () => {
@@ -240,13 +312,13 @@ describe("Evaluation Resource", () => {
       PULL_REQUEST,
       reviewComments(),
     )!;
-    const spec = codeReviewEvaluationSpec(observation);
-    const resource: Readonly<Resource<EvaluationSpec, EvaluationStatus>> = {
-      ...EVALUATION_RESOURCE_TYPE,
+    const spec = codeReviewSpec(observation);
+    const resource: Readonly<Resource<CodeReviewSpec, CodeReviewStatus>> = {
+      ...CODE_REVIEW_RESOURCE_TYPE,
       metadata: {
-        name: evaluationResourceName(spec),
+        name: codeReviewResourceName(spec),
         namespace: "reqloop_default",
-        uid: "uid-evaluation-1",
+        uid: "uid-code-review-1",
         generation: 1,
         resourceVersion: "1",
         creationTimestamp: NOW,
@@ -254,8 +326,8 @@ describe("Evaluation Resource", () => {
       spec,
       status: {},
     };
-    const resources = evaluationClient(resource);
-    const controller = createEvaluationController(
+    const resources = codeReviewClient(resource);
+    const controller = createCodeReviewController(
       resources.client,
       [forge(reviewComments())],
       [],
@@ -270,7 +342,6 @@ describe("Evaluation Resource", () => {
       phase: "completed",
       verdict: "action-required",
       result: {
-        kind: "code-review",
         findingCount: 1,
         summaryCommentId: "summary-1",
       },
@@ -289,7 +360,7 @@ describe("Evaluation Resource", () => {
         interactionId: "ix-review-accept",
         decisionKey: prompted.output.decisionKey,
         resource: {
-          ...EVALUATION_RESOURCE_TYPE,
+          ...CODE_REVIEW_RESOURCE_TYPE,
           namespace: resource.metadata.namespace,
           name: resource.metadata.name,
           uid: resource.metadata.uid,
@@ -303,16 +374,32 @@ describe("Evaluation Resource", () => {
     });
     expect(accepted?.output).toMatchObject({
       kind: "proposed-input",
-      text: expect.stringContaining(
-        "src/app.ts — missing cancellation",
-      ),
+      text: expect.stringContaining("label-review"),
     });
     expect(resources.deleted).toEqual([]);
+    expect(codeReviewNeedsAttention(resources.current().status)).toBe(true);
     expect(
       await controller.present?.(resources.current()),
+    ).toMatchObject({
+      status: "1 finding · 0/1 labeled",
+    });
+
+    const labeled = createCodeReviewController(
+      resources.client,
+      [forge(labeledReviewComments())],
+      [],
+      { now: () => new Date(NOW) },
+    );
+    await labeled.reconcile(batonSnapshot(), resources.current());
+    expect(resources.current().status.result?.findings).toEqual([
+      expect.objectContaining({ label: "important" }),
+    ]);
+    expect(codeReviewNeedsAttention(resources.current().status)).toBe(false);
+    expect(
+      await labeled.present?.(resources.current()),
     ).toBeUndefined();
 
-    const expired = createEvaluationController(
+    const expired = createCodeReviewController(
       resources.client,
       [forge(reviewComments())],
       [],
@@ -320,5 +407,41 @@ describe("Evaluation Resource", () => {
     );
     await expired.reconcile(batonSnapshot(), resources.current());
     expect(resources.deleted).toEqual([resource.metadata.name]);
+  });
+
+  test("defers Board presentation to a bound PullRequest", async () => {
+    const observation = latestCodeReviewObservation(
+      PULL_REQUEST,
+      reviewComments(),
+    )!;
+    const spec = codeReviewSpec(observation);
+    const resource: Readonly<Resource<CodeReviewSpec, CodeReviewStatus>> = {
+      ...CODE_REVIEW_RESOURCE_TYPE,
+      metadata: {
+        name: codeReviewResourceName(spec),
+        namespace: "reqloop_default",
+        uid: "uid-code-review-bound",
+        generation: 1,
+        resourceVersion: "1",
+        creationTimestamp: NOW,
+      },
+      spec,
+      status: {
+        phase: "completed",
+        verdict: "action-required",
+        result: {
+          findingCount: 1,
+          failedFileCount: 0,
+          findings: observation.findings,
+          summaryCommentId: observation.key,
+        },
+        completedAt: observation.completedAt,
+        expiresAt: "2026-07-31T09:30:00.000Z",
+      },
+    };
+    const resources = codeReviewClient(resource, [pullRequestResource()]);
+    const controller = createCodeReviewController(resources.client);
+
+    expect(await controller.present?.(resource)).toBeUndefined();
   });
 });

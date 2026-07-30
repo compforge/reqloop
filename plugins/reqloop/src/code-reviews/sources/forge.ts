@@ -15,12 +15,12 @@ import { PULL_REQUEST_RESOURCE_TYPE } from "../../pull-requests/resource.ts";
 import {
   CODE_REVIEW_ACTIVE_TTL_MS,
   codeReviewExpiresAt,
-  latestCodeReviewObservation,
+  codeReviewObservations,
 } from "../code-review.ts";
-import type { EvaluationSpec } from "../protocol.ts";
+import type { CodeReviewSpec } from "../protocol.ts";
 import {
-  codeReviewEvaluationSpec,
-  evaluationResourceName,
+  codeReviewResourceName,
+  codeReviewSpec,
 } from "../resource.ts";
 
 const DEFAULT_MAX_PULL_REQUESTS = 20;
@@ -42,12 +42,12 @@ function observationTime(
 }
 
 /**
- * Admits actionable devloop code-review Evaluations from Forge comments.
+ * Admits actionable devloop CodeReviews from Forge comments.
  *
  * A clean review intentionally posts no Forge comment, so it creates no active
- * Evaluation. The Forge remains the durable source of published findings.
+ * CodeReview. The Forge remains the durable source of published findings.
  */
-export class ForgeEvaluationSource implements Source<EvaluationSpec> {
+export class ForgeCodeReviewSource implements Source<CodeReviewSpec> {
   readonly type = "resource";
   readonly sourceId = "forge-code-review";
   private readonly connectors = new Map<string, ForgeConnector>();
@@ -77,25 +77,25 @@ export class ForgeEvaluationSource implements Source<EvaluationSpec> {
     }
     this.logger = options.logger;
     this.maxPullRequests = positiveInteger(
-      "ForgeEvaluationSource maxPullRequests",
+      "ForgeCodeReviewSource maxPullRequests",
       options.maxPullRequests ?? DEFAULT_MAX_PULL_REQUESTS,
     );
     this.now = options.now ?? (() => new Date());
     this.resyncIntervalMs = positiveInteger(
-      "ForgeEvaluationSource resyncIntervalMs",
+      "ForgeCodeReviewSource resyncIntervalMs",
       options.resyncIntervalMs ?? DEFAULT_RESYNC_INTERVAL_MS,
     );
     this.ttlMs = positiveInteger(
-      "ForgeEvaluationSource codeReviewTtlMs",
+      "ForgeCodeReviewSource codeReviewTtlMs",
       options.codeReviewTtlMs ?? CODE_REVIEW_ACTIVE_TTL_MS,
     );
   }
 
-  async start(context: SourceContext<EvaluationSpec>): Promise<void> {
-    await this.runRefresh(context);
+  async start(context: SourceContext<CodeReviewSpec>): Promise<void> {
+    await this.refreshNow(context);
     if (context.signal.aborted) return;
     const timer = setInterval(() => {
-      void this.runRefresh(context).catch(context.reportError);
+      void this.refreshNow(context).catch(context.reportError);
     }, this.resyncIntervalMs);
     context.signal.addEventListener(
       "abort",
@@ -104,8 +104,9 @@ export class ForgeEvaluationSource implements Source<EvaluationSpec> {
     );
   }
 
-  private async runRefresh(
-    context: SourceContext<EvaluationSpec>,
+  /** Shared by periodic recovery and the devloop low-latency trigger. */
+  async refreshNow(
+    context: SourceContext<CodeReviewSpec>,
   ): Promise<void> {
     if (this.refreshing) return await this.refreshing;
     const refreshing = this.refresh(context);
@@ -118,11 +119,11 @@ export class ForgeEvaluationSource implements Source<EvaluationSpec> {
   }
 
   private async refresh(
-    context: SourceContext<EvaluationSpec>,
+    context: SourceContext<CodeReviewSpec>,
   ): Promise<void> {
     const nowMs = this.now().getTime();
     if (!Number.isFinite(nowMs)) {
-      throw new Error("Evaluation Source clock returned an invalid Date");
+      throw new Error("CodeReview Source clock returned an invalid Date");
     }
     const pullRequests = (await this.resources.list<
       PullRequestSpec,
@@ -141,22 +142,18 @@ export class ForgeEvaluationSource implements Source<EvaluationSpec> {
       if (!connector?.comments) continue;
       try {
         const comments = await connector.comments(identity);
-        const observation = latestCodeReviewObservation(identity, comments);
-        if (
-          !observation ||
-          codeReviewExpiresAt(observation, this.ttlMs) <= nowMs
-        ) {
-          continue;
+        for (const observation of codeReviewObservations(identity, comments)) {
+          if (codeReviewExpiresAt(observation, this.ttlMs) <= nowMs) continue;
+          const spec = codeReviewSpec(observation);
+          await context.emit({
+            name: codeReviewResourceName(spec),
+            spec,
+          });
+          admitted += 1;
         }
-        const spec = codeReviewEvaluationSpec(observation);
-        await context.emit({
-          name: evaluationResourceName(spec),
-          spec,
-        });
-        admitted += 1;
       } catch (error) {
         this.logger?.warn("Could not observe Forge review comments", {
-          component: "evaluation-source.forge",
+          component: "code-review-source.forge",
           error,
           attributes: {
             pullRequest:
@@ -166,11 +163,11 @@ export class ForgeEvaluationSource implements Source<EvaluationSpec> {
         context.reportError(error);
       }
     }
-    this.logger?.info("Forge Evaluation discovery completed", {
-      component: "evaluation-source.forge",
+    this.logger?.info("Forge CodeReview discovery completed", {
+      component: "code-review-source.forge",
       attributes: {
         inspectedPullRequests: pullRequests.length,
-        admittedEvaluations: admitted,
+        admittedCodeReviews: admitted,
       },
     });
   }
