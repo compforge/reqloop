@@ -15,12 +15,15 @@ import {
   WorkspaceRepositorySource,
 } from "./repositories/sources/workspace.ts";
 import {
-  createEvaluationController,
-} from "./evaluations/controller.ts";
-import type { EvaluationSpec } from "./evaluations/protocol.ts";
+  createCodeReviewController,
+} from "./code-reviews/controller.ts";
+import type { CodeReviewSpec } from "./code-reviews/protocol.ts";
 import {
-  ForgeEvaluationSource,
-} from "./evaluations/sources/forge.ts";
+  ForgeCodeReviewSource,
+} from "./code-reviews/sources/forge.ts";
+import {
+  DevloopCodeReviewSource,
+} from "./code-reviews/sources/devloop.ts";
 import type { RequirementConnector } from "./requirements/protocol.ts";
 import { createRequirementsCommand } from "./requirements/command.ts";
 import {
@@ -62,7 +65,7 @@ function currentRepo(context: PluginActivationContext): string {
 }
 
 export function createReqloopPackage(options: {
-  evaluationSources?: readonly Source<EvaluationSpec>[];
+  codeReviewSources?: readonly Source<CodeReviewSpec>[];
   requirementConnector?: RequirementConnector;
   requirementConnectors?: readonly RequirementConnector[];
   forgeConnectors?: readonly ForgeConnector[];
@@ -128,20 +131,22 @@ export function createReqloopPackage(options: {
           ),
         ),
       );
-      const evaluationSources = options.evaluationSources ?? [
-        new ForgeEvaluationSource(
-          context.resources,
-          forgeConnectors,
-          { logger: context.logger },
-        ),
+      const forgeCodeReviews = new ForgeCodeReviewSource(
+        context.resources,
+        forgeConnectors,
+        { logger: context.logger },
+      );
+      const codeReviewSources = options.codeReviewSources ?? [
+        forgeCodeReviews,
+        new DevloopCodeReviewSource(cwd, forgeCodeReviews),
       ];
       context.registerController(
         withUserDeletionPolicy(
           context.resources,
-          createEvaluationController(
+          createCodeReviewController(
             context.resources,
             forgeConnectors,
-            evaluationSources,
+            codeReviewSources,
           ),
         ),
       );
@@ -185,11 +190,12 @@ export * from "./repositories/controller.ts";
 export * from "./repositories/protocol.ts";
 export * from "./repositories/resource.ts";
 export * from "./repositories/sources/workspace.ts";
-export * from "./evaluations/code-review.ts";
-export * from "./evaluations/controller.ts";
-export * from "./evaluations/protocol.ts";
-export * from "./evaluations/resource.ts";
-export * from "./evaluations/sources/forge.ts";
+export * from "./code-reviews/code-review.ts";
+export * from "./code-reviews/controller.ts";
+export * from "./code-reviews/protocol.ts";
+export * from "./code-reviews/resource.ts";
+export * from "./code-reviews/sources/devloop.ts";
+export * from "./code-reviews/sources/forge.ts";
 export * from "./pull-requests/sources/devloop.ts";
 export * from "./pull-requests/sources/forge.ts";
 export * from "./pull-requests/devloop-activity.ts";

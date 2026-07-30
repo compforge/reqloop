@@ -9,23 +9,30 @@ import { boardPriority } from "../board.ts";
 import {
   actionableCodeReview,
   CODE_REVIEW_ACTIVE_TTL_MS,
+  codeReviewLabelProgress,
+  codeReviewNeedsAttention,
   codeReviewObservation,
   codeReviewFollowUpText,
   codeReviewStatus,
 } from "./code-review.ts";
 import type {
-  EvaluationSpec,
-  EvaluationStatus,
+  CodeReviewSpec,
+  CodeReviewStatus,
 } from "./protocol.ts";
-import type { ForgeConnector } from "../pull-requests/protocol.ts";
+import type {
+  ForgeConnector,
+  PullRequestSpec,
+  PullRequestStatus,
+} from "../pull-requests/protocol.ts";
+import { PULL_REQUEST_RESOURCE_TYPE } from "../pull-requests/resource.ts";
 import {
-  EVALUATION_RESOURCE_TYPE,
-  updateEvaluationObservation,
+  CODE_REVIEW_RESOURCE_TYPE,
+  updateCodeReviewObservation,
 } from "./resource.ts";
 
 const REVIEW_ACTION_ACCEPT = "accept";
 const REVIEW_ACTION_IGNORE = "ignore";
-const EVALUATION_RETRY_INTERVAL_MS = 30_000;
+const CODE_REVIEW_RETRY_INTERVAL_MS = 30_000;
 
 function interactionDecision(
   baton: Readonly<BatonSnapshot>,
@@ -40,21 +47,34 @@ function remainingMs(expiresAt: string, nowMs: number): number {
   const deadline = Date.parse(expiresAt);
   if (!Number.isFinite(deadline)) {
     throw new Error(
-      `Evaluation expiresAt must be an ISO timestamp: ${expiresAt}`,
+      `CodeReview expiresAt must be an ISO timestamp: ${expiresAt}`,
     );
   }
   return Math.max(0, Math.ceil(deadline - nowMs));
 }
 
-export function createEvaluationController(
+async function hasBoundPullRequest(
+  resources: ResourceClient,
+  spec: CodeReviewSpec,
+): Promise<boolean> {
+  return (await resources.list<PullRequestSpec, PullRequestStatus>(
+    PULL_REQUEST_RESOURCE_TYPE,
+  )).some(({ spec: { identity } }) =>
+    identity.source === spec.pullRequest.source &&
+    identity.repository === spec.pullRequest.repository &&
+    identity.number === spec.pullRequest.number
+  );
+}
+
+export function createCodeReviewController(
   resources: ResourceClient,
   connectors: readonly ForgeConnector[] = [],
-  sources: readonly Source<EvaluationSpec>[] = [],
+  sources: readonly Source<CodeReviewSpec>[] = [],
   options: {
     readonly codeReviewTtlMs?: number;
     readonly now?: () => Date;
   } = {},
-): Controller<EvaluationSpec, EvaluationStatus> {
+): Controller<CodeReviewSpec, CodeReviewStatus> {
   const ttlMs = options.codeReviewTtlMs ?? CODE_REVIEW_ACTIVE_TTL_MS;
   const now = options.now ?? (() => new Date());
   const connectorsBySource = new Map<string, ForgeConnector>();
@@ -65,64 +85,69 @@ export function createEvaluationController(
     connectorsBySource.set(connector.source, connector);
   }
   return {
-    resourceType: EVALUATION_RESOURCE_TYPE,
+    resourceType: CODE_REVIEW_RESOURCE_TYPE,
     ...(sources.length > 0 ? { sources } : {}),
     async reconcile(baton, resource) {
       if (resource.metadata.deletionTimestamp !== undefined) return;
 
       let current = resource;
-      if (!current.status.phase) {
-        const connector = connectorsBySource.get(
-          current.spec.target.identity.source,
-        );
-        if (!connector?.comments) {
-          return { requeueAfterMs: EVALUATION_RETRY_INTERVAL_MS };
-        }
+      const connector = connectorsBySource.get(
+        current.spec.pullRequest.source,
+      );
+      if (connector?.comments) {
         const observation = codeReviewObservation(
           current.spec,
-          await connector.comments(current.spec.target.identity),
+          await connector.comments(current.spec.pullRequest),
         );
-        if (!observation) {
-          return { requeueAfterMs: EVALUATION_RETRY_INTERVAL_MS };
+        if (observation) {
+          current = await updateCodeReviewObservation(
+            resources,
+            current,
+            observation,
+            codeReviewStatus(observation, ttlMs),
+          );
+        } else if (!current.status.phase) {
+          return { requeueAfterMs: CODE_REVIEW_RETRY_INTERVAL_MS };
         }
-        current = await updateEvaluationObservation(
-          resources,
-          current,
-          observation,
-          codeReviewStatus(observation, ttlMs),
-        );
+      } else if (!current.status.phase) {
+        return { requeueAfterMs: CODE_REVIEW_RETRY_INTERVAL_MS };
       }
 
       const nowMs = now().getTime();
       if (!Number.isFinite(nowMs)) {
-        throw new Error("Evaluation clock returned an invalid Date");
+        throw new Error("CodeReview clock returned an invalid Date");
       }
       const expiresAt = current.status.expiresAt;
       if (!expiresAt) {
         throw new Error(
-          `Evaluation/${current.metadata.name} is missing expiresAt`,
+          `CodeReview/${current.metadata.name} is missing expiresAt`,
         );
       }
-      const evaluationRemainingMs = remainingMs(expiresAt, nowMs);
-      if (evaluationRemainingMs === 0) {
+      const reviewRemainingMs = remainingMs(expiresAt, nowMs);
+      if (reviewRemainingMs === 0) {
         await resources.delete(
-          EVALUATION_RESOURCE_TYPE,
+          CODE_REVIEW_RESOURCE_TYPE,
           current.metadata.name,
         );
         return;
       }
+      const nextRefreshMs = Math.min(
+        reviewRemainingMs,
+        CODE_REVIEW_RETRY_INTERVAL_MS,
+      );
 
       if (!actionableCodeReview(current.status)) {
-        return { requeueAfterMs: evaluationRemainingMs };
+        return { requeueAfterMs: nextRefreshMs };
       }
-      if (current.status.decision) {
-        return { requeueAfterMs: evaluationRemainingMs };
+      if (!codeReviewNeedsAttention(current.status) ||
+        current.status.decision) {
+        return { requeueAfterMs: nextRefreshMs };
       }
 
       const decisionKey = `handle-review:${current.spec.runKey}`;
       const decision = interactionDecision(baton, decisionKey);
       if (!decision) {
-        const identity = current.spec.target.identity;
+        const identity = current.spec.pullRequest;
         return {
           output: {
             kind: "interaction",
@@ -145,18 +170,18 @@ export function createEvaluationController(
               },
             ],
           },
-          requeueAfterMs: evaluationRemainingMs,
+          requeueAfterMs: nextRefreshMs,
         };
       }
       if (decision.outcome?.kind !== "answered") {
-        return { requeueAfterMs: evaluationRemainingMs };
+        return { requeueAfterMs: nextRefreshMs };
       }
       const choice = decision.outcome.values[0];
       if (
         choice !== REVIEW_ACTION_ACCEPT &&
         choice !== REVIEW_ACTION_IGNORE
       ) {
-        return { requeueAfterMs: evaluationRemainingMs };
+        return { requeueAfterMs: nextRefreshMs };
       }
 
       await resources.patchStatus(current, {
@@ -166,32 +191,40 @@ export function createEvaluationController(
         },
       });
       if (choice !== REVIEW_ACTION_ACCEPT) {
-        return { requeueAfterMs: evaluationRemainingMs };
+        return { requeueAfterMs: nextRefreshMs };
       }
       return {
         output: {
           kind: "proposed-input",
           text: codeReviewFollowUpText(current.spec, current.status),
         },
-        requeueAfterMs: evaluationRemainingMs,
+        requeueAfterMs: nextRefreshMs,
       };
     },
     async present(resource) {
       if (
-        !actionableCodeReview(resource.status) ||
-        resource.status.decision ||
+        !codeReviewNeedsAttention(resource.status) ||
         resource.metadata.deletionTimestamp
       ) {
         return undefined;
       }
-      const identity = resource.spec.target.identity;
+      // A bound review is projected through its PullRequest card so one user
+      // action does not consume two Board slots.
+      if (await hasBoundPullRequest(resources, resource.spec)) {
+        return undefined;
+      }
+      const identity = resource.spec.pullRequest;
       const failed = resource.status.verdict === "failed";
       const findings = resource.status.result?.findingCount ?? 0;
+      const labels = codeReviewLabelProgress(resource.status);
       return {
         title: `${identity.repository} #${identity.number} AI review`,
         status: failed
           ? "Review failed"
-          : `${findings} finding${findings === 1 ? "" : "s"}`,
+          : `${findings} finding${findings === 1 ? "" : "s"}` +
+            (labels.total > 0
+              ? ` · ${labels.labeled}/${labels.total} labeled`
+              : ""),
         ...(resource.status.result?.publicationSummary
           ? { detail: resource.status.result.publicationSummary }
           : {}),

@@ -11,6 +11,15 @@ import type {
 } from "@compforge/baton-plugin";
 
 import { boardPriority } from "../board.ts";
+import {
+  codeReviewLabelProgress,
+  codeReviewNeedsAttention,
+} from "../code-reviews/code-review.ts";
+import type {
+  CodeReviewSpec,
+  CodeReviewStatus,
+} from "../code-reviews/protocol.ts";
+import { CODE_REVIEW_RESOURCE_TYPE } from "../code-reviews/resource.ts";
 import type {
   RequirementSpec,
   RequirementStatus,
@@ -110,6 +119,71 @@ function activeRequirementHandler(resources: ResourceClient): EventHandler {
     },
   };
   return Object.freeze(handler);
+}
+
+async function codeReviewPullRequest(
+  resources: ResourceClient,
+  resource: EventResource,
+): Promise<readonly { readonly name: string }[]> {
+  const codeReview = resource as Readonly<
+    Resource<CodeReviewSpec, CodeReviewStatus>
+  >;
+  const pullRequest = (await resources.list<
+    PullRequestSpec,
+    PullRequestStatus
+  >(PULL_REQUEST_RESOURCE_TYPE)).find(({ spec }) =>
+    sameIdentity(spec.identity, codeReview.spec.pullRequest)
+  );
+  return pullRequest ? [{ name: pullRequest.metadata.name }] : [];
+}
+
+function codeReviewHandler(resources: ResourceClient): EventHandler {
+  const handler: EventHandler = {
+    async create(event) {
+      return await codeReviewPullRequest(resources, event.object);
+    },
+    async update(event) {
+      return await codeReviewPullRequest(resources, event.newObject);
+    },
+    async delete(event) {
+      return await codeReviewPullRequest(resources, event.object);
+    },
+  };
+  return Object.freeze(handler);
+}
+
+async function pendingCodeReviews(
+  resources: ResourceClient,
+  identity: PullRequestIdentity,
+): Promise<readonly Readonly<Resource<CodeReviewSpec, CodeReviewStatus>>[]> {
+  return (await resources.list<CodeReviewSpec, CodeReviewStatus>(
+    CODE_REVIEW_RESOURCE_TYPE,
+  )).filter((review) =>
+    sameIdentity(review.spec.pullRequest, identity) &&
+    review.metadata.deletionTimestamp === undefined &&
+    codeReviewNeedsAttention(review.status)
+  );
+}
+
+function codeReviewBoardStatus(
+  reviews: readonly Readonly<Resource<CodeReviewSpec, CodeReviewStatus>>[],
+): string {
+  const progress = reviews.reduce(
+    (total, review) => {
+      const current = codeReviewLabelProgress(review.status);
+      return {
+        labeled: total.labeled + current.labeled,
+        labelable: total.labelable + current.total,
+      };
+    },
+    { labeled: 0, labelable: 0 },
+  );
+  const subject = reviews.length === 1
+    ? "AI review"
+    : `${reviews.length} AI reviews`;
+  return progress.labelable > 0
+    ? `${subject} · ${progress.labeled}/${progress.labelable} labeled`
+    : `${subject} pending`;
 }
 
 function requirementOptionId(name: string): string {
@@ -227,6 +301,9 @@ export function createPullRequestController(
         watches: [{
           resourceType: REQUIREMENT_RESOURCE_TYPE,
           handler: activeRequirementHandler(resources),
+        }, {
+          resourceType: CODE_REVIEW_RESOURCE_TYPE,
+          handler: codeReviewHandler(resources),
         }],
       }
       : {}),
@@ -432,9 +509,14 @@ export function createPullRequestController(
       }
     },
     async present(resource) {
+      const reviews = resources
+        ? await pendingCodeReviews(resources, resource.spec.identity)
+        : [];
+      const hasPendingCodeReview = reviews.length > 0;
       if (
-        resource.status.lifecycle !== "open" ||
-        resource.status.requirementAssociation?.state === "linked"
+        !hasPendingCodeReview &&
+        (resource.status.lifecycle !== "open" ||
+          resource.status.requirementAssociation?.state === "linked")
       ) {
         return undefined;
       }
@@ -445,29 +527,50 @@ export function createPullRequestController(
         ...(resource.status.reviewThreads === "unresolved"
           ? ["Unresolved review threads"]
           : []),
+        ...(hasPendingCodeReview
+          ? [codeReviewBoardStatus(reviews)]
+          : []),
       ];
+      const lifecycle = resource.status.lifecycle === "open"
+        ? undefined
+        : resource.status.lifecycle === "merged"
+        ? "Merged"
+        : "Closed";
+      const status = [
+        ...(lifecycle ? [lifecycle] : []),
+        ...blockers,
+      ];
+      const conditionPriority =
+        resource.status.mergeability === "conflicted"
+          ? 200
+          : resource.status.reviewThreads === "unresolved"
+          ? 100
+          : resource.status.lifecycle === "open" && hasPendingCodeReview
+          ? 50
+          : resource.status.lifecycle === "open"
+          ? 0
+          // A stale review extends merged PR visibility, but must not displace
+          // active delivery blockers when Board capacity is constrained.
+          : -100;
       return {
         title:
           `${resource.spec.identity.repository} #` +
           resource.spec.identity.number,
         ...(resource.status.url ? { url: resource.status.url } : {}),
-        status: blockers.length > 0 ? blockers.join(" · ") : "Open",
+        status: status.length > 0 ? status.join(" · ") : "Open",
         ...(resource.status.title
           ? {
               detail: resource.status.title,
             }
           : {}),
         priority: boardPriority(
-          resource.status.mergeability === "conflicted"
-            ? 200
-            : resource.status.reviewThreads === "unresolved"
-            ? 100
-            : 0,
+          conditionPriority,
           resource.metadata.creationTimestamp,
         ),
         tone: resource.status.mergeability === "conflicted"
           ? "error"
-          : resource.status.reviewThreads === "unresolved"
+          : resource.status.reviewThreads === "unresolved" ||
+              hasPendingCodeReview
           ? "warning"
           : "default",
       };

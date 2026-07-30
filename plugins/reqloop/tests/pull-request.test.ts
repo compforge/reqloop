@@ -11,6 +11,9 @@ import type {
 } from "@compforge/baton-plugin";
 
 import {
+  CODE_REVIEW_RESOURCE_TYPE,
+  type CodeReviewSpec,
+  type CodeReviewStatus,
   createRepositoryController,
   createPullRequestController,
   REPOSITORY_RESOURCE_TYPE,
@@ -44,6 +47,9 @@ function resourceClient(): {
     name?: string,
     status?: RequirementStatus,
   ) => void;
+  readonly addCodeReview: (
+    status: CodeReviewStatus,
+  ) => Readonly<Resource<CodeReviewSpec, CodeReviewStatus>>;
   readonly observeRepository: (
     repository: Readonly<Resource<RepositorySpec, RepositoryStatus>>,
   ) => void;
@@ -64,8 +70,14 @@ function resourceClient(): {
   let workspace:
     | Readonly<Resource<WorkspaceSpec, WorkspaceStatus>>
     | undefined;
+  let codeReview:
+    | Readonly<Resource<CodeReviewSpec, CodeReviewStatus>>
+    | undefined;
   const client = {
     list(type: { apiVersion: string; kind: string }) {
+      if (type.kind === CODE_REVIEW_RESOURCE_TYPE.kind) {
+        return codeReview ? [codeReview] : [];
+      }
       if (type.kind === REQUIREMENT_RESOURCE_TYPE.kind) {
         return requirement ? [requirement] : [];
       }
@@ -174,6 +186,26 @@ function resourceClient(): {
         },
         status,
       };
+    },
+    addCodeReview(status) {
+      codeReview = {
+        ...CODE_REVIEW_RESOURCE_TYPE,
+        metadata: {
+          name: "code-review-test",
+          namespace: "pi_reqloop",
+          uid: "uid-code-review-test",
+          generation: 1,
+          resourceVersion: "1",
+          creationTimestamp: "2026-07-30T09:30:00.000Z",
+        },
+        spec: {
+          pullRequest: observation.identity,
+          runKey: "summary-1",
+          revision: "abc123def",
+        },
+        status,
+      };
+      return codeReview;
     },
     observeRepository(observed) {
       workspace = {
@@ -352,6 +384,71 @@ describe("PullRequest Resource", () => {
       ...pullRequest,
       status: { ...pullRequest.status, lifecycle: "merged" },
     })).toBeUndefined();
+  });
+
+  test("projects pending CodeReviews through a low-priority merged PR card", async () => {
+    const resources = resourceClient();
+    const pullRequest = await materializePullRequest(resources, {
+      ...observation,
+      lifecycle: "merged",
+      reviewThreads: "resolved",
+    });
+    const codeReview = resources.addCodeReview({
+      phase: "completed",
+      verdict: "action-required",
+      result: {
+        findingCount: 1,
+        failedFileCount: 0,
+        findings: [{
+          path: "src/app.ts",
+          message: "missing cancellation",
+          fingerprint: "fp1",
+          commentId: "finding-1",
+          threadId: "finding-1",
+        }],
+        summaryCommentId: "summary-1",
+      },
+      completedAt: "2026-07-30T09:30:00.000Z",
+      expiresAt: "2026-07-31T09:30:00.000Z",
+    });
+    const controller = createPullRequestController(resources.client);
+
+    const presentation = await controller.present?.(pullRequest);
+    expect(presentation).toMatchObject({
+      status: "Merged · AI review · 0/1 labeled",
+      tone: "warning",
+    });
+    const conflicted = await controller.present?.({
+      ...pullRequest,
+      status: {
+        ...pullRequest.status,
+        lifecycle: "open",
+        mergeability: "conflicted",
+      },
+    });
+    expect(presentation?.priority).toBeLessThan(
+      conflicted?.priority ?? Number.NEGATIVE_INFINITY,
+    );
+
+    const watch = controller.watches?.find(({ resourceType }) =>
+      resourceType.kind === CODE_REVIEW_RESOURCE_TYPE.kind
+    );
+    expect(await watch?.handler.update?.({
+      oldObject: codeReview,
+      newObject: codeReview,
+    })).toEqual([{ name: pullRequest.metadata.name }]);
+
+    resources.addCodeReview({
+      ...codeReview.status,
+      result: {
+        ...codeReview.status.result!,
+        findings: [{
+          ...codeReview.status.result!.findings[0]!,
+          label: "important",
+        }],
+      },
+    });
+    expect(await controller.present?.(pullRequest)).toBeUndefined();
   });
 
   test("refreshes a PullRequest through its configured Forge", async () => {

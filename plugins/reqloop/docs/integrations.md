@@ -64,12 +64,15 @@ Harness 私有能力。当前 PR 通过本地持久产出接入，已发布 revi
 |---|---|---|
 | `DevloopPullRequestSource` | 当前 PR 状态 | 快速准入 PullRequest |
 | `DevloopToolActivityPolicy` | 原始 tool-call 时间线 | ReqLoop 自己解释读写活动，控制 Forge 发现与观察频率 |
-| `ForgeEvaluationSource` | 带 devloop marker 的 Forge comments | 准入与一次 code-review run 对应的 Evaluation |
+| `DevloopCodeReviewSource` | `review-history.jsonl` 变化 | 低延迟唤醒 Forge review 发现，不把本地 history 当作事实 |
+| `ForgeCodeReviewSource` | 带 devloop marker 的 Forge comments | 准入与一次已发布 code-review run 对应的 CodeReview |
 
 devloop finding comment 使用 `ccr:fp` marker，summary comment 使用
-`devloop code-review` header。ReqLoop 只解释已经发布到 Forge 的这份持久事实，不读取
-review ledger，也不新增 review 专用 Connector。clean review 不发布 comment，因此不产生
-Evaluation。格式解析和兼容性只存在于 ReqLoop 内部；Baton core 不识别 `.devloop` 文件。
+`devloop code-review` header；Harness 使用 devloop label-review 在 finding thread 回复
+`ccr:label`。ReqLoop 读取 review history 仅用于感知变化，已发布 run、finding 与 label
+仍以 Forge comment 为持久事实，也不新增 review 专用 Connector。clean review 不发布
+comment，因此不产生 CodeReview。格式解析和兼容性只存在于 ReqLoop 内部；Baton core
+不识别 `.devloop` 文件。
 未知工具和命令信封保持 neutral，ReqLoop 不根据模糊名称猜测写入意图。
 
 ## 配置
@@ -91,17 +94,18 @@ ReqLoop 当前向 Baton 注册：
 
 - `/requirements` Command；
 - `requirement` ContextProvider；
-- Workspace、Repository、PullRequest、Evaluation、Requirement 五个 Controller 及其
+- Workspace、Repository、PullRequest、CodeReview、Requirement 五个 Controller 及其
   Source/Watch；
-- Requirement、孤立 PullRequest 与 actionable Evaluation 的 Board presentation。
+- Requirement，以及聚合待处理 CodeReview 的 PullRequest Board presentation。
 
 ContextProvider 只搜索当前 BatonSession 已物化且仍活跃的 Requirement，不在用户输入 `@`
 时访问外部平台；选中后按 Baton 给出的字符预算向一次 Harness turn 注入内容。
 
 需要人的领域判断时，PullRequestController 为 merge conflict 返回 `interaction`，
-EvaluationController 为 actionable AI review 返回 `interaction`；用户接受后返回对应的
-`proposed-input`。Baton 持久化决定并负责 composer、Input、Attempt 与 Harness 路由。
-ReqLoop 不持有 Harness 进程、SDK 句柄或原生 session，也不会在无人输入时启动 Harness。
+CodeReviewController 为 actionable AI review 返回 `interaction`；用户接受后返回要求检查
+finding 并使用 devloop label-review 的 `proposed-input`。Baton 持久化决定并负责 composer、
+Input、Attempt 与 Harness 路由；ReqLoop 只从 Forge 观察 Harness 写回的 labels，不直接
+标注 comment，也不会在无人输入时启动 Harness。
 
 RequirementController 当前只观察、汇总，并在 ReadyToClose 后让用户确认是否结束本地跟踪；
 确认结果以 `ClosureRequested` Condition 持久化并发送 toast。外部 Requirement 写入、

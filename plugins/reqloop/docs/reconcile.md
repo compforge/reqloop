@@ -34,7 +34,7 @@ ensure 语义落到同一 Resource。
 | Workspace | `WorkspaceSource` | 激活时贡献 Session 单例；文件变化只重新 emit 同一 spec |
 | Repository | `WorkspaceRepositorySource` | 只扫描 Workspace 根和一级候选 checkout，并按稳定身份准入 |
 | PullRequest | `ForgePullRequestSource`、`DevloopPullRequestSource` | Forge 列表有界且受活动策略控制；devloop 提供当前 PR 的低延迟入口 |
-| Evaluation | `ForgeEvaluationSource` | 在已准入 PR 的有界集合中读取 Forge comments，只准入仍在有效期内的 actionable AI review |
+| CodeReview | `DevloopCodeReviewSource`、`ForgeCodeReviewSource` | devloop history 低延迟触发；Forge comments 准入仍在有效期内的已发布 actionable AI review |
 | Requirement | `/requirements` Command | 用户明确选择后读取详情并 upsert；Controller 不从列表结果自动创建 |
 
 一次 Source 没有 emit 某个对象可能来自窗口、分页、权限或临时失败，因此 omission 不代表对象
@@ -75,22 +75,38 @@ Interaction。Baton 先持久化回答，再重新 reconcile；Controller 随后
 只询问一次；accept 返回解决冲突的 `proposed-input`，ignore 不驱动 Harness。冲突状态消失后
 结束本次 decision episode，未来再次冲突时使用新的 decision key 重新询问。
 
-## Evaluation
+## CodeReview
 
-`ForgeEvaluationSource` 扫描已经准入且未 closed 的有限数量 PullRequest，通过匹配 source 的
-`ForgeConnector.comments()` 读取 conversation 与 diff comments。devloop summary marker 标识
-一次 code-review run，summary comment id 成为 Evaluation `runKey`；带 `ccr:fp` marker 的
-review comments 作为结构化 findings。clean review 不发布 Forge comment，因此也不产生当前
-Evaluation。
+devloop 的 `review` 是可配置到 lifecycle phase 的异步 signal hook：配置在
+`pre/post_commit` 时，每次成功 commit 触发；配置在 `post_mr` 时，每次 gcampr/publish
+触发。每次后台运行启动时冻结 branch 和 SHA，评审 `origin/<target>..<SHA>` 的整条分支改动，
+而不是只评最后一个 commit。
 
-EvaluationController 按 `runKey` 重新读取同一轮 Forge comments 并物化 terminal status。
+`DevloopCodeReviewSource` 监听各 checkout 的 `review-history.jsonl`，但只把文件变化当成
+低延迟信号，随即要求 Forge Source 重新发现；`ForgeCodeReviewSource` 的周期扫描承担恢复
+兜底。Forge Source 扫描已经准入且未 closed 的有限数量 PullRequest，通过匹配 source 的
+`ForgeConnector.comments()` 读取 conversation 与 diff comments。devloop summary marker
+标识一次独立 CodeReview run，summary comment id 成为 `runKey`；带 `ccr:fp` marker 的
+review comments 作为结构化 findings。Source 会准入 TTL 内每一轮已发布结果，而不只恢复
+最新一轮；同一 revision 的重跑也因 `runKey` 不同而保持独立。clean review 不发布 Forge
+comment，因此也不产生当前 CodeReview。
+
+CodeReviewController 按 `runKey` 重新读取同一轮 Forge comments 并物化 terminal status。
 actionable 结果返回 accept/ignore durable Interaction：accept 生成供当前 Harness 审核的
-`proposed-input`，ignore 不驱动 Harness。二者都只代表用户如何处理建议，不改变 review
-verdict。Evaluation 与 PR 生命周期独立，因此 PR merged 后仍可继续存在。
+`proposed-input`，要求用 devloop label-review 给每个 finding thread 写入 `ccr:label`；
+Controller 周期刷新 comments 并汇总 label 进度。ignore 不驱动 Harness。二者都只代表用户
+如何处理建议，不改变 review verdict。CodeReview 与 PR 生命周期独立，因此 PR merged 后
+仍可继续存在。
 
-AI code review 是短期建议。Evaluation 创建后按评审完成时间计算固定期限；用户决定后立即从
-Board 隐藏，但 Resource 保留到期限，避免 Source 在每次 Forge 轮询时重新准入同一 comment；
-到期后 Controller 删除它。无人处理时也按同一期限自行消亡。
+Board projection 优先把待处理 CodeReview 聚合到匹配的 PullRequest 卡片，并由 CodeReview
+Watch 唤醒该 PR 刷新；只有找不到 PR Resource 时才显示独立 CR 卡片。accept 只停止重复
+提醒，全部可标注 finding 完成 label 后才隐藏；ignore 立即隐藏。未标注 CR 可让 merged PR
+继续成为 Board 候选，但其优先级低于 open merge conflict 等活跃阻塞项，Board 容量不足时
+可以不展示。
+
+AI code review 是短期建议。CodeReview 创建后按评审完成时间计算固定期限；Resource 保留到
+期限，避免 Source 在每次 Forge 轮询时重新准入同一 comment；到期后 Controller 删除它。
+无人处理时也按同一期限自行消亡。
 
 ## Requirement
 
@@ -119,7 +135,7 @@ Context 搜索和 PR 关联候选。当前不会关闭外部 Requirement，也�
 
 Workspace、Repository、PullRequest 和 Requirement 没有自动 terminal TTL、lease 或
 last-seen GC。离开 Workspace、进入 terminal 和 Board 隐藏只改变观察或展示，不自动设置
-期限。`code-review` Evaluation 还具有固定的领域 TTL；它不从 Source omission 推断，也不
+期限。CodeReview 还具有固定的领域 TTL；它不从 Source omission 推断，也不
 影响用户显式删除期限。
 
 Resource status、durable Interaction 和下一次调度均可跨重启恢复。Controller 不把触发原因
