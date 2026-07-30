@@ -479,7 +479,7 @@ describe("GitHubForgeConnector", () => {
     expect(second.reviewActivityKey).not.toBe(first.reviewActivityKey);
   });
 
-  test("unifies conversation and diff-anchored comments", async () => {
+  test("nests review replies under top-level comments", async () => {
     const fetch: Fetch = async (input) => {
       const url = String(input);
       if (url.includes("/issues/5/comments")) {
@@ -528,7 +528,16 @@ describe("GitHubForgeConnector", () => {
         id: "10",
         body: "finding",
         author: "review-bot",
-        threadId: "10",
+        replyable: true,
+        replies: [{
+          id: "11",
+          body: "ccr:label=wrong",
+          author: "owner",
+          replyable: false,
+          replies: [],
+          path: "src/app.ts",
+          createdAt: "2026-07-30T09:32:00Z",
+        }],
         path: "src/app.ts",
         line: 42,
         createdAt: "2026-07-30T09:30:00Z",
@@ -537,16 +546,9 @@ describe("GitHubForgeConnector", () => {
         id: "20",
         body: "summary",
         author: "review-bot",
+        replyable: false,
+        replies: [],
         createdAt: "2026-07-30T09:31:00Z",
-      },
-      {
-        id: "11",
-        body: "ccr:label=wrong",
-        author: "owner",
-        threadId: "10",
-        replyTo: "10",
-        path: "src/app.ts",
-        createdAt: "2026-07-30T09:32:00Z",
       },
     ]);
   });
@@ -806,7 +808,7 @@ describe("GitLabForgeConnector", () => {
     expect(url.searchParams.get("per_page")).toBe("100");
   });
 
-  test("maps GitLab discussions onto provider-neutral comments", async () => {
+  test("nests discussion replies under top-level comments", async () => {
     const fetch: Fetch = async () =>
       json([
         {
@@ -858,23 +860,25 @@ describe("GitLabForgeConnector", () => {
         id: "10",
         body: "finding",
         author: "review-bot",
-        threadId: "discussion-1",
+        replyable: true,
+        replies: [{
+          id: "11",
+          body: "ccr:label=wrong",
+          author: "owner",
+          replyable: false,
+          replies: [],
+          createdAt: "2026-07-30T09:31:00Z",
+        }],
         path: "src/app.ts",
         line: 42,
         createdAt: "2026-07-30T09:30:00Z",
       },
       {
-        id: "11",
-        body: "ccr:label=wrong",
-        author: "owner",
-        threadId: "discussion-1",
-        replyTo: "10",
-        createdAt: "2026-07-30T09:31:00Z",
-      },
-      {
         id: "20",
         body: "summary",
         author: "review-bot",
+        replyable: false,
+        replies: [],
         createdAt: "2026-07-30T09:32:00Z",
       },
     ]);

@@ -18,8 +18,8 @@ import {
   codeReviewSpec,
   type CodeReviewSpec,
   type CodeReviewStatus,
+  type Comment,
   createCodeReviewController,
-  type ForgeComment,
   type ForgeConnector,
   ForgeCodeReviewSource,
   latestCodeReviewObservation,
@@ -35,11 +35,10 @@ const PULL_REQUEST = {
   number: 68,
 } as const;
 
-function reviewComments(): readonly ForgeComment[] {
+function reviewComments(): readonly Comment[] {
   return [
     {
       id: "finding-1",
-      threadId: "finding-1",
       body: [
         "🤖 **devloop code-review**",
         "",
@@ -47,6 +46,8 @@ function reviewComments(): readonly ForgeComment[] {
         "",
         "<sub>ccr:fp=fp1</sub>",
       ].join("\n"),
+      replyable: true,
+      replies: [],
       path: "src/app.ts",
       line: 42,
       createdAt: "2026-07-30T09:29:00.000Z",
@@ -58,17 +59,18 @@ function reviewComments(): readonly ForgeComment[] {
         "",
         "**1 finding(s)**（1 条已锚到 diff）",
       ].join("\n"),
+      replyable: false,
+      replies: [],
       createdAt: "2026-07-30T09:30:00.000Z",
     },
   ];
 }
 
-function repeatedReviewComments(): readonly ForgeComment[] {
+function repeatedReviewComments(): readonly Comment[] {
   return [
     ...reviewComments(),
     {
       id: "finding-2",
-      threadId: "finding-2",
       body: [
         "🤖 **devloop code-review**",
         "",
@@ -76,6 +78,8 @@ function repeatedReviewComments(): readonly ForgeComment[] {
         "",
         "<sub>ccr:fp=fp2</sub>",
       ].join("\n"),
+      replyable: true,
+      replies: [],
       path: "src/worker.ts",
       line: 18,
       createdAt: "2026-07-30T09:39:00.000Z",
@@ -87,25 +91,31 @@ function repeatedReviewComments(): readonly ForgeComment[] {
         "",
         "**1 finding(s)**（1 条已锚到 diff）",
       ].join("\n"),
+      replyable: false,
+      replies: [],
       createdAt: "2026-07-30T09:40:00.000Z",
     },
   ];
 }
 
-function labeledReviewComments(): readonly ForgeComment[] {
+function labeledReviewComments(): readonly Comment[] {
+  const [finding, ...comments] = reviewComments();
   return [
-    ...reviewComments(),
     {
-      id: "label-1",
-      threadId: "finding-1",
-      replyTo: "finding-1",
-      body: "ccr:label=important — confirmed against the current code",
-      createdAt: "2026-07-30T09:35:00.000Z",
+      ...finding!,
+      replies: [{
+        id: "label-1",
+        body: "ccr:label=important — confirmed against the current code",
+        replyable: false,
+        replies: [],
+        createdAt: "2026-07-30T09:35:00.000Z",
+      }],
     },
+    ...comments,
   ];
 }
 
-function forge(comments: readonly ForgeComment[]): ForgeConnector {
+function forge(comments: readonly Comment[]): ForgeConnector {
   return {
     source: PULL_REQUEST.source,
     provider: "github",
@@ -222,7 +232,6 @@ describe("CodeReview Resource", () => {
         message: "missing cancellation",
         fingerprint: "fp1",
         commentId: "finding-1",
-        threadId: "finding-1",
       }],
       reviewedRange: "origin/main..HEAD",
       publicationSummary: expect.stringContaining("1 finding(s)"),
@@ -238,11 +247,23 @@ describe("CodeReview Resource", () => {
     expect(latestCodeReviewObservation(PULL_REQUEST, [{
       id: "ordinary",
       body: "Looks good",
+      replyable: false,
+      replies: [],
       createdAt: "2026-07-30T09:30:00.000Z",
     }])).toBeUndefined();
   });
 
-  test("joins the first valid ccr label reply onto its finding thread", () => {
+  test("does not treat a standalone ccr fingerprint as a published finding", () => {
+    const [finding, summary] = reviewComments();
+    const observation = latestCodeReviewObservation(PULL_REQUEST, [
+      { ...finding!, replyable: false },
+      summary!,
+    ]);
+
+    expect(observation?.findings).toEqual([]);
+  });
+
+  test("joins the first valid ccr label reply onto its finding comment", () => {
     const observation = latestCodeReviewObservation(
       PULL_REQUEST,
       labeledReviewComments(),
@@ -250,7 +271,6 @@ describe("CodeReview Resource", () => {
 
     expect(observation?.findings).toEqual([
       expect.objectContaining({
-        threadId: "finding-1",
         label: "important",
       }),
     ]);

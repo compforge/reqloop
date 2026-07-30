@@ -72,13 +72,13 @@ export interface PullRequest {
   readonly observedAt: string;
 }
 
-/** Provider-neutral comment across conversation and diff-anchored surfaces. */
-export interface ForgeComment {
+/** One top-level provider-neutral comment, with review replies nested. */
+export interface Comment {
   readonly id: string;
   readonly body: string;
   readonly author?: string;
-  readonly threadId?: string;
-  readonly replyTo?: string;
+  readonly replyable: boolean;
+  readonly replies: readonly Comment[];
   readonly path?: string;
   readonly line?: number;
   readonly createdAt: string;
@@ -123,5 +123,5 @@ export interface ForgeConnector {
   /** Reads both conversation and diff-anchored comments in creation order. */
   comments?(
     identity: PullRequestIdentity,
-  ): Promise<readonly ForgeComment[]>;
+  ): Promise<readonly Comment[]>;
 }

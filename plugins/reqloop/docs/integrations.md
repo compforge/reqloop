@@ -47,7 +47,8 @@ Resource 缓存表达“最后已知状态”，不能被当作永久新鲜的�
 
 `ForgeConnector` 提供 PullRequest 列表、单项读取和 comments 读取。GitHub/GitLab adapter
 平级实现同一 provider-neutral port；平台 DTO 和词汇不穿透到 Resource。comments 同时归一
-conversation 与 diff/discussion comment，保留 comment/thread identity、path、line 和时间。
+conversation 与 diff/discussion surface：每个顶层 Comment 携带 replyable、嵌套 replies、
+path、line 和时间，provider 的 thread/discussion identity 不穿透 connector。
 review thread 不可用时使用 unknown，不能把普通 conversation comment 推断为可解决的
 review thread。
 

@@ -62,7 +62,7 @@ Requirement `spec` 保存用户选中时认可的标题、描述和验收标准�
 CodeReview `spec` 保存目标 PullRequest、一次运行的稳定 `runKey` 和被冻结的 revision；
 `status` 保存 phase、verdict、结构化结果、finding 证据、人的决定与期限。当前以 devloop
 发布到 Forge 的 summary comment id 作为 `runKey`，findings 来自同一轮 summary 之前带
-`ccr:fp` marker 的 review comments；thread 内第一个有效 `ccr:label` reply 是该 finding
+`ccr:fp` marker 的 review comments；comment 内第一个有效 `ccr:label` reply 是该 finding
 的处理标记。没有发布 comment 的 clean review 不产生 CodeReview。
 
 Requirement 当前使用三个 condition：

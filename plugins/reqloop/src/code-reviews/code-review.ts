@@ -4,7 +4,7 @@ import type {
   CodeReviewSpec,
   CodeReviewStatus,
 } from "./protocol.ts";
-import type { ForgeComment } from "../pull-requests/protocol.ts";
+import type { Comment } from "../pull-requests/protocol.ts";
 
 export const CODE_REVIEW_ACTIVE_TTL_MS = 24 * 60 * 60_000;
 
@@ -35,7 +35,7 @@ export function codeReviewExpiresAt(
 }
 
 function summary(
-  comment: ForgeComment,
+  comment: Comment,
 ): {
   readonly range: string;
   readonly sha: string;
@@ -53,12 +53,16 @@ function summary(
 }
 
 function commentFinding(
-  comment: ForgeComment,
-  labels: ReadonlyMap<string, CodeReviewLabel>,
+  comment: Comment,
 ): CodeReviewObservation["findings"][number] | undefined {
-  if (!comment.threadId || comment.replyTo) return;
+  if (!comment.replyable) return;
   const fingerprint = FINGERPRINT_RE.exec(comment.body)?.[1];
   if (!fingerprint) return;
+  const label = comment.replies
+    .map((reply) => LABEL_RE.exec(reply.body)?.[1])
+    .find((candidate): candidate is CodeReviewLabel =>
+      CODE_REVIEW_LABELS.has(candidate as CodeReviewLabel)
+    );
   const message = comment.body
     .replace(/^🤖 \*\*devloop code-review\*\*(?: · [^\n]+)?\s*/i, "")
     .replace(/\s*<sub>ccr:fp=[^<]+<\/sub>\s*$/i, "")
@@ -68,34 +72,13 @@ function commentFinding(
     message,
     fingerprint,
     commentId: comment.id,
-    threadId: comment.threadId,
-    ...(labels.has(comment.threadId)
-      ? { label: labels.get(comment.threadId)! }
-      : {}),
+    ...(label ? { label } : {}),
   };
-}
-
-function threadLabels(
-  comments: readonly ForgeComment[],
-): ReadonlyMap<string, CodeReviewLabel> {
-  const labels = new Map<string, CodeReviewLabel>();
-  for (const comment of comments) {
-    if (!comment.threadId || !comment.replyTo) continue;
-    const label = LABEL_RE.exec(comment.body)?.[1];
-    if (
-      label &&
-      CODE_REVIEW_LABELS.has(label as CodeReviewLabel) &&
-      !labels.has(comment.threadId)
-    ) {
-      labels.set(comment.threadId, label as CodeReviewLabel);
-    }
-  }
-  return labels;
 }
 
 function observationAt(
   pullRequest: CodeReviewObservation["pullRequest"],
-  comments: readonly ForgeComment[],
+  comments: readonly Comment[],
   summaryIndex: number,
 ): CodeReviewObservation | undefined {
   const comment = comments[summaryIndex];
@@ -109,11 +92,10 @@ function observationAt(
       break;
     }
   }
-  const labels = threadLabels(comments);
   const findings = comments
     .slice(previousSummaryIndex + 1, summaryIndex)
     .flatMap((candidate) => {
-      const finding = commentFinding(candidate, labels);
+      const finding = commentFinding(candidate);
       return finding ? [finding] : [];
     });
   return {
@@ -131,7 +113,7 @@ function observationAt(
 
 export function latestCodeReviewObservation(
   pullRequest: CodeReviewObservation["pullRequest"],
-  comments: readonly ForgeComment[],
+  comments: readonly Comment[],
 ): CodeReviewObservation | undefined {
   return codeReviewObservations(pullRequest, comments).at(-1);
 }
@@ -139,7 +121,7 @@ export function latestCodeReviewObservation(
 /** Every published actionable review run, ordered by its summary comment. */
 export function codeReviewObservations(
   pullRequest: CodeReviewObservation["pullRequest"],
-  comments: readonly ForgeComment[],
+  comments: readonly Comment[],
 ): readonly CodeReviewObservation[] {
   const observations: CodeReviewObservation[] = [];
   for (let index = 0; index < comments.length; index += 1) {
@@ -151,7 +133,7 @@ export function codeReviewObservations(
 
 export function codeReviewObservation(
   spec: CodeReviewSpec,
-  comments: readonly ForgeComment[],
+  comments: readonly Comment[],
 ): CodeReviewObservation | undefined {
   const index = comments.findIndex(({ id }) => id === spec.runKey);
   if (index < 0) return;

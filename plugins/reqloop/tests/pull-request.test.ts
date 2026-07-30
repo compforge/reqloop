@@ -404,7 +404,6 @@ describe("PullRequest Resource", () => {
           message: "missing cancellation",
           fingerprint: "fp1",
           commentId: "finding-1",
-          threadId: "finding-1",
         }],
         summaryCommentId: "summary-1",
       },
