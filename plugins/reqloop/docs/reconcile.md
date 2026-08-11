@@ -68,13 +68,14 @@ PullRequest 有两个并行发现入口：
 PullRequestController 和契约测试为准。
 
 开放 PullRequest 若尚无归属决定且存在活跃 Requirement，PullRequestController 调用 `ctx.ask`。
-Baton 先持久化 Interaction 与回答，再重新 reconcile；Controller 随后把 linked 或 standalone
-决定写入 status。取消或恢复使用稳定 decision key，不重复打扰用户。
+Baton 先持久化 Interaction，再挂起当前 async reconcile；回答、关闭或超时后恢复同一调用栈。
+Controller 重新读取同一 Resource incarnation，再把 linked、standalone 或 prompted 决定写入
+status。prompted 表示用户关闭了问题或等待超时，后续 reconcile 不自动重复打扰。
 
 开放 PR/MR 出现 merge conflict 时，Controller 同样调用 `ctx.ask`。每次连续冲突
-只询问一次；accept 用同一 operation key 调用 `ctx.draft`，由用户编辑并提交解决冲突的输入，
-ignore 不创建 draft。冲突状态消失后
-结束本次 decision episode，未来再次冲突时使用新的 decision key 重新询问。
+只询问一次；accept 随后 await `ctx.draft`，由用户编辑并提交解决冲突的输入，ignore 不创建
+draft。终结的 follow-up Turn id 写入当前 decision episode 以防重复，但不代替 Forge 结果观测；
+关闭或超时则降级为 ignore；冲突状态消失后结束本次 episode，未来再次冲突时重新询问。
 
 ## CodeReview
 
@@ -93,9 +94,9 @@ review comments 作为结构化 findings。Source 会准入 TTL 内每一轮已�
 comment，因此也不产生当前 CodeReview。
 
 CodeReviewController 按 `runKey` 重新读取同一轮 Forge comments 并物化 terminal status。
-actionable 结果通过 `ctx.ask` 请求 accept/ignore：accept 用同一 operation key 调用
-`ctx.draft`，由用户编辑并提交供当前 Harness 审核的输入，要求用 devloop label-review 给每个
-finding thread 写入 `ccr:label`；
+actionable 结果通过 `ctx.ask` 请求 accept/ignore：accept 随后 await `ctx.draft`，由用户编辑并
+提交供当前 Harness 审核的输入，要求用 devloop label-review 给每个 finding thread 写入
+`ccr:label`；终结的 follow-up Turn id 写入 status，关闭或超时降级为 ignore；
 Controller 周期刷新 comments 并汇总 label 进度。ignore 不驱动 Harness。二者都只代表用户
 如何处理建议，不改变 review verdict。CodeReview 与 PR 生命周期独立，因此 PR merged 后
 仍可继续存在。
@@ -120,10 +121,12 @@ PullRequest 的 create、update 和 delete 通过 Watch 映射到关联 Requirem
 old/new snapshot，因此 PR 改挂时旧、新两侧都重新汇总。RequirementController 扫描指向当前
 Requirement uid 且未 closed 的 PullRequest，更新汇总和 `ReadyToClose`。
 
-本地 PR 投影不依赖本次需求平台观察成功。达到 ReadyToClose 时 Controller 以当前 PR
-revision 集合作为 operation key，调用 `ctx.ask` 询问用户是否结束本地跟踪。
-用户确认后写入 `ClosureRequested=True` 并发送成功 toast；Requirement 随即退出 Board、
-Context 搜索和 PR 关联候选。当前不会关闭外部 Requirement，也不会创建开发任务的 draft。
+本地 PR 投影不依赖本次需求平台观察成功。达到 ReadyToClose 时 Controller 以 Requirement
+generation 与当前 PR revision 集合作为 decision basis，调用 `ctx.ask` 询问用户是否结束本地
+跟踪。用户确认后写入 `ClosureRequested=True` 并发送成功 toast；保持打开、关闭或超时会保存
+defer，直到关联 PR revision 集合发生变化。Requirement 关闭后随即退出 Board、Context 搜索和
+PR 关联候选。
+当前不会关闭外部 Requirement，也不会创建开发任务的 draft。
 
 ## 保留、删除与恢复
 
@@ -139,8 +142,11 @@ last-seen GC。离开 Workspace、进入 terminal 和 Board 隐藏只改变观�
 期限。CodeReview 还具有固定的领域 TTL；它不从 Source omission 推断，也不
 影响用户显式删除期限。
 
-Resource status、durable Interaction 和下一次调度均可跨重启恢复。Controller 不把触发原因
-当作必须执行一次的命令；重复唤醒、队列合并和重启后都重新读取最新状态，以幂等结果为目标。
+Resource status、durable Interaction 和下一次调度均可跨重启恢复；正在等待 verb 的进程内
+continuation 不重放，Runner/Core 中断以 failure 收口，后续 reconcile 只依据领域 status 决定
+是否重试。Controller 在 verb 返回后重新读取当前 Resource incarnation，不使用等待前的
+resourceVersion 写入。Controller 不把触发原因当作必须执行一次的命令；重复唤醒、队列合并和
+重启后都重新读取最新状态，以幂等结果为目标。
 恢复时 Repository / PullRequest Resource JSON 同时充当最后观测缓存；Board 和本地汇总直接
 从缓存恢复。外部 Connector 调用应围绕 observation 缺失、刷新窗口到期或新对象发现等实际
 需要安排，避免仅因恢复或重建投影而访问外部 API。具体约束见

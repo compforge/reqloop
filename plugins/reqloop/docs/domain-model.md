@@ -44,7 +44,7 @@ CodeReview 和 Requirement 都能独立保留，因此删除 Workspace 不级联
 `PullRequest.status.requirementAssociation`：
 
 - 字段缺失表示尚无归属决定；
-- `prompted` 保留已询问或恢复中的 durable decision key；
+- `prompted` 表示用户关闭了归属问题或等待超时，Controller 不自动重复询问；
 - `linked` 保存带 `namespace/name/uid` 的 Requirement `ResourceRef`；
 - `standalone` 表示用户明确选择独立跟踪。
 
@@ -57,6 +57,7 @@ Requirement 不保存实际 PR 列表，只在 reconcile 时扫描仍指向自�
 Requirement `spec` 保存用户选中时认可的标题、描述和验收标准；`status` 保存需求平台当前
 状态、关联 PR 汇总和条件。PullRequest `spec` 只保存不可变外部身份；Forge 观测和归属决定
 进入不同的 status 字段，互不覆盖。merge conflict 的用户决定按一次连续冲突 episode 保存；
+接受后终结的 Harness Turn id 也记录在同一 episode，避免重复打开 draft，但不代表冲突已经解决；
 冲突消失后清空，避免旧决定压住未来再次出现的冲突。
 
 CodeReview `spec` 保存目标 PullRequest、一次运行的稳定 `runKey` 和被冻结的 revision；
@@ -64,6 +65,10 @@ CodeReview `spec` 保存目标 PullRequest、一次运行的稳定 `runKey` 和�
 发布到 Forge 的 summary comment id 作为 `runKey`，findings 来自同一轮 summary 之前带
 `ccr:fp` marker 的 review comments；comment 内第一个有效 `ccr:label` reply 是该 finding
 的处理标记。没有发布 comment 的 clean review 不产生 CodeReview。
+
+Requirement 在 `ReadyToClose=True` 时按自身 generation 与关联 PullRequest revision 集合保存一次
+closure decision。保持打开、关闭 Interaction 或等待超时都会保留为当前事实集合的 defer；只有
+集合变化后才再次询问。
 
 Requirement 当前使用三个 condition：
 
@@ -84,7 +89,7 @@ review thread 均为 none 或 resolved。无法观察 review thread 时为 `Unkn
 Board 当前展示活跃 Requirement 和需要关注的 PullRequest。actionable CodeReview 能匹配
 PullRequest Resource 时，其数量与 finding label 进度聚合到 PR 卡片，不再占第二个槽位；
 找不到 PR 时才降级为独立卡片。accept 只停止重复提醒，CR 保持可见直到全部可标注 finding
-完成 label；ignore 会立即隐藏。
+完成 label；关闭或超时的 Interaction 降级为 ignore 并立即隐藏。
 
 merge conflict 和 unresolved review 是当前 blocker：它们影响卡片 tone，并提高 Board
 priority，使阻塞项优先进入 Baton 的有限展示集合。未标注 CR 可以让 merged PR 延长 Board

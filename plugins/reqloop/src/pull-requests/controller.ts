@@ -11,6 +11,12 @@ import type {
 
 import { boardPriority } from "../board.ts";
 import {
+  HARNESS_FOLLOW_UP_TIMEOUT_MS,
+  resourceAfterVerb,
+  USER_DECISION_TIMEOUT_MS,
+  verbFailure,
+} from "../reconcile-verb.ts";
+import {
   codeReviewLabelProgress,
   codeReviewNeedsAttention,
 } from "../code-reviews/code-review.ts";
@@ -85,8 +91,7 @@ async function enqueuePendingAssociationPullRequests(
     .list<PullRequestSpec, PullRequestStatus>(PULL_REQUEST_RESOURCE_TYPE))
     .filter(({ status }) =>
       status.lifecycle === "open" &&
-      (status.requirementAssociation === undefined ||
-        status.requirementAssociation.state === "prompted")
+      status.requirementAssociation === undefined
     )
     .map(({ metadata }) => ({ name: metadata.name }));
 }
@@ -196,10 +201,9 @@ function associationAsk(
   requirements: readonly Readonly<
     Resource<RequirementSpec, RequirementStatus>
   >[],
-  decisionKey: string,
 ) {
   return {
-    key: decisionKey,
+    timeoutMs: USER_DECISION_TIMEOUT_MS,
     title: "Associate pull request",
     prompt:
       `Which Requirement should ${identity.repository} PR/MR ${identity.number} join?`,
@@ -253,6 +257,9 @@ function mergeConflictFollowUpText(
   ].join("\n");
 }
 
+/**
+ * @spec Dismissed or timed-out PullRequest decisions settle the current episode, and a completed draft handoff is never reopened by a later reconcile.
+ */
 export function createPullRequestController(
   resources?: ResourceClient,
   connectors: readonly ForgeConnector[] = [],
@@ -350,8 +357,7 @@ export function createPullRequestController(
         current.status.mergeability !== "conflicted" &&
         current.status.mergeConflictDecision
       ) {
-        // Ending one conflict episode lets a later regression ask again with a
-        // new decision key instead of replaying an old user answer.
+        // Ending one conflict episode lets a later regression ask again.
         current = await resources.patchStatus(current, {
           mergeConflictDecision: null,
         });
@@ -361,20 +367,9 @@ export function createPullRequestController(
         current.status.mergeability === "conflicted"
       ) {
         let conflictDecision = current.status.mergeConflictDecision;
-        if (!conflictDecision) {
-          const conflictBasis = current.status.observedAt ??
-            current.metadata.resourceVersion;
-          conflictDecision = {
-            decisionKey:
-              `handle-merge-conflict:${current.metadata.name}:${conflictBasis}`,
-          };
-          current = await resources.patchStatus(current, {
-            mergeConflictDecision: conflictDecision,
-          });
-        }
-        if (!conflictDecision.choice) {
+        if (!conflictDecision?.choice) {
           const decision = await context.ask({
-            key: conflictDecision.decisionKey,
+            timeoutMs: USER_DECISION_TIMEOUT_MS,
             title: "Merge conflict found",
             prompt:
               `Ask the current Harness to resolve merge conflicts for ` +
@@ -392,45 +387,97 @@ export function createPullRequestController(
               },
             ],
           });
-          if (decision.state !== "answered") return;
+          if (decision.state === "failure") {
+            throw verbFailure("merge-conflict interaction", decision.error);
+          }
+          const resumed = await resourceAfterVerb(
+            resources,
+            current,
+          );
+          if (
+            !resumed ||
+            resumed.status.lifecycle !== "open" ||
+            resumed.status.mergeability !== "conflicted"
+          ) {
+            return;
+          }
+          current = resumed;
+          const choice = decision.state === "success"
+            ? decision.value
+            : MERGE_CONFLICT_ACTION_IGNORE;
           current = await resources.patchStatus(current, {
-            mergeConflictDecision: {
-              decisionKey: conflictDecision.decisionKey,
-              choice: decision.value,
-            },
+            mergeConflictDecision: { choice },
           });
           conflictDecision = current.status.mergeConflictDecision;
         }
         if (conflictDecision?.choice === MERGE_CONFLICT_ACTION_ACCEPT) {
-          await context.draft({
-            key: conflictDecision.decisionKey,
-            prompt: mergeConflictFollowUpText(identity, current.status.url),
-          });
+          if (!conflictDecision.followUpTurnId) {
+            const draft = await context.draft({
+              timeoutMs: HARNESS_FOLLOW_UP_TIMEOUT_MS,
+              title: "Resolve merge conflicts",
+              prompt: mergeConflictFollowUpText(identity, current.status.url),
+            });
+            if (draft.state === "failure") {
+              throw verbFailure("merge-conflict draft", draft.error);
+            }
+            const resumed = await resourceAfterVerb(
+              resources,
+              current,
+            );
+            if (
+              !resumed ||
+              resumed.status.lifecycle !== "open" ||
+              resumed.status.mergeability !== "conflicted" ||
+              resumed.status.mergeConflictDecision?.choice !==
+                MERGE_CONFLICT_ACTION_ACCEPT
+            ) {
+              return;
+            }
+            current = await resources.patchStatus(resumed, {
+              mergeConflictDecision: draft.state === "success"
+                ? {
+                  choice: MERGE_CONFLICT_ACTION_ACCEPT,
+                  followUpTurnId: draft.value.turn.turnId,
+                }
+                : { choice: MERGE_CONFLICT_ACTION_IGNORE },
+            });
+          }
           return;
         }
       }
 
       if (current.status.lifecycle === "open") {
         const association = current.status.requirementAssociation;
-        if (!association || association.state === "prompted") {
+        if (!association) {
           const requirements = await activeRequirements(resources);
-          const decisionKey = association?.decisionKey ??
-            `associate-requirement:${current.metadata.name}`;
           const decision = requirements.length > 0
-            ? await context.ask(
-              associationAsk(identity, requirements, decisionKey),
-            )
+            ? await context.ask(associationAsk(identity, requirements))
             : undefined;
-          if (decision?.state === "cancelled") {
-            if (!association) {
-              current = await resources.patchStatus(current, {
-                requirementAssociation: {
-                  state: "prompted",
-                  decisionKey,
-                },
-              });
+          if (decision?.state === "failure") {
+            throw verbFailure(
+              "Requirement association interaction",
+              decision.error,
+            );
+          }
+          if (decision) {
+            const resumed = await resourceAfterVerb(
+              resources,
+              current,
+            );
+            if (
+              !resumed ||
+              resumed.status.lifecycle !== "open" ||
+              resumed.status.requirementAssociation
+            ) {
+              return;
             }
-          } else if (decision?.state === "answered") {
+            current = resumed;
+          }
+          if (decision && decision.state !== "success") {
+            current = await resources.patchStatus(current, {
+              requirementAssociation: { state: "prompted" },
+            });
+          } else if (decision?.state === "success") {
             const selected = decision.value;
             if (selected === ASSOCIATION_STANDALONE) {
               current = await resources.patchStatus(current, {
@@ -441,7 +488,10 @@ export function createPullRequestController(
                 ASSOCIATION_REQUIREMENT_PREFIX.length,
               );
               if (name) {
-                const requirement = requirements.find(({ metadata }) =>
+                const latestRequirements = await activeRequirements(
+                  resources,
+                );
+                const requirement = latestRequirements.find(({ metadata }) =>
                   metadata.namespace === current.metadata.namespace &&
                   metadata.name === name
                 );
@@ -452,24 +502,10 @@ export function createPullRequestController(
                       requirement: requirementRef(requirement),
                     },
                   });
-                } else if (requirements.length > 0) {
-                  const retryDecisionKey =
-                    `associate-requirement:${current.metadata.name}:retry:` +
-                    current.metadata.resourceVersion;
+                } else {
                   current = await resources.patchStatus(current, {
-                    requirementAssociation: {
-                      state: "prompted",
-                      decisionKey: retryDecisionKey,
-                    },
+                    requirementAssociation: { state: "prompted" },
                   });
-                  await context.ask(
-                    associationAsk(
-                      identity,
-                      requirements,
-                      retryDecisionKey,
-                    ),
-                  );
-                  return;
                 }
               }
             }

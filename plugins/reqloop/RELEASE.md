@@ -1,6 +1,6 @@
 # ReqLoop releases
 
-Current version: `0.2.12`
+Current version: `0.2.13`
 
 ## 0.2.10
 

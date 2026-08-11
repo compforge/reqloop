@@ -103,11 +103,12 @@ ContextProvider 只搜索当前 BatonSession 已物化且仍活跃的 Requiremen
 时访问外部平台；选中后按 Baton 给出的字符预算向一次 Harness turn 注入内容。
 
 需要人的领域判断时，PullRequestController 为 merge conflict 调用 `ctx.ask`，
-CodeReviewController 为 actionable AI review 调用 `ctx.ask`；用户接受后用同一 operation key
-调用 `ctx.draft`，准备要求检查 finding 并使用 devloop label-review 的可编辑输入。Baton
-持久化决定并负责 composer、
+CodeReviewController 为 actionable AI review 调用 `ctx.ask`；用户接受后继续 await
+`ctx.draft`，准备要求检查 finding 并使用 devloop label-review 的可编辑输入。Baton
+持久化 Interaction 与 verb 终态并负责 composer、
 Input、Attempt 与 Harness 路由；ReqLoop 只从 Forge 观察 Harness 写回的 labels，不直接
-标注 comment，也不会在无人输入时启动 Harness。
+标注 comment，也不会在无人输入时启动 Harness。ReqLoop 在 verb 返回后重新读取 Resource，
+将关闭和超时映射为当前领域 episode 的降级决定，将 failure 交给 reconcile 重试。
 
 RequirementController 当前只观察、汇总，并在 ReadyToClose 后让用户确认是否结束本地跟踪；
 确认结果以 `ClosureRequested` Condition 持久化并发送 toast。外部 Requirement 写入、
@@ -116,7 +117,7 @@ PR 合并、部署和主动 Harness 调用都不在现有 Connector 接口或 ma
 ## 权限与失败
 
 当前外部能力为只读观察；Plugin manifest 应只声明实际需要的范围。未来若增加外部写操作，
-必须先把 desired state 和授权 scope 持久化，再由 Controller 使用稳定 operation key 收敛；
+必须先把 desired state 和授权 scope 持久化，再由 Controller 使用领域幂等键收敛；
 超时或进程崩溃后先查询实际状态，不能盲目重放。
 
 Source、Watch、cron 和文件变化只说明“事实可能变化”。状态转换必须基于重新读取的 Resource

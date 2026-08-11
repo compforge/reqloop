@@ -7,6 +7,7 @@ import {
 import type {
   Resource,
   ResourceClient,
+  ResourceRef,
   SourceContext,
 } from "@compforge/baton-plugin";
 
@@ -168,10 +169,32 @@ function codeReviewClient(
   const deleted: string[] = [];
   return {
     client: {
+      async get<TSpec, TStatus>(
+        ref: ResourceRef,
+      ): Promise<Readonly<Resource<TSpec, TStatus>> | undefined> {
+        const candidate = ref.kind === CODE_REVIEW_RESOURCE_TYPE.kind
+          ? current
+          : pullRequests.find(({ metadata }) =>
+            metadata.namespace === ref.namespace &&
+            metadata.name === ref.name
+          );
+        if (
+          !candidate ||
+          candidate.apiVersion !== ref.apiVersion ||
+          candidate.kind !== ref.kind ||
+          candidate.metadata.namespace !== ref.namespace ||
+          candidate.metadata.name !== ref.name ||
+          (ref.uid !== undefined && candidate.metadata.uid !== ref.uid)
+        ) {
+          return undefined;
+        }
+        return candidate as unknown as Readonly<Resource<TSpec, TStatus>>;
+      },
       async list(type) {
-        return type.kind === PULL_REQUEST_RESOURCE_TYPE.kind
-          ? pullRequests
-          : [];
+        if (type.kind === PULL_REQUEST_RESOURCE_TYPE.kind) {
+          return pullRequests;
+        }
+        return type.kind === CODE_REVIEW_RESOURCE_TYPE.kind ? [current] : [];
       },
       async patchStatus(candidate, patch) {
         current = {
@@ -335,7 +358,9 @@ describe("CodeReview Resource", () => {
       { now: () => new Date(NOW) },
     );
 
-    const promptContext = reconcileContext();
+    const promptContext = reconcileContext({
+      answer: { state: "success", value: "accept" },
+    });
     await controller.reconcile(promptContext.context, resource);
     expect(resources.current().status).toMatchObject({
       phase: "completed",
@@ -348,29 +373,21 @@ describe("CodeReview Resource", () => {
     });
     expect(promptContext.asks[0]).toMatchObject({
       title: "AI review comments found",
+      timeoutMs: 10 * 60_000,
     });
-    const decisionKey = promptContext.asks[0]!.key;
-
-    const acceptedContext = reconcileContext({
-      answers: {
-        [decisionKey]: { state: "answered", value: "accept" },
-      },
-    });
-    await controller.reconcile(
-      acceptedContext.context,
-      resources.current(),
-    );
     expect(resources.current().status.decision).toMatchObject({
       choice: "accept",
+      followUpTurnId: "turn_test",
     });
-    expect(acceptedContext.drafts[0]).toMatchObject({
-      key: decisionKey,
+    expect(promptContext.drafts[0]).toMatchObject({
+      title: "Handle AI review comments",
+      timeoutMs: 30 * 60_000,
       prompt: expect.stringContaining("label-review"),
     });
     const replayContext = reconcileContext();
     await controller.reconcile(replayContext.context, resources.current());
     expect(replayContext.asks).toEqual([]);
-    expect(replayContext.drafts[0]?.key).toBe(decisionKey);
+    expect(replayContext.drafts).toEqual([]);
     expect(resources.deleted).toEqual([]);
     expect(codeReviewNeedsAttention(resources.current().status)).toBe(true);
     expect(

@@ -58,6 +58,8 @@ export interface CodeReviewStatus {
   readonly decision?: {
     readonly choice: "accept" | "ignore";
     readonly decidedAt: string;
+    /** Terminal Harness Turn created from the accepted draft. */
+    readonly followUpTurnId?: string;
   };
 }
 

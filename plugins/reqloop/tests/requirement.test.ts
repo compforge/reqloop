@@ -7,6 +7,7 @@ import {
 import type {
   Resource,
   ResourceClient,
+  ResourceRef,
   ToastMessage,
 } from "@compforge/baton-plugin";
 
@@ -39,6 +40,21 @@ function resourceClient(): {
     | Readonly<Resource<PullRequestSpec, PullRequestStatus>>
     | undefined;
   const client = {
+    get(ref: ResourceRef) {
+      const candidate = [resource, pullRequest].find((item) =>
+        item?.apiVersion === ref.apiVersion &&
+        item.kind === ref.kind &&
+        item.metadata.namespace === ref.namespace &&
+        item.metadata.name === ref.name
+      );
+      if (
+        !candidate ||
+        (ref.uid !== undefined && candidate.metadata.uid !== ref.uid)
+      ) {
+        return undefined;
+      }
+      return candidate;
+    },
     list(type: { apiVersion: string; kind: string }) {
       if (type.kind === REQUIREMENT_RESOURCE_TYPE.kind) {
         return resource ? [resource] : [];
@@ -460,6 +476,7 @@ describe("Requirement Resource", () => {
     });
     expect(promptContext.asks[0]).toMatchObject({
       title: "Close requirement",
+      timeoutMs: 10 * 60_000,
       choices: [
         {
           value: "confirm",
@@ -472,13 +489,14 @@ describe("Requirement Resource", () => {
       ],
     });
     expect(toasts).toHaveLength(0);
-    const decisionKey = promptContext.asks[0]!.key;
+    expect(resources.current()?.status.closureDecision).toMatchObject({
+      choice: "keep-open",
+    });
 
     let current = resources.current()!;
-    await controller.reconcile(
-      reconcileContext().context,
-      current,
-    );
+    const deferredContext = reconcileContext();
+    await controller.reconcile(deferredContext.context, current);
+    expect(deferredContext.asks).toEqual([]);
     expect(
       getStatusCondition(
         resources.current()?.status.conditions,
@@ -490,15 +508,18 @@ describe("Requirement Resource", () => {
     ).toBeDefined();
     expect(toasts).toHaveLength(0);
 
+    linkedPullRequest = await resources.client.patchStatus(linkedPullRequest, {
+      reviewActivityKey: "after-closure-deferral",
+    });
     current = resources.current()!;
+    const confirmedContext = reconcileContext({
+      answer: { state: "success", value: "confirm" },
+    });
     await controller.reconcile(
-      reconcileContext({
-        answers: {
-          [decisionKey]: { state: "answered", value: "confirm" },
-        },
-      }).context,
+      confirmedContext.context,
       current,
     );
+    expect(confirmedContext.asks).toHaveLength(1);
 
     expect(resources.current()?.status.externalState).toBe("in_progress");
     expect(

@@ -28,7 +28,6 @@ export interface PullRequestSpec {
 export type PullRequestRequirementAssociation =
   | {
       readonly state: "prompted";
-      readonly decisionKey: string;
     }
   | {
       readonly state: "linked";
@@ -49,15 +48,15 @@ export interface PullRequestStatus {
   readonly mergeability?: PullRequestMergeability;
   readonly observedAt?: string;
   /**
-   * Absence means Resource status has no association decision; reconcile still
-   * consults Baton's durable Interaction snapshot before opening one.
-   * `prompted` retains a cancelled or recovery decision key.
+   * Absence means Resource status has no association decision.
+   * `prompted` records that the user dismissed or timed out the question.
    */
   readonly requirementAssociation?: PullRequestRequirementAssociation;
   /** One durable user decision for the current merge-conflict episode. */
   readonly mergeConflictDecision?: {
-    readonly decisionKey: string;
     readonly choice?: "accept" | "ignore";
+    /** Terminal Harness Turn created from the accepted draft. */
+    readonly followUpTurnId?: string;
   } | null;
 }
 
