@@ -5,7 +5,6 @@ import {
 } from "bun:test";
 
 import type {
-  BatonSnapshot,
   Resource,
   ResourceClient,
 } from "@compforge/baton-plugin";
@@ -34,6 +33,7 @@ import {
   type WorkspaceSpec,
   type WorkspaceStatus,
 } from "../src/index.ts";
+import { reconcileContext } from "./reconcile-context.ts";
 
 function resourceClient(): {
   readonly client: ResourceClient;
@@ -246,24 +246,6 @@ function resourceClient(): {
         status: { repositories: [] },
       };
     },
-  };
-}
-
-function batonSnapshot(
-  pluginInteractions: BatonSnapshot["pluginInteractions"] = [],
-): BatonSnapshot {
-  return {
-    session: {
-      batonSessionId: "bs_test",
-      runState: "idle",
-      revision: 0,
-    },
-    activeTurns: [],
-    inputs: [],
-    harnessTargets: [],
-    pendingInteractions: [],
-    pluginInteractions,
-    turns: [],
   };
 }
 
@@ -517,55 +499,39 @@ describe("PullRequest Resource", () => {
       await controller.watches?.[0]?.handler.create({ object: requirement }),
     ).toEqual([{ name: pullRequest.metadata.name }]);
 
-    const prompted = await controller.reconcile(
-      batonSnapshot(),
-      pullRequest,
-    );
-    expect(prompted?.output).toMatchObject({
-      kind: "interaction",
+    const promptContext = reconcileContext();
+    await controller.reconcile(promptContext.context, pullRequest);
+    expect(promptContext.asks[0]).toMatchObject({
       title: "Associate pull request",
-      options: [
+      choices: [
         {
-          optionId: "requirement:req_active",
+          value: "requirement:req_active",
           label: "Requirement intake",
         },
         {
-          optionId: "standalone",
+          value: "standalone",
           label: "Keep standalone",
-          role: "reject",
         },
       ],
     });
     expect(
       resources.current()?.status.requirementAssociation,
     ).toBeUndefined();
-    if (prompted?.output?.kind !== "interaction") {
-      throw new Error("expected association Interaction");
-    }
-    expect(
-      await controller.reconcile(batonSnapshot(), resources.current()!),
-    ).toMatchObject({
-      output: {
-        kind: "interaction",
-        decisionKey: prompted.output.decisionKey,
-      },
-    });
+    const decisionKey = promptContext.asks[0]!.key;
+    const replayContext = reconcileContext();
+    await controller.reconcile(replayContext.context, resources.current()!);
+    expect(replayContext.asks[0]?.key).toBe(decisionKey);
 
     const current = resources.current()!;
     await controller.reconcile(
-      batonSnapshot([{
-        interactionId: "ix_associate",
-        decisionKey: prompted.output.decisionKey,
-        resource: {
-          ...PULL_REQUEST_RESOURCE_TYPE,
-          namespace: current.metadata.namespace,
-          name: current.metadata.name,
+      reconcileContext({
+        answers: {
+          [decisionKey]: {
+            state: "answered",
+            value: "requirement:req_active",
+          },
         },
-        outcome: {
-          kind: "answered",
-          values: ["requirement:req_active"],
-        },
-      }]),
+      }).context,
       current,
     );
     expect(resources.current()?.status.requirementAssociation).toEqual({
@@ -609,7 +575,7 @@ describe("PullRequest Resource", () => {
       await controller.watches?.[0]?.handler.create({ object: requirement }),
     ).toEqual([]);
     expect(
-      await controller.reconcile(batonSnapshot(), pullRequest),
+      await controller.reconcile(reconcileContext().context, pullRequest),
     ).toBeUndefined();
   });
 
@@ -622,65 +588,56 @@ describe("PullRequest Resource", () => {
     });
     const controller = createPullRequestController(resources.client);
 
-    const prompted = await controller.reconcile(
-      batonSnapshot(),
-      conflicted,
-    );
-    expect(prompted?.output).toMatchObject({
-      kind: "interaction",
+    const promptContext = reconcileContext();
+    await controller.reconcile(promptContext.context, conflicted);
+    expect(promptContext.asks[0]).toMatchObject({
       title: "Merge conflict found",
-      options: [
+      choices: [
         {
-          optionId: "accept",
+          value: "accept",
           label: "Accept",
         },
         {
-          optionId: "ignore",
+          value: "ignore",
           label: "Ignore",
-          role: "reject",
         },
       ],
     });
-    if (prompted?.output?.kind !== "interaction") {
-      throw new Error("expected merge-conflict Interaction");
-    }
+    const decisionKey = promptContext.asks[0]!.key;
     expect(resources.current()?.status.mergeConflictDecision).toEqual({
-      decisionKey: prompted.output.decisionKey,
+      decisionKey,
     });
 
-    const accepted = await controller.reconcile(
-      batonSnapshot([{
-        interactionId: "ix_merge_conflict",
-        decisionKey: prompted.output.decisionKey,
-        resource: {
-          ...PULL_REQUEST_RESOURCE_TYPE,
-          namespace: conflicted.metadata.namespace,
-          name: conflicted.metadata.name,
-        },
-        outcome: { kind: "answered", values: ["accept"] },
-      }]),
+    const acceptedContext = reconcileContext({
+      answers: {
+        [decisionKey]: { state: "answered", value: "accept" },
+      },
+    });
+    await controller.reconcile(
+      acceptedContext.context,
       resources.current()!,
     );
     expect(resources.current()?.status.mergeConflictDecision).toEqual({
-      decisionKey: prompted.output.decisionKey,
+      decisionKey,
       choice: "accept",
     });
-    expect(accepted?.output).toMatchObject({
-      kind: "proposed-input",
-      text: expect.stringContaining(
+    expect(acceptedContext.drafts[0]).toMatchObject({
+      key: decisionKey,
+      prompt: expect.stringContaining(
         "Resolve the merge conflicts for compforge/reqloop PR/MR 17",
       ),
     });
-    expect(
-      await controller.reconcile(batonSnapshot(), resources.current()!),
-    ).toBeUndefined();
+    const replayContext = reconcileContext();
+    await controller.reconcile(replayContext.context, resources.current()!);
+    expect(replayContext.asks).toEqual([]);
+    expect(replayContext.drafts[0]?.key).toBe(decisionKey);
 
     const ready = await updatePullRequestObservation(resources.client, {
       ...observation,
       reviewThreads: "resolved",
       observedAt: "2026-07-26T09:00:00.000Z",
     });
-    await controller.reconcile(batonSnapshot(), ready);
+    await controller.reconcile(reconcileContext().context, ready);
     expect(resources.current()?.status.mergeConflictDecision).toBeNull();
 
     const conflictedAgain = await updatePullRequestObservation(
@@ -692,20 +649,12 @@ describe("PullRequest Resource", () => {
         observedAt: "2026-07-26T10:00:00.000Z",
       },
     );
-    const promptedAgain = await controller.reconcile(
-      batonSnapshot(),
-      conflictedAgain,
-    );
-    expect(promptedAgain?.output).toMatchObject({
-      kind: "interaction",
+    const nextContext = reconcileContext();
+    await controller.reconcile(nextContext.context, conflictedAgain);
+    expect(nextContext.asks[0]).toMatchObject({
       title: "Merge conflict found",
     });
-    if (promptedAgain?.output?.kind !== "interaction") {
-      throw new Error("expected a new merge-conflict Interaction");
-    }
-    expect(promptedAgain.output.decisionKey).not.toBe(
-      prompted.output.decisionKey,
-    );
+    expect(nextContext.asks[0]?.key).not.toBe(decisionKey);
   });
 
   test("pins legacy Requirement associations to their current uid", async () => {
@@ -724,7 +673,7 @@ describe("PullRequest Resource", () => {
     });
 
     await createPullRequestController(resources.client).reconcile(
-      batonSnapshot(),
+      reconcileContext().context,
       legacy,
     );
 
@@ -767,7 +716,7 @@ describe("PullRequest Resource", () => {
       await createPullRequestController(
         resources.client,
         [forge],
-      ).reconcile(batonSnapshot(), terminal);
+      ).reconcile(reconcileContext().context, terminal);
 
       expect(calls).toBe(0);
     }
@@ -801,7 +750,7 @@ describe("PullRequest Resource", () => {
     await createPullRequestController(
       resources.client,
       [forge],
-    ).reconcile(batonSnapshot(), merged);
+    ).reconcile(reconcileContext().context, merged);
 
     expect(calls).toBe(1);
     expect(resources.current()?.status).toMatchObject({
@@ -832,7 +781,7 @@ describe("PullRequest Resource", () => {
     await createPullRequestController(
       resources.client,
       [forge],
-    ).reconcile(batonSnapshot(), current);
+    ).reconcile(reconcileContext().context, current);
 
     expect(calls).toBe(0);
   });
@@ -858,7 +807,7 @@ describe("PullRequest Resource", () => {
       [forge],
       [],
       async () => false,
-    ).reconcile(batonSnapshot(), current);
+    ).reconcile(reconcileContext().context, current);
 
     expect(calls).toBe(1);
   });
@@ -887,7 +836,7 @@ describe("PullRequest Resource", () => {
       [forge],
       [],
       async () => false,
-    ).reconcile(batonSnapshot(), current);
+    ).reconcile(reconcileContext().context, current);
 
     expect(calls).toBe(0);
   });
@@ -965,7 +914,7 @@ describe("PullRequest Resource", () => {
       resources.client,
       [forge],
     ).reconcile(
-      batonSnapshot(),
+      reconcileContext().context,
       resources.current()!,
     );
     expect(resources.current()?.status).toEqual({

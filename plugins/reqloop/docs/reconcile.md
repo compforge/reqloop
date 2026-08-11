@@ -20,7 +20,7 @@ ReqLoop 遵循同一条控制链：
               │
               ├── patch status
               ├── derive Board / Context
-              └── Interaction / proposed-input / toast
+              └── ctx.ask / ctx.draft / toast
 ```
 
 Source 负责集合准入，Watch 和 cron 只负责唤醒，Controller 只收敛已经存在的 Resource。
@@ -67,12 +67,13 @@ PullRequest 有两个并行发现入口：
 仍可继续作为 Requirement 收尾证据。具体时间窗口与间隔以 `devloop-activity.ts`、
 PullRequestController 和契约测试为准。
 
-开放 PullRequest 若尚无归属决定且存在活跃 Requirement，PullRequestController 返回 durable
-Interaction。Baton 先持久化回答，再重新 reconcile；Controller 随后把 linked 或 standalone
+开放 PullRequest 若尚无归属决定且存在活跃 Requirement，PullRequestController 调用 `ctx.ask`。
+Baton 先持久化 Interaction 与回答，再重新 reconcile；Controller 随后把 linked 或 standalone
 决定写入 status。取消或恢复使用稳定 decision key，不重复打扰用户。
 
-开放 PR/MR 出现 merge conflict 时，Controller 同样返回 durable Interaction。每次连续冲突
-只询问一次；accept 返回解决冲突的 `proposed-input`，ignore 不驱动 Harness。冲突状态消失后
+开放 PR/MR 出现 merge conflict 时，Controller 同样调用 `ctx.ask`。每次连续冲突
+只询问一次；accept 用同一 operation key 调用 `ctx.draft`，由用户编辑并提交解决冲突的输入，
+ignore 不创建 draft。冲突状态消失后
 结束本次 decision episode，未来再次冲突时使用新的 decision key 重新询问。
 
 ## CodeReview
@@ -92,8 +93,9 @@ review comments 作为结构化 findings。Source 会准入 TTL 内每一轮已�
 comment，因此也不产生当前 CodeReview。
 
 CodeReviewController 按 `runKey` 重新读取同一轮 Forge comments 并物化 terminal status。
-actionable 结果返回 accept/ignore durable Interaction：accept 生成供当前 Harness 审核的
-`proposed-input`，要求用 devloop label-review 给每个 finding thread 写入 `ccr:label`；
+actionable 结果通过 `ctx.ask` 请求 accept/ignore：accept 用同一 operation key 调用
+`ctx.draft`，由用户编辑并提交供当前 Harness 审核的输入，要求用 devloop label-review 给每个
+finding thread 写入 `ccr:label`；
 Controller 周期刷新 comments 并汇总 label 进度。ignore 不驱动 Harness。二者都只代表用户
 如何处理建议，不改变 review verdict。CodeReview 与 PR 生命周期独立，因此 PR merged 后
 仍可继续存在。
@@ -119,10 +121,9 @@ old/new snapshot，因此 PR 改挂时旧、新两侧都重新汇总。Requireme
 Requirement uid 且未 closed 的 PullRequest，更新汇总和 `ReadyToClose`。
 
 本地 PR 投影不依赖本次需求平台观察成功。达到 ReadyToClose 时 Controller 以当前 PR
-revision 集合作为 decision key，返回 durable Interaction 询问用户是否结束本地跟踪。
+revision 集合作为 operation key，调用 `ctx.ask` 询问用户是否结束本地跟踪。
 用户确认后写入 `ClosureRequested=True` 并发送成功 toast；Requirement 随即退出 Board、
-Context 搜索和 PR 关联候选。当前不会关闭外部 Requirement，也不会返回开发任务的
-`proposed-input`。
+Context 搜索和 PR 关联候选。当前不会关闭外部 Requirement，也不会创建开发任务的 draft。
 
 ## 保留、删除与恢复
 

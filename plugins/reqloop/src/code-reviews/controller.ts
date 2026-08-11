@@ -1,5 +1,4 @@
 import type {
-  BatonSnapshot,
   Controller,
   ResourceClient,
   Source,
@@ -33,15 +32,6 @@ import {
 const REVIEW_ACTION_ACCEPT = "accept";
 const REVIEW_ACTION_IGNORE = "ignore";
 const CODE_REVIEW_RETRY_INTERVAL_MS = 30_000;
-
-function interactionDecision(
-  baton: Readonly<BatonSnapshot>,
-  decisionKey: string,
-): BatonSnapshot["pluginInteractions"][number] | undefined {
-  return baton.pluginInteractions.find(
-    (interaction) => interaction.decisionKey === decisionKey,
-  );
-}
 
 function remainingMs(expiresAt: string, nowMs: number): number {
   const deadline = Date.parse(expiresAt);
@@ -87,7 +77,7 @@ export function createCodeReviewController(
   return {
     resourceType: CODE_REVIEW_RESOURCE_TYPE,
     ...(sources.length > 0 ? { sources } : {}),
-    async reconcile(baton, resource) {
+    async reconcile(context, resource) {
       if (resource.metadata.deletionTimestamp !== undefined) return;
 
       let current = resource;
@@ -139,67 +129,50 @@ export function createCodeReviewController(
       if (!actionableCodeReview(current.status)) {
         return { requeueAfterMs: nextRefreshMs };
       }
-      if (!codeReviewNeedsAttention(current.status) ||
-        current.status.decision) {
+      if (!codeReviewNeedsAttention(current.status)) {
         return { requeueAfterMs: nextRefreshMs };
       }
 
       const decisionKey = `handle-review:${current.spec.runKey}`;
-      const decision = interactionDecision(baton, decisionKey);
-      if (!decision) {
+      if (!current.status.decision) {
         const identity = current.spec.pullRequest;
-        return {
-          output: {
-            kind: "interaction",
-            decisionKey,
-            title: "AI review comments found",
-            prompt:
-              `Ask the current Harness to evaluate the AI review for ` +
-              `${identity.repository} PR/MR ${identity.number}?`,
-            options: [
-              {
-                optionId: REVIEW_ACTION_ACCEPT,
-                label: "Accept",
-                description:
-                  "Ask the current Harness to evaluate and fix real findings.",
-              },
-              {
-                optionId: REVIEW_ACTION_IGNORE,
-                label: "Ignore",
-                role: "reject",
-              },
-            ],
+        const decision = await context.ask({
+          key: decisionKey,
+          title: "AI review comments found",
+          prompt:
+            `Ask the current Harness to evaluate the AI review for ` +
+            `${identity.repository} PR/MR ${identity.number}?`,
+          choices: [
+            {
+              value: REVIEW_ACTION_ACCEPT,
+              label: "Accept",
+              description:
+                "Ask the current Harness to evaluate and fix real findings.",
+            },
+            {
+              value: REVIEW_ACTION_IGNORE,
+              label: "Ignore",
+            },
+          ],
+        });
+        if (decision.state !== "answered") {
+          return { requeueAfterMs: nextRefreshMs };
+        }
+        current = await resources.patchStatus(current, {
+          decision: {
+            choice: decision.value,
+            decidedAt: now().toISOString(),
           },
-          requeueAfterMs: nextRefreshMs,
-        };
+        });
       }
-      if (decision.outcome?.kind !== "answered") {
+      if (current.status.decision?.choice !== REVIEW_ACTION_ACCEPT) {
         return { requeueAfterMs: nextRefreshMs };
       }
-      const choice = decision.outcome.values[0];
-      if (
-        choice !== REVIEW_ACTION_ACCEPT &&
-        choice !== REVIEW_ACTION_IGNORE
-      ) {
-        return { requeueAfterMs: nextRefreshMs };
-      }
-
-      await resources.patchStatus(current, {
-        decision: {
-          choice,
-          decidedAt: now().toISOString(),
-        },
+      await context.draft({
+        key: decisionKey,
+        prompt: codeReviewFollowUpText(current.spec, current.status),
       });
-      if (choice !== REVIEW_ACTION_ACCEPT) {
-        return { requeueAfterMs: nextRefreshMs };
-      }
-      return {
-        output: {
-          kind: "proposed-input",
-          text: codeReviewFollowUpText(current.spec, current.status),
-        },
-        requeueAfterMs: nextRefreshMs,
-      };
+      return { requeueAfterMs: nextRefreshMs };
     },
     async present(resource) {
       if (

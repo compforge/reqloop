@@ -5,7 +5,6 @@ import {
 } from "bun:test";
 
 import type {
-  BatonSnapshot,
   Resource,
   ResourceClient,
   ToastMessage,
@@ -25,6 +24,7 @@ import {
   type RequirementStatus,
   upsertRequirement,
 } from "../src/index.ts";
+import { reconcileContext } from "./reconcile-context.ts";
 
 function resourceClient(): {
   readonly client: ResourceClient;
@@ -110,24 +110,6 @@ function resourceClient(): {
     },
   } as unknown as ResourceClient;
   return { client, current: () => resource };
-}
-
-function batonSnapshot(
-  pluginInteractions: BatonSnapshot["pluginInteractions"] = [],
-): BatonSnapshot {
-  return {
-    session: {
-      batonSessionId: "bs_test",
-      runState: "idle",
-      revision: 0,
-    },
-    activeTurns: [],
-    inputs: [],
-    harnessTargets: [],
-    pendingInteractions: [],
-    pluginInteractions,
-    turns: [],
-  };
 }
 
 describe("Requirement Resource", () => {
@@ -388,7 +370,7 @@ describe("Requirement Resource", () => {
       cron: "0 * * * * *",
       timeZone: "UTC",
     }]);
-    await controller.reconcile(batonSnapshot(), requirement);
+    await controller.reconcile(reconcileContext().context, requirement);
     expect(resources.current()?.status).toMatchObject({
       externalState: "in_progress",
       updatedAt: "2026-07-26T12:00:00.000Z",
@@ -420,7 +402,7 @@ describe("Requirement Resource", () => {
     linkedPullRequest = await resources.client.patchStatus(linkedPullRequest, {
       reviewThreads: "unresolved",
     });
-    await controller.reconcile(batonSnapshot(), resources.current()!);
+    await controller.reconcile(reconcileContext().context, resources.current()!);
     const unresolvedPresentation = await controller.present?.(
       resources.current()!,
     );
@@ -445,7 +427,7 @@ describe("Requirement Resource", () => {
       reviewThreads: "resolved",
       mergeability: "conflicted",
     });
-    await controller.reconcile(batonSnapshot(), resources.current()!);
+    await controller.reconcile(reconcileContext().context, resources.current()!);
     const conflictedPresentation = await controller.present?.(
       resources.current()!,
     );
@@ -459,10 +441,8 @@ describe("Requirement Resource", () => {
     linkedPullRequest = await resources.client.patchStatus(linkedPullRequest, {
       mergeability: "ready",
     });
-    const prompted = await controller.reconcile(
-      batonSnapshot(),
-      resources.current()!,
-    );
+    const promptContext = reconcileContext();
+    await controller.reconcile(promptContext.context, resources.current()!);
     expect(
       await controller.present?.(resources.current()!),
     ).toMatchObject({
@@ -478,38 +458,25 @@ describe("Requirement Resource", () => {
       status: "True",
       reason: "PullRequestsSettled",
     });
-    expect(prompted?.output).toMatchObject({
-      kind: "interaction",
+    expect(promptContext.asks[0]).toMatchObject({
       title: "Close requirement",
-      options: [
+      choices: [
         {
-          optionId: "confirm",
+          value: "confirm",
           label: "Close in reqloop",
         },
         {
-          optionId: "keep-open",
+          value: "keep-open",
           label: "Keep open",
-          role: "reject",
         },
       ],
     });
     expect(toasts).toHaveLength(0);
-    if (prompted?.output?.kind !== "interaction") {
-      throw new Error("expected closure Interaction");
-    }
+    const decisionKey = promptContext.asks[0]!.key;
 
     let current = resources.current()!;
-    const interactionResource = {
-      ...REQUIREMENT_RESOURCE_TYPE,
-      namespace: current.metadata.namespace,
-      name: current.metadata.name,
-    };
     await controller.reconcile(
-      batonSnapshot([{
-        interactionId: "ix_close_requirement",
-        decisionKey: prompted.output.decisionKey,
-        resource: interactionResource,
-      }]),
+      reconcileContext().context,
       current,
     );
     expect(
@@ -525,12 +492,11 @@ describe("Requirement Resource", () => {
 
     current = resources.current()!;
     await controller.reconcile(
-      batonSnapshot([{
-        interactionId: "ix_close_requirement",
-        decisionKey: prompted.output.decisionKey,
-        resource: interactionResource,
-        outcome: { kind: "answered", values: ["confirm"] },
-      }]),
+      reconcileContext({
+        answers: {
+          [decisionKey]: { state: "answered", value: "confirm" },
+        },
+      }).context,
       current,
     );
 
@@ -558,7 +524,7 @@ describe("Requirement Resource", () => {
       tone: "success",
     }]);
 
-    await controller.reconcile(batonSnapshot(), resources.current()!);
+    await controller.reconcile(reconcileContext().context, resources.current()!);
     expect(toasts).toHaveLength(1);
     expect(observationCalls).toBe(1);
   });

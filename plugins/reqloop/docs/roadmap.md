@@ -57,15 +57,15 @@ README、AGENTS 和当前设计文档不得把这些方向写成现有能力。
   Resource 类型；
 - Run/Attempt 只有在一项 Requirement 同时存在多个独立执行实例时才成立。
 
-在这些条件出现前，继续使用现有 Resource status、Interaction 和 proposed-input，避免为未来
+在这些条件出现前，继续使用现有 Resource status、`ctx.ask` 和 `ctx.draft`，避免为未来
 预建空模型或第二套调度系统。
 
 ## 自动化演进
 
 ```text
 Observe    读取外部事实并更新 Resource
-Recommend  返回 proposed-input
-Confirm    用 durable Interaction 保存人的决定
+Recommend  调用 draft 准备可编辑输入
+Confirm    调用 ask 保存人的决定
 Automate   在已授权 spec 下执行 Connector 写操作
 Autonomous 真实场景证明需要后，再开放受控 Harness 调用
 ```

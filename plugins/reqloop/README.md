@@ -147,7 +147,8 @@ Forge/devloop   → latest observations → Resource status → Board / context
 Controllers keep these Resources aligned with the filesystem, Forge,
 requirement platform, and Forge comments published by devloop. When user
 judgment is needed, ReqLoop opens a durable Interaction; accepted decisions can
-become a `proposed-input` for the current Harness. The Harness can then use
+open a `draft` suggested-input Interaction for the current Harness. The user can
+edit and submit that draft, after which the Harness can use
 devloop's label-review workflow while ReqLoop observes the resulting
 `ccr:label` replies through Forge. ReqLoop does not directly drive a Harness or
 mutate external Requirement state. The Board currently presents active
@@ -193,7 +194,7 @@ BatonSession cwd → Workspace → Repository → PullRequest
                                             └→ CodeReview
 /requirements   → Requirement ← 关联的 PullRequests
 Forge / devloop / 需求平台 → 最新观察 → Resource status → Board / context
-需要用户判断 → durable Interaction → Resource status / proposed-input
+需要用户判断 → `ask` Interaction → Resource status / `draft` Interaction
 ```
 
 Controller 负责让本地 Resource 与文件系统、代码平台、需求平台及 devloop 发布到 Forge 的

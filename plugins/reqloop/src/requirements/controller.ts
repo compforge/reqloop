@@ -1,5 +1,4 @@
 import type {
-  BatonSnapshot,
   Controller,
   Resource,
   ResourceClient,
@@ -195,15 +194,6 @@ function closureDecisionKey(
   return `close-requirement:${requirementName}:${basis}`;
 }
 
-function interactionDecision(
-  baton: Readonly<BatonSnapshot>,
-  decisionKey: string,
-): BatonSnapshot["pluginInteractions"][number] | undefined {
-  return baton.pluginInteractions.find(
-    (interaction) => interaction.decisionKey === decisionKey,
-  );
-}
-
 export function createRequirementController(
   resources?: ResourceClient,
   connectors: readonly RequirementConnector[] = [],
@@ -236,7 +226,7 @@ export function createRequirementController(
         }],
       }
       : {}),
-    async reconcile(baton, resource) {
+    async reconcile(context, resource) {
       if (!resources) return;
       let current = resource;
       const connector = connectorsBySource.get(
@@ -296,36 +286,28 @@ export function createRequirementController(
           current.metadata.name,
           pullRequests,
         );
-        const decision = interactionDecision(baton, decisionKey);
-        if (!decision) {
-          if (observationError) throw observationError;
-          return {
-            output: {
-              kind: "interaction",
-              decisionKey,
-              title: "Close requirement",
-              prompt:
-                `Requirement "${current.spec.title}" looks ready to close. ` +
-                "Stop tracking it in reqloop?",
-              options: [
-                {
-                  optionId: CLOSURE_ACTION_CONFIRM,
-                  label: "Close in reqloop",
-                  description:
-                    "Hide it locally without changing the external requirement.",
-                },
-                {
-                  optionId: CLOSURE_ACTION_KEEP_OPEN,
-                  label: "Keep open",
-                  role: "reject",
-                },
-              ],
+        const decision = await context.ask({
+          key: decisionKey,
+          title: "Close requirement",
+          prompt:
+            `Requirement "${current.spec.title}" looks ready to close. ` +
+            "Stop tracking it in reqloop?",
+          choices: [
+            {
+              value: CLOSURE_ACTION_CONFIRM,
+              label: "Close in reqloop",
+              description:
+                "Hide it locally without changing the external requirement.",
             },
-          };
-        }
+            {
+              value: CLOSURE_ACTION_KEEP_OPEN,
+              label: "Keep open",
+            },
+          ],
+        });
         if (
-          decision.outcome?.kind !== "answered" ||
-          decision.outcome.values[0] !== CLOSURE_ACTION_CONFIRM
+          decision.state !== "answered" ||
+          decision.value !== CLOSURE_ACTION_CONFIRM
         ) {
           if (observationError) throw observationError;
           return;

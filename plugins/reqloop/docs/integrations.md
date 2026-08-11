@@ -102,9 +102,10 @@ ReqLoop 当前向 Baton 注册：
 ContextProvider 只搜索当前 BatonSession 已物化且仍活跃的 Requirement，不在用户输入 `@`
 时访问外部平台；选中后按 Baton 给出的字符预算向一次 Harness turn 注入内容。
 
-需要人的领域判断时，PullRequestController 为 merge conflict 返回 `interaction`，
-CodeReviewController 为 actionable AI review 返回 `interaction`；用户接受后返回要求检查
-finding 并使用 devloop label-review 的 `proposed-input`。Baton 持久化决定并负责 composer、
+需要人的领域判断时，PullRequestController 为 merge conflict 调用 `ctx.ask`，
+CodeReviewController 为 actionable AI review 调用 `ctx.ask`；用户接受后用同一 operation key
+调用 `ctx.draft`，准备要求检查 finding 并使用 devloop label-review 的可编辑输入。Baton
+持久化决定并负责 composer、
 Input、Attempt 与 Harness 路由；ReqLoop 只从 Forge 观察 Harness 写回的 labels，不直接
 标注 comment，也不会在无人输入时启动 Harness。
 
