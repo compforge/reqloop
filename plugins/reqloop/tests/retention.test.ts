@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
 import type {
-  BatonSnapshot,
   Controller,
   Resource,
   ResourceClient,
@@ -11,12 +10,13 @@ import {
   DELETE_AFTER_ANNOTATION,
   withUserDeletionPolicy,
 } from "../src/retention.ts";
+import { reconcileContext } from "./reconcile-context.ts";
 
 const TYPE = {
   apiVersion: "reqloop.baton.dev/v1alpha1",
   kind: "Example",
 } as const;
-const SNAPSHOT = {} as BatonSnapshot;
+const CONTEXT = reconcileContext().context;
 
 function resource(
   deleteAfter?: string,
@@ -81,7 +81,7 @@ describe("reqloop user deletion policy", () => {
 
     expect(
       await wrapped.reconcile(
-        SNAPSHOT,
+        CONTEXT,
         resource("2026-07-29T23:59:59.000Z"),
       ),
     ).toBeUndefined();
@@ -105,10 +105,10 @@ describe("reqloop user deletion policy", () => {
     );
 
     expect(
-      await retentionFirst.reconcile(SNAPSHOT, resource(deadline)),
+      await retentionFirst.reconcile(CONTEXT, resource(deadline)),
     ).toEqual({ requeueAfterMs: 5_000 });
     expect(
-      await domainFirst.reconcile(SNAPSHOT, resource(deadline)),
+      await domainFirst.reconcile(CONTEXT, resource(deadline)),
     ).toEqual({ requeueAfterMs: 1_000 });
     expect(deleted).toEqual([]);
   });
@@ -125,7 +125,7 @@ describe("reqloop user deletion policy", () => {
     );
 
     await wrapped.reconcile(
-      SNAPSHOT,
+      CONTEXT,
       resource(
         "2026-07-29T00:00:00.000Z",
         "2026-07-29T00:00:01.000Z",
@@ -142,7 +142,7 @@ describe("reqloop user deletion policy", () => {
     );
 
     await expect(
-      wrapped.reconcile(SNAPSHOT, resource("later")),
+      wrapped.reconcile(CONTEXT, resource("later")),
     ).rejects.toThrow(
       `Example/example annotation ${DELETE_AFTER_ANNOTATION} must be an ISO timestamp`,
     );

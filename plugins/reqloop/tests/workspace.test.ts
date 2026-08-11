@@ -14,12 +14,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type {
-  BatonSnapshot,
   Resource,
   ResourceClient,
   ResourceType,
   SourceContext,
 } from "@compforge/baton-plugin";
+import { reconcileContext } from "./reconcile-context.ts";
 
 import {
   createWorkspaceController,
@@ -174,23 +174,6 @@ function memoryResourceClient(): {
   };
 }
 
-function batonSnapshot(cwd: string): BatonSnapshot {
-  return {
-    session: {
-      batonSessionId: "bs_test",
-      cwd,
-      runState: "idle",
-      revision: 0,
-    },
-    activeTurns: [],
-    inputs: [],
-    harnessTargets: [],
-    pendingInteractions: [],
-    pluginInteractions: [],
-    turns: [],
-  };
-}
-
 async function waitFor(predicate: () => boolean): Promise<void> {
   const deadline = Date.now() + 1_000;
   while (!predicate()) {
@@ -265,7 +248,7 @@ describe("Workspace Resource", () => {
     );
     const controller = createWorkspaceController(resources.client, root);
 
-    await controller.reconcile(batonSnapshot(root), workspace);
+    await controller.reconcile(reconcileContext({ cwd: root }).context, workspace);
     workspace = await resources.client.get(
       WORKSPACE_RESOURCE_TYPE,
       WORKSPACE_RESOURCE_NAME,
@@ -293,7 +276,7 @@ describe("Workspace Resource", () => {
     expect(await controller.present?.(workspace)).toBeUndefined();
 
     const resourceVersion = workspace.metadata.resourceVersion;
-    await controller.reconcile(batonSnapshot(root), workspace);
+    await controller.reconcile(reconcileContext({ cwd: root }).context, workspace);
     expect(
       (await resources.client.get<WorkspaceSpec, WorkspaceStatus>(
         WORKSPACE_RESOURCE_TYPE,

@@ -1,5 +1,4 @@
 import type {
-  BatonSnapshot,
   Controller,
   ControllerSource,
   EventHandler,
@@ -55,15 +54,6 @@ function sameIdentity(
     left.source === right.source &&
     left.repository === right.repository &&
     left.number === right.number
-  );
-}
-
-function interactionDecision(
-  baton: Readonly<BatonSnapshot>,
-  decisionKey: string,
-): BatonSnapshot["pluginInteractions"][number] | undefined {
-  return baton.pluginInteractions.find(
-    (interaction) => interaction.decisionKey === decisionKey,
   );
 }
 
@@ -201,7 +191,7 @@ function requirementRef(
   };
 }
 
-function associationInteraction(
+function associationAsk(
   identity: PullRequestIdentity,
   requirements: readonly Readonly<
     Resource<RequirementSpec, RequirementStatus>
@@ -209,14 +199,13 @@ function associationInteraction(
   decisionKey: string,
 ) {
   return {
-    kind: "interaction" as const,
-    decisionKey,
+    key: decisionKey,
     title: "Associate pull request",
     prompt:
       `Which Requirement should ${identity.repository} PR/MR ${identity.number} join?`,
-    options: [
+    choices: [
       ...requirements.map((requirement) => ({
-        optionId: requirementOptionId(requirement.metadata.name),
+        value: requirementOptionId(requirement.metadata.name),
         label: requirement.spec.title,
         description:
           `${requirement.spec.identity.source} · ` +
@@ -224,9 +213,8 @@ function associationInteraction(
           requirement.spec.identity.id,
       })),
       {
-        optionId: ASSOCIATION_STANDALONE,
+        value: ASSOCIATION_STANDALONE,
         label: "Keep standalone",
-        role: "reject" as const,
       },
     ],
   };
@@ -310,7 +298,7 @@ export function createPullRequestController(
     ...(controllerSources.length > 0
       ? { sources: controllerSources }
       : {}),
-    async reconcile(baton, resource) {
+    async reconcile(context, resource) {
       if (!resources) return;
       let current = resource;
       const legacyAssociation = current.status.requirementAssociation;
@@ -370,8 +358,7 @@ export function createPullRequestController(
       }
       if (
         current.status.lifecycle === "open" &&
-        current.status.mergeability === "conflicted" &&
-        !current.status.mergeConflictDecision?.choice
+        current.status.mergeability === "conflicted"
       ) {
         let conflictDecision = current.status.mergeConflictDecision;
         if (!conflictDecision) {
@@ -385,56 +372,41 @@ export function createPullRequestController(
             mergeConflictDecision: conflictDecision,
           });
         }
-        const decision = interactionDecision(
-          baton,
-          conflictDecision.decisionKey,
-        );
-        if (!decision) {
-          return {
-            output: {
-              kind: "interaction",
+        if (!conflictDecision.choice) {
+          const decision = await context.ask({
+            key: conflictDecision.decisionKey,
+            title: "Merge conflict found",
+            prompt:
+              `Ask the current Harness to resolve merge conflicts for ` +
+              `${identity.repository} PR/MR ${identity.number}?`,
+            choices: [
+              {
+                value: MERGE_CONFLICT_ACTION_ACCEPT,
+                label: "Accept",
+                description:
+                  "Ask the current Harness to resolve the conflicts.",
+              },
+              {
+                value: MERGE_CONFLICT_ACTION_IGNORE,
+                label: "Ignore",
+              },
+            ],
+          });
+          if (decision.state !== "answered") return;
+          current = await resources.patchStatus(current, {
+            mergeConflictDecision: {
               decisionKey: conflictDecision.decisionKey,
-              title: "Merge conflict found",
-              prompt:
-                `Ask the current Harness to resolve merge conflicts for ` +
-                `${identity.repository} PR/MR ${identity.number}?`,
-              options: [
-                {
-                  optionId: MERGE_CONFLICT_ACTION_ACCEPT,
-                  label: "Accept",
-                  description:
-                    "Ask the current Harness to resolve the conflicts.",
-                },
-                {
-                  optionId: MERGE_CONFLICT_ACTION_IGNORE,
-                  label: "Ignore",
-                  role: "reject",
-                },
-              ],
+              choice: decision.value,
             },
-          };
+          });
+          conflictDecision = current.status.mergeConflictDecision;
         }
-        if (decision.outcome?.kind !== "answered") return;
-        const choice = decision.outcome.values[0];
-        if (
-          choice !== MERGE_CONFLICT_ACTION_ACCEPT &&
-          choice !== MERGE_CONFLICT_ACTION_IGNORE
-        ) {
+        if (conflictDecision?.choice === MERGE_CONFLICT_ACTION_ACCEPT) {
+          await context.draft({
+            key: conflictDecision.decisionKey,
+            prompt: mergeConflictFollowUpText(identity, current.status.url),
+          });
           return;
-        }
-        await resources.patchStatus(current, {
-          mergeConflictDecision: {
-            decisionKey: conflictDecision.decisionKey,
-            choice,
-          },
-        });
-        if (choice === MERGE_CONFLICT_ACTION_ACCEPT) {
-          return {
-            output: {
-              kind: "proposed-input",
-              text: mergeConflictFollowUpText(identity, current.status.url),
-            },
-          };
         }
       }
 
@@ -444,16 +416,12 @@ export function createPullRequestController(
           const requirements = await activeRequirements(resources);
           const decisionKey = association?.decisionKey ??
             `associate-requirement:${current.metadata.name}`;
-          const decision = interactionDecision(baton, decisionKey);
-          if (!decision && requirements.length > 0) {
-            return {
-              output: associationInteraction(
-                identity,
-                requirements,
-                decisionKey,
-              ),
-            };
-          } else if (decision?.outcome?.kind === "cancelled") {
+          const decision = requirements.length > 0
+            ? await context.ask(
+              associationAsk(identity, requirements, decisionKey),
+            )
+            : undefined;
+          if (decision?.state === "cancelled") {
             if (!association) {
               current = await resources.patchStatus(current, {
                 requirementAssociation: {
@@ -462,8 +430,8 @@ export function createPullRequestController(
                 },
               });
             }
-          } else if (decision?.outcome?.kind === "answered") {
-            const selected = decision.outcome.values[0];
+          } else if (decision?.state === "answered") {
+            const selected = decision.value;
             if (selected === ASSOCIATION_STANDALONE) {
               current = await resources.patchStatus(current, {
                 requirementAssociation: { state: "standalone" },
@@ -494,13 +462,14 @@ export function createPullRequestController(
                       decisionKey: retryDecisionKey,
                     },
                   });
-                  return {
-                    output: associationInteraction(
+                  await context.ask(
+                    associationAsk(
                       identity,
                       requirements,
                       retryDecisionKey,
                     ),
-                  };
+                  );
+                  return;
                 }
               }
             }

@@ -15,7 +15,6 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import type {
-  BatonSnapshot,
   Command,
   ContextProvider,
   Controller,
@@ -109,25 +108,6 @@ async function waitFor(predicate: () => boolean): Promise<void> {
     }
     await Bun.sleep(10);
   }
-}
-
-function batonSnapshot(
-  pluginInteractions: BatonSnapshot["pluginInteractions"] = [],
-): BatonSnapshot {
-  return {
-    session: {
-      batonSessionId: "bs_test",
-      cwd: "/repo",
-      runState: "idle",
-      revision: 0,
-    },
-    activeTurns: [],
-    inputs: [],
-    harnessTargets: [],
-    pendingInteractions: [],
-    pluginInteractions,
-    turns: [],
-  };
 }
 
 afterEach(() => {

@@ -4,7 +4,7 @@
 
 `compforge/reqloop` 是 reqloop Marketplace 中负责 Requirement Loop 的 Baton Plugin。它在
 Baton core 之外拥有 Requirement、Workspace、Repository、PullRequest 和 CodeReview 领域模型，
-通过 Baton 的 Resource、Controller、Source、Watch、Board、Context 和 Plugin Output 契约运行。
+通过 Baton 的 Resource、Controller、Source、Watch、Board、Context 和 ReconcileContext verb 契约运行。
 
 当前阶段以观察、关联、提醒和建议为主：可以读取需求平台、Forge 与 devloop 产出的事实，
 但不直接修改外部 Requirement、不合并 PR/MR、不部署环境，也不主动驱动 Harness。长期方向

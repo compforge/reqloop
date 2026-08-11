@@ -5,7 +5,6 @@ import {
 } from "bun:test";
 
 import type {
-  BatonSnapshot,
   Resource,
   ResourceClient,
   SourceContext,
@@ -27,6 +26,7 @@ import {
   type PullRequestSpec,
   type PullRequestStatus,
 } from "../src/index.ts";
+import { reconcileContext } from "./reconcile-context.ts";
 
 const NOW = "2026-07-30T10:00:00.000Z";
 const PULL_REQUEST = {
@@ -149,25 +149,6 @@ function pullRequestResource(): Readonly<
       lifecycle: "merged",
       observedAt: "2026-07-30T09:45:00.000Z",
     },
-  };
-}
-
-function batonSnapshot(
-  pluginInteractions: BatonSnapshot["pluginInteractions"] = [],
-): BatonSnapshot {
-  return {
-    session: {
-      batonSessionId: "bs_test",
-      cwd: "/repo",
-      runState: "idle",
-      revision: 0,
-    },
-    activeTurns: [],
-    inputs: [],
-    harnessTargets: [],
-    pendingInteractions: [],
-    pluginInteractions,
-    turns: [],
   };
 }
 
@@ -354,10 +335,8 @@ describe("CodeReview Resource", () => {
       { now: () => new Date(NOW) },
     );
 
-    const prompted = await controller.reconcile(
-      batonSnapshot(),
-      resource,
-    );
+    const promptContext = reconcileContext();
+    await controller.reconcile(promptContext.context, resource);
     expect(resources.current().status).toMatchObject({
       phase: "completed",
       verdict: "action-required",
@@ -367,35 +346,31 @@ describe("CodeReview Resource", () => {
       },
       expiresAt: "2026-07-31T09:30:00.000Z",
     });
-    expect(prompted?.output).toMatchObject({
-      kind: "interaction",
+    expect(promptContext.asks[0]).toMatchObject({
       title: "AI review comments found",
     });
-    if (prompted?.output?.kind !== "interaction") {
-      throw new Error("expected review Interaction");
-    }
+    const decisionKey = promptContext.asks[0]!.key;
 
-    const accepted = await controller.reconcile(
-      batonSnapshot([{
-        interactionId: "ix-review-accept",
-        decisionKey: prompted.output.decisionKey,
-        resource: {
-          ...CODE_REVIEW_RESOURCE_TYPE,
-          namespace: resource.metadata.namespace,
-          name: resource.metadata.name,
-          uid: resource.metadata.uid,
-        },
-        outcome: { kind: "answered", values: ["accept"] },
-      }]),
+    const acceptedContext = reconcileContext({
+      answers: {
+        [decisionKey]: { state: "answered", value: "accept" },
+      },
+    });
+    await controller.reconcile(
+      acceptedContext.context,
       resources.current(),
     );
     expect(resources.current().status.decision).toMatchObject({
       choice: "accept",
     });
-    expect(accepted?.output).toMatchObject({
-      kind: "proposed-input",
-      text: expect.stringContaining("label-review"),
+    expect(acceptedContext.drafts[0]).toMatchObject({
+      key: decisionKey,
+      prompt: expect.stringContaining("label-review"),
     });
+    const replayContext = reconcileContext();
+    await controller.reconcile(replayContext.context, resources.current());
+    expect(replayContext.asks).toEqual([]);
+    expect(replayContext.drafts[0]?.key).toBe(decisionKey);
     expect(resources.deleted).toEqual([]);
     expect(codeReviewNeedsAttention(resources.current().status)).toBe(true);
     expect(
@@ -410,7 +385,7 @@ describe("CodeReview Resource", () => {
       [],
       { now: () => new Date(NOW) },
     );
-    await labeled.reconcile(batonSnapshot(), resources.current());
+    await labeled.reconcile(reconcileContext().context, resources.current());
     expect(resources.current().status.result?.findings).toEqual([
       expect.objectContaining({ label: "important" }),
     ]);
@@ -425,7 +400,7 @@ describe("CodeReview Resource", () => {
       [],
       { now: () => new Date("2026-07-31T10:00:00.000Z") },
     );
-    await expired.reconcile(batonSnapshot(), resources.current());
+    await expired.reconcile(reconcileContext().context, resources.current());
     expect(resources.deleted).toEqual([resource.metadata.name]);
   });
 
