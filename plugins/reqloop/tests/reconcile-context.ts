@@ -8,8 +8,6 @@ import type {
   HarnessResult,
   ReconcileContext,
   ReconcileSnapshot,
-  WithdrawInput,
-  WithdrawResult,
 } from "@compforge/baton-plugin";
 
 const SNAPSHOT: ReconcileSnapshot = {
@@ -33,8 +31,8 @@ export interface ReconcileContextFixture {
 
 export function reconcileContext(options: {
   readonly cwd?: string;
-  readonly answers?: Readonly<Record<string, AskResult<string>>>;
-  readonly draftResults?: Readonly<Record<string, DraftResult>>;
+  readonly answer?: AskResult<string>;
+  readonly draftResult?: DraftResult;
 } = {}): ReconcileContextFixture {
   const asks: AskInput[] = [];
   const drafts: DraftInput[] = [];
@@ -48,20 +46,24 @@ export function reconcileContext(options: {
     snapshot,
     async ask(input: AskInput): Promise<AskResult<string>> {
       asks.push(input);
-      return options.answers?.[input.key] ?? { state: "waiting" };
+      return options.answer ?? { state: "dismissed" };
     },
     async confirm(_input: ConfirmInput) {
-      return { state: "waiting" as const };
-    },
-    async withdraw(_input: WithdrawInput): Promise<WithdrawResult> {
-      return { state: "not-pending" };
+      return { state: "dismissed" as const };
     },
     async draft(input: DraftInput): Promise<DraftResult> {
       drafts.push(input);
-      return options.draftResults?.[input.key] ?? { state: "editing" };
+      return options.draftResult ?? {
+        state: "success",
+        value: {
+          outcome: "completed",
+          laneId: "main",
+          turn: { turnId: "turn_test", toolCalls: [] },
+        },
+      };
     },
     async harness(_input: HarnessInput): Promise<HarnessResult> {
-      return { state: "waiting" };
+      return { state: "dismissed" };
     },
   } as ReconcileContext;
   return { context, asks, drafts };

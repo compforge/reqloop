@@ -81,9 +81,15 @@ function memoryResourceClient(): {
         resource.kind === type.kind
       ) as readonly Readonly<Resource<TSpec, TStatus>>[];
   const client: ResourceClient = {
-    async get<TSpec, TStatus>(type: ResourceType, name: string) {
-      const resource = resources.get(key(type, name));
-      if (!resource) throw new Error(`missing Resource: ${type.kind}/${name}`);
+    async get<TSpec, TStatus>(ref) {
+      const resource = resources.get(key(ref, ref.name));
+      if (
+        !resource ||
+        resource.metadata.namespace !== ref.namespace ||
+        (ref.uid !== undefined && resource.metadata.uid !== ref.uid)
+      ) {
+        return undefined;
+      }
       return resource as Readonly<Resource<TSpec, TStatus>>;
     },
     async list<TSpec, TStatus>(type: ResourceType) {

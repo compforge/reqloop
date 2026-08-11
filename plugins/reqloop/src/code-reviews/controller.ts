@@ -6,6 +6,12 @@ import type {
 
 import { boardPriority } from "../board.ts";
 import {
+  HARNESS_FOLLOW_UP_TIMEOUT_MS,
+  resourceAfterVerb,
+  USER_DECISION_TIMEOUT_MS,
+  verbFailure,
+} from "../reconcile-verb.ts";
+import {
   actionableCodeReview,
   CODE_REVIEW_ACTIVE_TTL_MS,
   codeReviewLabelProgress,
@@ -56,6 +62,9 @@ async function hasBoundPullRequest(
   );
 }
 
+/**
+ * @spec A review prompt or draft dismissed by the user degrades to ignore, while one completed Harness follow-up is persisted and never reopened.
+ */
 export function createCodeReviewController(
   resources: ResourceClient,
   connectors: readonly ForgeConnector[] = [],
@@ -133,11 +142,10 @@ export function createCodeReviewController(
         return { requeueAfterMs: nextRefreshMs };
       }
 
-      const decisionKey = `handle-review:${current.spec.runKey}`;
       if (!current.status.decision) {
         const identity = current.spec.pullRequest;
         const decision = await context.ask({
-          key: decisionKey,
+          timeoutMs: USER_DECISION_TIMEOUT_MS,
           title: "AI review comments found",
           prompt:
             `Ask the current Harness to evaluate the AI review for ` +
@@ -155,12 +163,26 @@ export function createCodeReviewController(
             },
           ],
         });
-        if (decision.state !== "answered") {
+        if (decision.state === "failure") {
+          throw verbFailure("code-review interaction", decision.error);
+        }
+        const resumed = await resourceAfterVerb(
+          resources,
+          current,
+        );
+        if (
+          !resumed ||
+          !actionableCodeReview(resumed.status) ||
+          !codeReviewNeedsAttention(resumed.status)
+        ) {
           return { requeueAfterMs: nextRefreshMs };
         }
+        current = resumed;
         current = await resources.patchStatus(current, {
           decision: {
-            choice: decision.value,
+            choice: decision.state === "success"
+              ? decision.value
+              : REVIEW_ACTION_IGNORE,
             decidedAt: now().toISOString(),
           },
         });
@@ -168,10 +190,33 @@ export function createCodeReviewController(
       if (current.status.decision?.choice !== REVIEW_ACTION_ACCEPT) {
         return { requeueAfterMs: nextRefreshMs };
       }
-      await context.draft({
-        key: decisionKey,
-        prompt: codeReviewFollowUpText(current.spec, current.status),
-      });
+      if (!current.status.decision.followUpTurnId) {
+        const draft = await context.draft({
+          timeoutMs: HARNESS_FOLLOW_UP_TIMEOUT_MS,
+          title: "Handle AI review comments",
+          prompt: codeReviewFollowUpText(current.spec, current.status),
+        });
+        if (draft.state === "failure") {
+          throw verbFailure("code-review draft", draft.error);
+        }
+        const resumed = await resourceAfterVerb(
+          resources,
+          current,
+        );
+        if (resumed?.status.decision?.choice !== REVIEW_ACTION_ACCEPT) {
+          return { requeueAfterMs: nextRefreshMs };
+        }
+        const decidedAt = resumed.status.decision.decidedAt;
+        current = await resources.patchStatus(resumed, {
+          decision: draft.state === "success"
+            ? {
+              choice: REVIEW_ACTION_ACCEPT,
+              decidedAt,
+              followUpTurnId: draft.value.turn.turnId,
+            }
+            : { choice: REVIEW_ACTION_IGNORE, decidedAt },
+        });
+      }
       return { requeueAfterMs: nextRefreshMs };
     },
     async present(resource) {

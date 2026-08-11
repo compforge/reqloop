@@ -7,6 +7,11 @@ import type {
 
 import { boardPriority } from "../board.ts";
 import { enqueueRequestsFromMapFunc } from "../event-handler.ts";
+import {
+  resourceAfterVerb,
+  USER_DECISION_TIMEOUT_MS,
+  verbFailure,
+} from "../reconcile-verb.ts";
 import type {
   PullRequestSpec,
   PullRequestStatus,
@@ -179,21 +184,24 @@ function readyToCloseCondition(
   };
 }
 
-function closureDecisionKey(
-  requirementName: string,
+function closureDecisionBasis(
+  requirementGeneration: number,
   pullRequests: readonly Readonly<
     Resource<PullRequestSpec, PullRequestStatus>
   >[],
 ): string {
-  const basis = pullRequests
+  const pullRequestBasis = pullRequests
     .map(({ metadata }) =>
       `${metadata.name}@${metadata.resourceVersion}`
     )
     .sort()
     .join(",");
-  return `close-requirement:${requirementName}:${basis}`;
+  return `${requirementGeneration}:${pullRequestBasis}`;
 }
 
+/**
+ * @spec A ready-to-close answer is valid only for the PullRequest revision basis observed when it was requested; dismiss and timeout defer that basis without repeated prompts.
+ */
 export function createRequirementController(
   resources?: ResourceClient,
   connectors: readonly RequirementConnector[] = [],
@@ -282,33 +290,69 @@ export function createRequirementController(
         ),
       });
       if (readyToClose.status === "True") {
-        const decisionKey = closureDecisionKey(
-          current.metadata.name,
+        const decisionBasis = closureDecisionBasis(
+          current.metadata.generation,
           pullRequests,
         );
-        const decision = await context.ask({
-          key: decisionKey,
-          title: "Close requirement",
-          prompt:
-            `Requirement "${current.spec.title}" looks ready to close. ` +
-            "Stop tracking it in reqloop?",
-          choices: [
-            {
-              value: CLOSURE_ACTION_CONFIRM,
-              label: "Close in reqloop",
-              description:
-                "Hide it locally without changing the external requirement.",
-            },
-            {
-              value: CLOSURE_ACTION_KEEP_OPEN,
-              label: "Keep open",
-            },
-          ],
-        });
-        if (
-          decision.state !== "answered" ||
-          decision.value !== CLOSURE_ACTION_CONFIRM
-        ) {
+        let choice = current.status.closureDecision?.basis === decisionBasis
+          ? current.status.closureDecision.choice
+          : undefined;
+        if (!choice) {
+          const decision = await context.ask({
+            timeoutMs: USER_DECISION_TIMEOUT_MS,
+            title: "Close requirement",
+            prompt:
+              `Requirement "${current.spec.title}" looks ready to close. ` +
+              "Stop tracking it in reqloop?",
+            choices: [
+              {
+                value: CLOSURE_ACTION_CONFIRM,
+                label: "Close in reqloop",
+                description:
+                  "Hide it locally without changing the external requirement.",
+              },
+              {
+                value: CLOSURE_ACTION_KEEP_OPEN,
+                label: "Keep open",
+              },
+            ],
+          });
+          if (decision.state === "failure") {
+            throw verbFailure("close Requirement interaction", decision.error);
+          }
+          choice = decision.state === "success"
+            ? decision.value
+            : CLOSURE_ACTION_KEEP_OPEN;
+
+          const resumed = await resourceAfterVerb(
+            resources,
+            current,
+          );
+          if (!resumed || !isRequirementActive(resumed.status)) return;
+          current = resumed;
+          const latestPullRequests = await linkedPullRequests(
+            resources,
+            current,
+          );
+          const latestReadyToClose = readyToCloseCondition(
+            latestPullRequests,
+            current.metadata.generation,
+          );
+          if (
+            latestReadyToClose.status !== "True" ||
+            closureDecisionBasis(
+              current.metadata.generation,
+              latestPullRequests,
+            ) !== decisionBasis
+          ) {
+            if (observationError) throw observationError;
+            return;
+          }
+          current = await resources.patchStatus(current, {
+            closureDecision: { basis: decisionBasis, choice },
+          });
+        }
+        if (choice !== CLOSURE_ACTION_CONFIRM) {
           if (observationError) throw observationError;
           return;
         }
@@ -327,6 +371,10 @@ export function createRequirementController(
             `Requirement "${current.spec.title}" was closed in reqloop. ` +
             "The external requirement was not changed.",
           tone: "success",
+        });
+      } else if (current.status.closureDecision) {
+        current = await resources.patchStatus(current, {
+          closureDecision: null,
         });
       }
       if (observationError) throw observationError;

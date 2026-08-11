@@ -59,6 +59,11 @@ export interface RequirementStatus extends ConditionedStatus {
     readonly conflicted: number;
     readonly unresolvedReviewThreads: number;
   };
+  /** User decision for one stable set of ready-to-close PullRequest facts. */
+  readonly closureDecision?: {
+    readonly basis: string;
+    readonly choice: "confirm" | "keep-open";
+  } | null;
 }
 
 export interface RequirementListQuery {

@@ -7,6 +7,7 @@ import {
 import type {
   Resource,
   ResourceClient,
+  ResourceRef,
 } from "@compforge/baton-plugin";
 
 import {
@@ -74,6 +75,27 @@ function resourceClient(): {
     | Readonly<Resource<CodeReviewSpec, CodeReviewStatus>>
     | undefined;
   const client = {
+    get(ref: ResourceRef) {
+      const candidate = [
+        resource,
+        requirement,
+        repository,
+        workspace,
+        codeReview,
+      ].find((item) =>
+        item?.apiVersion === ref.apiVersion &&
+        item.kind === ref.kind &&
+        item.metadata.namespace === ref.namespace &&
+        item.metadata.name === ref.name
+      );
+      if (
+        !candidate ||
+        (ref.uid !== undefined && candidate.metadata.uid !== ref.uid)
+      ) {
+        return undefined;
+      }
+      return candidate;
+    },
     list(type: { apiVersion: string; kind: string }) {
       if (type.kind === CODE_REVIEW_RESOURCE_TYPE.kind) {
         return codeReview ? [codeReview] : [];
@@ -499,10 +521,16 @@ describe("PullRequest Resource", () => {
       await controller.watches?.[0]?.handler.create({ object: requirement }),
     ).toEqual([{ name: pullRequest.metadata.name }]);
 
-    const promptContext = reconcileContext();
+    const promptContext = reconcileContext({
+      answer: {
+        state: "success",
+        value: "requirement:req_active",
+      },
+    });
     await controller.reconcile(promptContext.context, pullRequest);
     expect(promptContext.asks[0]).toMatchObject({
       title: "Associate pull request",
+      timeoutMs: 10 * 60_000,
       choices: [
         {
           value: "requirement:req_active",
@@ -514,26 +542,6 @@ describe("PullRequest Resource", () => {
         },
       ],
     });
-    expect(
-      resources.current()?.status.requirementAssociation,
-    ).toBeUndefined();
-    const decisionKey = promptContext.asks[0]!.key;
-    const replayContext = reconcileContext();
-    await controller.reconcile(replayContext.context, resources.current()!);
-    expect(replayContext.asks[0]?.key).toBe(decisionKey);
-
-    const current = resources.current()!;
-    await controller.reconcile(
-      reconcileContext({
-        answers: {
-          [decisionKey]: {
-            state: "answered",
-            value: "requirement:req_active",
-          },
-        },
-      }).context,
-      current,
-    );
     expect(resources.current()?.status.requirementAssociation).toEqual({
       state: "linked",
       requirement: {
@@ -546,6 +554,43 @@ describe("PullRequest Resource", () => {
     expect(
       await controller.present?.(resources.current()!),
     ).toBeUndefined();
+  });
+
+  test("does not repeat a timed-out Requirement association", async () => {
+    const resources = resourceClient();
+    resources.addRequirement();
+    const pullRequest = await materializePullRequest(resources, observation);
+    const controller = createPullRequestController(resources.client);
+
+    const timedOutContext = reconcileContext({
+      answer: { state: "timeout" },
+    });
+    await controller.reconcile(timedOutContext.context, pullRequest);
+    expect(timedOutContext.asks).toHaveLength(1);
+    expect(resources.current()?.status.requirementAssociation).toEqual({
+      state: "prompted",
+    });
+
+    const replayContext = reconcileContext();
+    await controller.reconcile(replayContext.context, resources.current()!);
+    expect(replayContext.asks).toEqual([]);
+  });
+
+  test("surfaces a failed Requirement association for retry", async () => {
+    const resources = resourceClient();
+    resources.addRequirement();
+    const pullRequest = await materializePullRequest(resources, observation);
+    const controller = createPullRequestController(resources.client);
+
+    await expect(controller.reconcile(
+      reconcileContext({
+        answer: { state: "failure", error: "runner stopped" },
+      }).context,
+      pullRequest,
+    )).rejects.toThrow(
+      "Requirement association interaction failed: runner stopped",
+    );
+    expect(resources.current()?.status.requirementAssociation).toBeUndefined();
   });
 
   test("does not offer a Requirement closed locally by the user", async () => {
@@ -588,10 +633,13 @@ describe("PullRequest Resource", () => {
     });
     const controller = createPullRequestController(resources.client);
 
-    const promptContext = reconcileContext();
+    const promptContext = reconcileContext({
+      answer: { state: "success", value: "accept" },
+    });
     await controller.reconcile(promptContext.context, conflicted);
     expect(promptContext.asks[0]).toMatchObject({
       title: "Merge conflict found",
+      timeoutMs: 10 * 60_000,
       choices: [
         {
           value: "accept",
@@ -603,26 +651,13 @@ describe("PullRequest Resource", () => {
         },
       ],
     });
-    const decisionKey = promptContext.asks[0]!.key;
     expect(resources.current()?.status.mergeConflictDecision).toEqual({
-      decisionKey,
-    });
-
-    const acceptedContext = reconcileContext({
-      answers: {
-        [decisionKey]: { state: "answered", value: "accept" },
-      },
-    });
-    await controller.reconcile(
-      acceptedContext.context,
-      resources.current()!,
-    );
-    expect(resources.current()?.status.mergeConflictDecision).toEqual({
-      decisionKey,
       choice: "accept",
+      followUpTurnId: "turn_test",
     });
-    expect(acceptedContext.drafts[0]).toMatchObject({
-      key: decisionKey,
+    expect(promptContext.drafts[0]).toMatchObject({
+      title: "Resolve merge conflicts",
+      timeoutMs: 30 * 60_000,
       prompt: expect.stringContaining(
         "Resolve the merge conflicts for compforge/reqloop PR/MR 17",
       ),
@@ -630,7 +665,7 @@ describe("PullRequest Resource", () => {
     const replayContext = reconcileContext();
     await controller.reconcile(replayContext.context, resources.current()!);
     expect(replayContext.asks).toEqual([]);
-    expect(replayContext.drafts[0]?.key).toBe(decisionKey);
+    expect(replayContext.drafts).toEqual([]);
 
     const ready = await updatePullRequestObservation(resources.client, {
       ...observation,
@@ -649,12 +684,18 @@ describe("PullRequest Resource", () => {
         observedAt: "2026-07-26T10:00:00.000Z",
       },
     );
-    const nextContext = reconcileContext();
+    const nextContext = reconcileContext({
+      answer: { state: "success", value: "accept" },
+      draftResult: { state: "dismissed" },
+    });
     await controller.reconcile(nextContext.context, conflictedAgain);
     expect(nextContext.asks[0]).toMatchObject({
       title: "Merge conflict found",
     });
-    expect(nextContext.asks[0]?.key).not.toBe(decisionKey);
+    expect(nextContext.drafts).toHaveLength(1);
+    expect(resources.current()?.status.mergeConflictDecision).toEqual({
+      choice: "ignore",
+    });
   });
 
   test("pins legacy Requirement associations to their current uid", async () => {
