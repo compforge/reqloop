@@ -1,5 +1,5 @@
 import type {
-  ContextProvider,
+  Mention,
   Resource,
   ResourceClient,
 } from "@compforge/baton-plugin";
@@ -75,11 +75,11 @@ function requirementContext(resource: RequirementResource): string {
   return lines.join("\n");
 }
 
-export function createRequirementContextProvider(
+export function createRequirementMention(
   resources: ResourceClient,
-): ContextProvider {
+): Mention {
   return {
-    kind: "requirement",
+    namespace: "requirement",
     async search(query) {
       const normalizedQuery = query.trim().toLocaleLowerCase();
       return (await resources.list<RequirementSpec, RequirementStatus>(
@@ -99,7 +99,7 @@ export function createRequirementContextProvider(
         .map((resource) => ({
           id: resource.metadata.name,
           label: resource.spec.title,
-          detail: [
+          description: [
             resource.spec.identity.source,
             resource.spec.identity.category,
             resource.spec.identity.id,
@@ -107,7 +107,7 @@ export function createRequirementContextProvider(
           ].join(" · "),
         }));
     },
-    async provide(id, { maxChars }) {
+    async resolve(id, { maxChars }) {
       const resource = (await resources.list<
         RequirementSpec,
         RequirementStatus

@@ -16,6 +16,7 @@ import { join } from "node:path";
 import type {
   Resource,
   ResourceClient,
+  ResourceRef,
   ResourceType,
   SourceContext,
 } from "@compforge/baton-plugin";
@@ -81,7 +82,7 @@ function memoryResourceClient(): {
         resource.kind === type.kind
       ) as readonly Readonly<Resource<TSpec, TStatus>>[];
   const client: ResourceClient = {
-    async get<TSpec, TStatus>(ref) {
+    async get<TSpec, TStatus>(ref: ResourceRef) {
       const resource = resources.get(key(ref, ref.name));
       if (
         !resource ||
@@ -255,10 +256,12 @@ describe("Workspace Resource", () => {
     const controller = createWorkspaceController(resources.client, root);
 
     await controller.reconcile(reconcileContext({ cwd: root }).context, workspace);
-    workspace = await resources.client.get(
-      WORKSPACE_RESOURCE_TYPE,
-      WORKSPACE_RESOURCE_NAME,
-    );
+    workspace = (await resources.client.get<WorkspaceSpec, WorkspaceStatus>({
+      ...WORKSPACE_RESOURCE_TYPE,
+      namespace: workspace.metadata.namespace,
+      name: WORKSPACE_RESOURCE_NAME,
+      uid: workspace.metadata.uid,
+    }))!;
 
     expect(
       workspace.status.repositories?.map((item) => item.relativePath),
@@ -285,9 +288,13 @@ describe("Workspace Resource", () => {
     await controller.reconcile(reconcileContext({ cwd: root }).context, workspace);
     expect(
       (await resources.client.get<WorkspaceSpec, WorkspaceStatus>(
-        WORKSPACE_RESOURCE_TYPE,
-        WORKSPACE_RESOURCE_NAME,
-      )).metadata.resourceVersion,
+        {
+          ...WORKSPACE_RESOURCE_TYPE,
+          namespace: workspace.metadata.namespace,
+          name: WORKSPACE_RESOURCE_NAME,
+          uid: workspace.metadata.uid,
+        },
+      ))!.metadata.resourceVersion,
     ).toBe(resourceVersion);
   });
 

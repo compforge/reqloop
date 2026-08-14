@@ -16,9 +16,9 @@ import { dirname, join } from "node:path";
 
 import type {
   Command,
-  ContextProvider,
   Controller,
-  PluginActivationContext,
+  Mention,
+  PluginContext,
   PluginLogContext,
   PluginLogger,
   PluginLogLevel,
@@ -473,28 +473,32 @@ describe("ReqLoop PluginPackage", () => {
       },
     };
     let command: Command | undefined;
-    let contextProvider: ContextProvider | undefined;
+    let mention: Mention | undefined;
     const resourceTypes: { apiVersion: string; kind: string }[] = [];
     const logs: CapturedLog[] = [];
     let workspaceController: Controller<unknown, unknown> | undefined;
     const context = {
       session: { batonSessionId: "bs_test", cwd: root },
       logger: recordingLogger(logs),
-      registerCommand(contribution: Command) {
-        command = contribution;
+      commands: {
+        register(contribution: Command) {
+          command = contribution;
+        },
       },
-      registerContextProvider(provider: ContextProvider) {
-        contextProvider = provider;
+      mentions: {
+        register(contribution: Mention) {
+          mention = contribution;
+        },
       },
-      registerController(
-        controller: Controller<unknown, unknown>,
-      ) {
-        resourceTypes.push(controller.resourceType);
-        if (controller.resourceType.kind === WORKSPACE_RESOURCE_TYPE.kind) {
-          workspaceController = controller;
-        }
+      controllers: {
+        register(controller: Controller<unknown, unknown>) {
+          resourceTypes.push(controller.resourceType);
+          if (controller.resourceType.kind === WORKSPACE_RESOURCE_TYPE.kind) {
+            workspaceController = controller;
+          }
+        },
       },
-    } as unknown as PluginActivationContext;
+    } as unknown as PluginContext;
 
     await createReqloopPackage({
       requirementConnector,
@@ -526,7 +530,7 @@ describe("ReqLoop PluginPackage", () => {
         },
       },
     });
-    expect(contextProvider?.kind).toBe("requirement");
+    expect(mention?.namespace).toBe("requirement");
     expect(await command!.execute({ argument: "intake" })).toMatchObject({
       kind: "picker",
       title: "Requirements · meego",
@@ -822,12 +826,14 @@ describe("ReqLoop PluginPackage", () => {
     const context = {
       session: { batonSessionId: "bs_test", cwd: testRoot() },
       logger: noopLogger,
-      registerCommand(contribution: Command) {
-        command = contribution;
+      commands: {
+        register(contribution: Command) {
+          command = contribution;
+        },
       },
-      registerContextProvider() {},
-      registerController() {},
-    } as unknown as PluginActivationContext;
+      mentions: { register() {} },
+      controllers: { register() {} },
+    } as unknown as PluginContext;
 
     await createReqloopPackage({
       requirementConnectors: [
@@ -894,12 +900,14 @@ describe("ReqLoop PluginPackage", () => {
         },
       },
       logger: noopLogger,
-      registerCommand() {},
-      registerContextProvider() {},
-      registerController(controller: Controller<unknown, unknown>) {
-        controllers.set(controller.resourceType.kind, controller);
+      commands: { register() {} },
+      mentions: { register() {} },
+      controllers: {
+        register(controller: Controller<unknown, unknown>) {
+          controllers.set(controller.resourceType.kind, controller);
+        },
       },
-    } as unknown as PluginActivationContext;
+    } as unknown as PluginContext;
 
     await createReqloopPackage({
       requirementConnectors: [],

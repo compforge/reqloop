@@ -144,7 +144,7 @@ export function createCodeReviewController(
 
       if (!current.status.decision) {
         const identity = current.spec.pullRequest;
-        const decision = await context.ask({
+        const decision = await context.verbs.ask({
           timeoutMs: USER_DECISION_TIMEOUT_MS,
           title: "AI review comments found",
           prompt:
@@ -191,7 +191,7 @@ export function createCodeReviewController(
         return { requeueAfterMs: nextRefreshMs };
       }
       if (!current.status.decision.followUpTurnId) {
-        const draft = await context.draft({
+        const draft = await context.verbs.draft({
           timeoutMs: HARNESS_FOLLOW_UP_TIMEOUT_MS,
           title: "Handle AI review comments",
           prompt: codeReviewFollowUpText(current.spec, current.status),

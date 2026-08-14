@@ -94,17 +94,17 @@ Connector cursor。
 ReqLoop 当前向 Baton 注册：
 
 - `/requirements` Command；
-- `requirement` ContextProvider；
+- `requirement` Mention；
 - Workspace、Repository、PullRequest、CodeReview、Requirement 五个 Controller 及其
   Source/Watch；
 - Requirement，以及聚合待处理 CodeReview 的 PullRequest Board presentation。
 
-ContextProvider 只搜索当前 BatonSession 已物化且仍活跃的 Requirement，不在用户输入 `@`
+Mention 只搜索当前 BatonSession 已物化且仍活跃的 Requirement，不在用户输入 `@`
 时访问外部平台；选中后按 Baton 给出的字符预算向一次 Harness turn 注入内容。
 
-需要人的领域判断时，PullRequestController 为 merge conflict 调用 `ctx.ask`，
-CodeReviewController 为 actionable AI review 调用 `ctx.ask`；用户接受后继续 await
-`ctx.draft`，准备要求检查 finding 并使用 devloop label-review 的可编辑输入。Baton
+需要人的领域判断时，PullRequestController 为 merge conflict 调用 `ctx.verbs.ask`，
+CodeReviewController 为 actionable AI review 调用 `ctx.verbs.ask`；用户接受后继续 await
+`ctx.verbs.draft`，准备要求检查 finding 并使用 devloop label-review 的可编辑输入。Baton
 持久化 Interaction 与 verb 终态并负责 composer、
 Input、Attempt 与 Harness 路由；ReqLoop 只从 Forge 观察 Harness 写回的 labels，不直接
 标注 comment，也不会在无人输入时启动 Harness。ReqLoop 在 verb 返回后重新读取 Resource，

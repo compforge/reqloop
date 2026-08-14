@@ -20,7 +20,7 @@ ReqLoop 遵循同一条控制链：
               │
               ├── patch status
               ├── derive Board / Context
-              └── ctx.ask / ctx.draft / toast
+              └── ctx.verbs.ask / ctx.verbs.draft / toast
 ```
 
 Source 负责集合准入，Watch 和 cron 只负责唤醒，Controller 只收敛已经存在的 Resource。
@@ -67,13 +67,13 @@ PullRequest 有两个并行发现入口：
 仍可继续作为 Requirement 收尾证据。具体时间窗口与间隔以 `devloop-activity.ts`、
 PullRequestController 和契约测试为准。
 
-开放 PullRequest 若尚无归属决定且存在活跃 Requirement，PullRequestController 调用 `ctx.ask`。
+开放 PullRequest 若尚无归属决定且存在活跃 Requirement，PullRequestController 调用 `ctx.verbs.ask`。
 Baton 先持久化 Interaction，再挂起当前 async reconcile；回答、关闭或超时后恢复同一调用栈。
 Controller 重新读取同一 Resource incarnation，再把 linked、standalone 或 prompted 决定写入
 status。prompted 表示用户关闭了问题或等待超时，后续 reconcile 不自动重复打扰。
 
-开放 PR/MR 出现 merge conflict 时，Controller 同样调用 `ctx.ask`。每次连续冲突
-只询问一次；accept 随后 await `ctx.draft`，由用户编辑并提交解决冲突的输入，ignore 不创建
+开放 PR/MR 出现 merge conflict 时，Controller 同样调用 `ctx.verbs.ask`。每次连续冲突
+只询问一次；accept 随后 await `ctx.verbs.draft`，由用户编辑并提交解决冲突的输入，ignore 不创建
 draft。终结的 follow-up Turn id 写入当前 decision episode 以防重复，但不代替 Forge 结果观测；
 关闭或超时则降级为 ignore；冲突状态消失后结束本次 episode，未来再次冲突时重新询问。
 
@@ -94,7 +94,7 @@ review comments 作为结构化 findings。Source 会准入 TTL 内每一轮已�
 comment，因此也不产生当前 CodeReview。
 
 CodeReviewController 按 `runKey` 重新读取同一轮 Forge comments 并物化 terminal status。
-actionable 结果通过 `ctx.ask` 请求 accept/ignore：accept 随后 await `ctx.draft`，由用户编辑并
+actionable 结果通过 `ctx.verbs.ask` 请求 accept/ignore：accept 随后 await `ctx.verbs.draft`，由用户编辑并
 提交供当前 Harness 审核的输入，要求用 devloop label-review 给每个 finding thread 写入
 `ccr:label`；终结的 follow-up Turn id 写入 status，关闭或超时降级为 ignore；
 Controller 周期刷新 comments 并汇总 label 进度。ignore 不驱动 Harness。二者都只代表用户
@@ -122,7 +122,7 @@ old/new snapshot，因此 PR 改挂时旧、新两侧都重新汇总。Requireme
 Requirement uid 且未 closed 的 PullRequest，更新汇总和 `ReadyToClose`。
 
 本地 PR 投影不依赖本次需求平台观察成功。达到 ReadyToClose 时 Controller 以 Requirement
-generation 与当前 PR revision 集合作为 decision basis，调用 `ctx.ask` 询问用户是否结束本地
+generation 与当前 PR revision 集合作为 decision basis，调用 `ctx.verbs.ask` 询问用户是否结束本地
 跟踪。用户确认后写入 `ClosureRequested=True` 并发送成功 toast；保持打开、关闭或超时会保存
 defer，直到关联 PR revision 集合发生变化。Requirement 关闭后随即退出 Board、Context 搜索和
 PR 关联候选。
