@@ -298,7 +298,7 @@ export function createRequirementController(
           ? current.status.closureDecision.choice
           : undefined;
         if (!choice) {
-          const decision = await context.ask({
+          const decision = await context.verbs.ask({
             timeoutMs: USER_DECISION_TIMEOUT_MS,
             title: "Close requirement",
             prompt:

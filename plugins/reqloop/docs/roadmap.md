@@ -57,7 +57,7 @@ README、AGENTS 和当前设计文档不得把这些方向写成现有能力。
   Resource 类型；
 - Run/Attempt 只有在一项 Requirement 同时存在多个独立执行实例时才成立。
 
-在这些条件出现前，继续使用现有 Resource status、`ctx.ask` 和 `ctx.draft`，避免为未来
+在这些条件出现前，继续使用现有 Resource status、`ctx.verbs.ask` 和 `ctx.verbs.draft`，避免为未来
 预建空模型或第二套调度系统。
 
 ## 自动化演进

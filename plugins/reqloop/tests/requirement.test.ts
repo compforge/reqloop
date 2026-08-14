@@ -12,7 +12,7 @@ import type {
 } from "@compforge/baton-plugin";
 
 import {
-  createRequirementContextProvider,
+  createRequirementMention,
   createRequirementController,
   getStatusCondition,
   PULL_REQUEST_RESOURCE_TYPE,
@@ -198,17 +198,17 @@ describe("Requirement Resource", () => {
       assignee: "Owner",
       url: "https://meego.example/story/REQ-7",
     });
-    const provider = createRequirementContextProvider(resources.client);
+    const mention = createRequirementMention(resources.client);
 
-    expect(provider.kind).toBe("requirement");
-    expect(await provider.search("durable")).toEqual([{
+    expect(mention.namespace).toBe("requirement");
+    expect(await mention.search("durable")).toEqual([{
       id: requirement.metadata.name,
       label: "Requirement intake",
-      detail: "meego · story · REQ-7 · in_progress",
+      description: "meego · story · REQ-7 · in_progress",
     }]);
-    expect(await provider.search("issue")).toEqual([]);
+    expect(await mention.search("issue")).toEqual([]);
 
-    const context = await provider.provide(
+    const context = await mention.resolve(
       requirement.metadata.name,
       { maxChars: 1_000 },
     );
@@ -218,7 +218,7 @@ describe("Requirement Resource", () => {
       "Acceptance criteria:\n- The Requirement appears on the Board",
     );
     expect(
-      await provider.provide(
+      await mention.resolve(
         requirement.metadata.name,
         { maxChars: 20 },
       ),
@@ -239,7 +239,7 @@ describe("Requirement Resource", () => {
       await createRequirementController().present?.(requirement),
     ).toBeUndefined();
     expect(
-      await createRequirementContextProvider(resources.client).search(""),
+      await createRequirementMention(resources.client).search(""),
     ).toEqual([]);
   });
 
@@ -536,7 +536,7 @@ describe("Requirement Resource", () => {
       await controller.present?.(resources.current()!),
     ).toBeUndefined();
     expect(
-      await createRequirementContextProvider(resources.client).search(""),
+      await createRequirementMention(resources.client).search(""),
     ).toEqual([]);
     expect(toasts).toEqual([{
       text:

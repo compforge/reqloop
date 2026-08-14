@@ -1,5 +1,5 @@
 import type {
-  PluginActivationContext,
+  PluginContext,
   PluginPackage,
   Source,
 } from "@compforge/baton-plugin";
@@ -27,8 +27,8 @@ import {
 import type { RequirementConnector } from "./requirements/protocol.ts";
 import { createRequirementsCommand } from "./requirements/command.ts";
 import {
-  createRequirementContextProvider,
-} from "./requirements/context.ts";
+  createRequirementMention,
+} from "./requirements/mention.ts";
 import {
   createRequirementController,
 } from "./requirements/controller.ts";
@@ -54,9 +54,9 @@ import { WorkspaceSource } from "./workspaces/source.ts";
 import { withUserDeletionPolicy } from "./retention.ts";
 
 export const REQLOOP_PLUGIN_ID = "compforge/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.2.13";
+export const REQLOOP_PACKAGE_VERSION = "0.2.14";
 
-function currentRepo(context: PluginActivationContext): string {
+function currentRepo(context: PluginContext): string {
   const cwd = context.session.cwd;
   if (!cwd?.trim()) {
     throw new Error("reqloop requires a BatonSession cwd");
@@ -76,7 +76,7 @@ export function createReqloopPackage(options: {
   return Object.freeze({
     pluginId: REQLOOP_PLUGIN_ID,
     version: REQLOOP_PACKAGE_VERSION,
-    async activate(context: PluginActivationContext) {
+    async activate(context: PluginContext) {
       const requirementConnectors =
         options.requirementConnectors ??
         (options.requirementConnector
@@ -84,13 +84,13 @@ export function createReqloopPackage(options: {
           : createMeegoRequirementConnectors(
             reqloopConfigPaths(context.dataDirs),
           ));
-      context.registerCommand(
+      context.commands.register(
         createRequirementsCommand(requirementConnectors, context.resources),
       );
-      context.registerContextProvider(
-        createRequirementContextProvider(context.resources),
+      context.mentions.register(
+        createRequirementMention(context.resources),
       );
-      context.registerController(
+      context.controllers.register(
         withUserDeletionPolicy(
           context.resources,
           createRequirementController(
@@ -120,7 +120,7 @@ export function createReqloopPackage(options: {
           logger: context.logger,
         }),
       ];
-      context.registerController(
+      context.controllers.register(
         withUserDeletionPolicy(
           context.resources,
           createPullRequestController(
@@ -140,7 +140,7 @@ export function createReqloopPackage(options: {
         forgeCodeReviews,
         new DevloopCodeReviewSource(cwd, forgeCodeReviews),
       ];
-      context.registerController(
+      context.controllers.register(
         withUserDeletionPolicy(
           context.resources,
           createCodeReviewController(
@@ -150,7 +150,7 @@ export function createReqloopPackage(options: {
           ),
         ),
       );
-      context.registerController(
+      context.controllers.register(
         withUserDeletionPolicy(
           context.resources,
           createRepositoryController(
@@ -160,7 +160,7 @@ export function createReqloopPackage(options: {
           ),
         ),
       );
-      context.registerController(
+      context.controllers.register(
         withUserDeletionPolicy(
           context.resources,
           createWorkspaceController(
@@ -208,7 +208,7 @@ export * from "./pull-requests/protocol.ts";
 export * from "./pull-requests/resource.ts";
 export * from "./retention.ts";
 export * from "./requirements/connectors/meego.ts";
-export * from "./requirements/context.ts";
+export * from "./requirements/mention.ts";
 export * from "./requirements/controller.ts";
 export * from "./requirements/conditions.ts";
 export * from "./requirements/protocol.ts";

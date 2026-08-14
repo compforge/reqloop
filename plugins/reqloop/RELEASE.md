@@ -1,6 +1,11 @@
 # ReqLoop releases
 
-Current version: `0.2.13`
+Current version: `0.2.14`
+
+## 0.2.14
+
+- Adopt the Baton Plugin 0.5 authoring contract: grouped Package registries,
+  Requirement Mention resolution, and verb access through `context.verbs`.
 
 ## 0.2.10
 

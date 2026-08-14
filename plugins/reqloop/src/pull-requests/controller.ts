@@ -368,7 +368,7 @@ export function createPullRequestController(
       ) {
         let conflictDecision = current.status.mergeConflictDecision;
         if (!conflictDecision?.choice) {
-          const decision = await context.ask({
+          const decision = await context.verbs.ask({
             timeoutMs: USER_DECISION_TIMEOUT_MS,
             title: "Merge conflict found",
             prompt:
@@ -412,7 +412,7 @@ export function createPullRequestController(
         }
         if (conflictDecision?.choice === MERGE_CONFLICT_ACTION_ACCEPT) {
           if (!conflictDecision.followUpTurnId) {
-            const draft = await context.draft({
+            const draft = await context.verbs.draft({
               timeoutMs: HARNESS_FOLLOW_UP_TIMEOUT_MS,
               title: "Resolve merge conflicts",
               prompt: mergeConflictFollowUpText(identity, current.status.url),
@@ -451,7 +451,7 @@ export function createPullRequestController(
         if (!association) {
           const requirements = await activeRequirements(resources);
           const decision = requirements.length > 0
-            ? await context.ask(associationAsk(identity, requirements))
+            ? await context.verbs.ask(associationAsk(identity, requirements))
             : undefined;
           if (decision?.state === "failure") {
             throw verbFailure(

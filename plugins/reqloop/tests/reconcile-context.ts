@@ -17,7 +17,7 @@ const SNAPSHOT: ReconcileSnapshot = {
     revision: 0,
   },
   activeTurns: [],
-  inputs: [],
+  harnessInputs: [],
   harnessTargets: [],
   pendingInteractions: [],
   turns: [],
@@ -44,26 +44,28 @@ export function reconcileContext(options: {
     };
   const context = {
     snapshot,
-    async ask(input: AskInput): Promise<AskResult<string>> {
-      asks.push(input);
-      return options.answer ?? { state: "dismissed" };
-    },
-    async confirm(_input: ConfirmInput) {
-      return { state: "dismissed" as const };
-    },
-    async draft(input: DraftInput): Promise<DraftResult> {
-      drafts.push(input);
-      return options.draftResult ?? {
-        state: "success",
-        value: {
-          outcome: "completed",
-          laneId: "main",
-          turn: { turnId: "turn_test", toolCalls: [] },
-        },
-      };
-    },
-    async harness(_input: HarnessInput): Promise<HarnessResult> {
-      return { state: "dismissed" };
+    verbs: {
+      async ask(input: AskInput): Promise<AskResult<string>> {
+        asks.push(input);
+        return options.answer ?? { state: "dismissed" };
+      },
+      async confirm(_input: ConfirmInput) {
+        return { state: "dismissed" as const };
+      },
+      async draft(input: DraftInput): Promise<DraftResult> {
+        drafts.push(input);
+        return options.draftResult ?? {
+          state: "success",
+          value: {
+            outcome: "completed",
+            laneId: "main",
+            turn: { turnId: "turn_test", toolCalls: [] },
+          },
+        };
+      },
+      async harness(_input: HarnessInput): Promise<HarnessResult> {
+        return { state: "dismissed" };
+      },
     },
   } as ReconcileContext;
   return { context, asks, drafts };
