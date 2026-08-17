@@ -4,7 +4,7 @@ import type {
   ConfirmInput,
   DraftInput,
   DraftResult,
-  HarnessInput,
+  HarnessInvocationInput,
   HarnessResult,
   ReconcileContext,
   ReconcileSnapshot,
@@ -63,7 +63,7 @@ export function reconcileContext(options: {
           },
         };
       },
-      async harness(_input: HarnessInput): Promise<HarnessResult> {
+      async harness(_input: HarnessInvocationInput): Promise<HarnessResult> {
         return { state: "dismissed" };
       },
     },
