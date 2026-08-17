@@ -1,6 +1,11 @@
 # ReqLoop releases
 
-Current version: `0.2.14`
+Current version: `0.2.15`
+
+## 0.2.15
+
+- Require the Baton Plugin 0.6 authoring contract and adopt the renamed
+  `HarnessInvocationInput` type.
 
 ## 0.2.14
 
