@@ -104,7 +104,7 @@ export function isForgeRateLimitError(
 
 /**
  * Read-only provider boundary for PullRequest discovery and observation.
- * `source` selects one configured Forge without leaking provider details into
+ * `forge` selects one configured Forge without leaking provider details into
  * the Resource identity.
  */
 export interface ForgeConnector {
