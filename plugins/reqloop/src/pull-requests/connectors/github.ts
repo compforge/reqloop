@@ -69,7 +69,7 @@ function authorMatches(
 }
 
 export class GitHubForgeConnector implements ForgeConnector {
-  readonly source: string;
+  readonly forge: string;
   readonly provider = "github" as const;
   readonly #token: string;
   readonly #restBase: string;
@@ -86,13 +86,12 @@ export class GitHubForgeConnector implements ForgeConnector {
       throw new Error("GitHubForgeConnector requires a github config");
     }
     if (!config.token) throw new Error(`GitHub token missing for ${config.host}`);
-    this.source = config.source;
+    this.forge = config.forge;
     this.#token = config.token;
     this.#uids = config.uids;
-    const apiHost = config.apiHost ?? config.host;
-    const restBase = apiHost === "github.com"
+    const restBase = config.host === "github.com"
       ? "https://api.github.com"
-      : `https://${apiHost}/api/v3`;
+      : `https://${config.host}/api/v3`;
     this.#restBase = restBase;
     this.#graphqlUrl = restBase.endsWith("/api/v3")
       ? `${restBase.slice(0, -"/api/v3".length)}/api/graphql`
@@ -102,19 +101,19 @@ export class GitHubForgeConnector implements ForgeConnector {
   }
 
   async list(
-    repository: string,
+    path: string,
     query: PullRequestListQuery,
   ): Promise<readonly PullRequestIdentity[]> {
     const limit = positiveLimit(query.limit);
     return await this.#listByState(
-      repository,
+      path,
       query.state === "open" ? "open" : "closed",
       limit,
     );
   }
 
   async #listByState(
-    repository: string,
+    path: string,
     state: "open" | "closed",
     limit?: number,
   ): Promise<readonly PullRequestIdentity[]> {
@@ -123,7 +122,7 @@ export class GitHubForgeConnector implements ForgeConnector {
     for (let page = 1; page <= MAX_PULL_REQUEST_PAGES; page += 1) {
       const { data, headers } = await this.#http.request(
         "GET",
-        `${this.#restBase}/repos/${repositoryPath(repository)}` +
+        `${this.#restBase}/repos/${repositoryPath(path)}` +
           `/pulls?state=${state}&sort=updated&direction=desc` +
           `&per_page=${
             this.#uids
@@ -152,8 +151,8 @@ export class GitHubForgeConnector implements ForgeConnector {
         if (seen.has(number as number)) continue;
         seen.add(number as number);
         result.push({
-          source: this.source,
-          repository,
+          forge: this.forge,
+          path,
           number: number as number,
         });
         if (limit !== undefined && result.length === limit) return result;
@@ -169,10 +168,10 @@ export class GitHubForgeConnector implements ForgeConnector {
   }
 
   async get(identity: PullRequestIdentity): Promise<PullRequest> {
-    this.#assertSource(identity);
+    this.#assertForge(identity);
     const { data } = await this.#http.request(
       "GET",
-      `${this.#restBase}/repos/${repositoryPath(identity.repository)}` +
+      `${this.#restBase}/repos/${repositoryPath(identity.path)}` +
         `/pulls/${identity.number}`,
       { headers: this.#headers() },
     );
@@ -203,9 +202,9 @@ export class GitHubForgeConnector implements ForgeConnector {
   async comments(
     identity: PullRequestIdentity,
   ): Promise<readonly Comment[]> {
-    this.#assertSource(identity);
+    this.#assertForge(identity);
     const base =
-      `${this.#restBase}/repos/${repositoryPath(identity.repository)}`;
+      `${this.#restBase}/repos/${repositoryPath(identity.path)}`;
     const [conversation, review] = await Promise.all([
       this.#commentRows(`${base}/issues/${identity.number}/comments`),
       this.#commentRows(`${base}/pulls/${identity.number}/comments`),
@@ -289,10 +288,10 @@ export class GitHubForgeConnector implements ForgeConnector {
     };
   }
 
-  #assertSource(identity: PullRequestIdentity): void {
-    if (identity.source !== this.source) {
+  #assertForge(identity: PullRequestIdentity): void {
+    if (identity.forge !== this.forge) {
       throw new Error(
-        `PullRequest source ${identity.source} does not match ${this.source}`,
+        `PullRequest forge ${identity.forge} does not match ${this.forge}`,
       );
     }
   }
@@ -323,7 +322,7 @@ export class GitHubForgeConnector implements ForgeConnector {
     readonly state: PullRequestReviewThreads;
     readonly activityKey?: string;
   }> {
-    const [owner, name] = identity.repository.split("/");
+    const [owner, name] = identity.path.split("/");
     let cursor: string | undefined;
     const activityTokens: string[] = [];
     let unresolved = false;

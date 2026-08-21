@@ -259,8 +259,8 @@ describe("Requirement Resource", () => {
       name: "pr_watch",
       spec: {
         identity: {
-          source: "github.com",
-          repository: "owner/repo",
+          forge: "github.com",
+          path: "owner/repo",
           number: 11,
         },
       },
@@ -339,8 +339,8 @@ describe("Requirement Resource", () => {
       name: "pr_merged",
       spec: {
         identity: {
-          source: "github.com",
-          repository: "owner/repo",
+          forge: "github.com",
+          path: "owner/repo",
           number: 9,
         },
       },
@@ -569,8 +569,8 @@ describe("Requirement Resource", () => {
       name: "pr_observation_failed",
       spec: {
         identity: {
-          source: "github.com",
-          repository: "owner/repo",
+          forge: "github.com",
+          path: "owner/repo",
           number: 19,
         },
       },
@@ -640,8 +640,8 @@ describe("Requirement Resource", () => {
       name: "pr_old_requirement",
       spec: {
         identity: {
-          source: "github.com",
-          repository: "owner/repo",
+          forge: "github.com",
+          path: "owner/repo",
           number: 20,
         },
       },
@@ -684,8 +684,8 @@ describe("Requirement Resource", () => {
       name: "pr_closed",
       spec: {
         identity: {
-          source: "github.com",
-          repository: "owner/repo",
+          forge: "github.com",
+          path: "owner/repo",
           number: 10,
         },
       },

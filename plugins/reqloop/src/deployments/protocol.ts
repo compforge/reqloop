@@ -1,3 +1,5 @@
+import type { RepositoryIdentity } from "../repositories/protocol.ts";
+
 export interface ProductIdentity {
   readonly name: string;
 }
@@ -19,8 +21,13 @@ export interface ComponentIdentity {
   readonly name: string;
 }
 
+/**
+ * @spec A Component may link one primary code Repository by stable `{forge, path}` identity; matching Project-scoped Repository and PullRequest resources connect its Service deployment view to requirement delivery without cross-namespace ResourceRefs.
+ * @see {@link ../../docs/deployment.md}
+ */
 export interface ComponentSpec {
   readonly identity: ComponentIdentity;
+  readonly repository?: RepositoryIdentity;
   readonly displayName?: string;
   readonly description?: string;
 }

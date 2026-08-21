@@ -32,8 +32,8 @@ import { reconcileContext, TEST_NAMESPACE } from "./reconcile-context.ts";
 
 const NOW = "2026-07-30T10:00:00.000Z";
 const PULL_REQUEST = {
-  source: "github.com",
-  repository: "compforge/reqloop",
+  forge: "github.com",
+  path: "compforge/reqloop",
   number: 68,
 } as const;
 
@@ -119,7 +119,7 @@ function labeledReviewComments(): readonly Comment[] {
 
 function forge(comments: readonly Comment[]): ForgeConnector {
   return {
-    source: PULL_REQUEST.source,
+    forge: PULL_REQUEST.forge,
     provider: "github",
     async list() {
       return [];

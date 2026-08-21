@@ -94,7 +94,11 @@ cp plugins/reqloop/config.json.example \
       "displayName": "AgentSphere",
       "components": {
         "chat-server": {
-          "displayName": "Chat Server"
+          "displayName": "Chat Server",
+          "repository": {
+            "forge": "github.com",
+            "path": "compforge/chat-server"
+          }
         }
       },
       "environments": {
@@ -134,9 +138,9 @@ cp plugins/reqloop/config.json.example \
 }
 ```
 
-The map keys under `requirements` and `forges` are stable Connector `source`
-identities. Placeholder values in the example must be replaced or removed
-before use.
+The map keys under `requirements` are stable Requirement Connector `source`
+identities; keys under `forges` are stable Forge Connector identities.
+Placeholder values in the example must be replaced or removed before use.
 
 | Field | Purpose |
 | --- | --- |
@@ -147,13 +151,14 @@ before use.
 | `profile` | Optional Meegle CLI profile. |
 | `userKeys` | Optional Meegle participant accounts; any match is admitted. |
 | `categories` | Meegle work-item categories; defaults to `story` and `issue`. |
-| `forges.<source>` | Stable PullRequest source, normally the Git host. |
+| `forges.<forge>` | Stable Forge Connector identity, normally the Git host. |
 | `type` | Forge provider, `github` or `gitlab`; otherwise inferred from host. |
-| `api_host` | Optional real API host when the source key is an alias. |
+| `api_host` | Optional real API host when the Forge key is an alias. |
 | `uids` | Optional PR/MR author accounts; any match is admitted. |
 | `token` | Optional fallback after the provider token environment variables. |
 | `products.<name>` | Stable Product identity and owner of its deployment catalog. |
 | `products.<name>.components.<name>` | Static Component identity within the Product. |
+| `products.<name>.components.<name>.repository` | Optional primary code repository, identified by the same `forge` and provider-neutral `path` used by Repository and PullRequest Resources. |
 | `products.<name>.environments.<name>.targets` | Deployment infrastructure owned by a Product Environment; targets may be omitted for a non-Kubernetes Environment. |
 | `products.<name>.services.<key>` | One Component instance in an Environment of the same Product and its concrete deployment mapping. |
 | `kubernetes.<source>` | Kubernetes access keyed by the target `source`; `kubeconfig` is required and `context` is optional. |
@@ -165,7 +170,7 @@ configured user is a participant; omitting it preserves the unfiltered behavior.
 Use `meegle user me` to read your own `user_key`, or resolve another person by
 name or email with
 `meegle user search --user-keys "<name-or-email>" --project-key <projectKey>`.
-The `forges` shape follows devloop: its map key is the PullRequest `source`,
+The `forges` shape follows devloop: its map key is the PullRequest `forge`,
 explicit `type` wins, `github.com` and `github.*` infer GitHub, and other hosts
 default to GitLab. `api_host` points an origin alias at the real API host.
 When `uids` is present, Forge discovery admits only PullRequests authored by
@@ -186,7 +191,7 @@ ReqLoop owns nine Resources across two scopes:
 
 - Global `v1` deployment catalog:
   - `Product` — the stable owner of Components, Environments, and Services.
-  - `Component` — a static software unit within a Product.
+  - `Component` — a static software unit within a Product, optionally linked to its primary code Repository.
   - `Environment` — a Product's logical deployment environment and its infrastructure
     targets; Kubernetes is one explicit target kind, not the definition of an
     Environment.
@@ -207,6 +212,7 @@ The main data flow is:
 Product ─┬→ Component ───────────────┐
          └→ Environment target ──────┴→ Service → Kubernetes observation
                                                      └→ revision / readiness / objects
+Component.repository {forge, path} ──matches──▶ Repository.spec.identity
 BatonSession cwd → Workspace → Repository → PullRequest
                                             └→ CodeReview
 /requirements   → Requirement ← associated PullRequests
@@ -251,7 +257,7 @@ for the BatonSession that owns the repository.
 ReqLoop 在 Baton core 之外拥有需求与部署闭环，核心有九种 Resource。全局 `v1` 下包括：
 
 - `Product`：Component、Environment 和 Service 的稳定 owner；
-- `Component`：Product 内的静态软件单元；
+- `Component`：Product 内的静态软件单元，可选登记其主代码仓库；
 - `Environment`：Product 的逻辑部署环境及其基础设施 target；Kubernetes 是显式 target 类型，但不等同于
   Environment；
 - `Service`：一个 Component 在一个 Environment 中的实例，保存 K8s Deployment、Service、
@@ -271,6 +277,7 @@ Project namespace 下包括：
 Product ─┬→ Component ───────────────┐
          └→ Environment target ──────┴→ Service → Kubernetes observation
                                                      └→ 部署版本 / 就绪度 / 对象版本
+Component.repository {forge, path} ──匹配──▶ Repository.spec.identity
 BatonSession cwd → Workspace → Repository → PullRequest
                                             └→ CodeReview
 /requirements   → Requirement ← 关联的 PullRequests

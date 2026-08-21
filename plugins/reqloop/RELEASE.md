@@ -1,6 +1,15 @@
 # ReqLoop releases
 
-Current version: `0.3.2`
+Current version: `0.3.3`
+
+## 0.3.3
+
+- Let a Component register one primary Repository by stable `forge + path`
+  identity, connecting its Services to the existing Repository, PullRequest, and
+  Requirement graph across namespaces.
+- Rename the shared Repository and PullRequest identity to `{forge, path}` and
+  move Repository, PullRequest, and CodeReview Resources to `v1alpha2` for the
+  breaking schema change.
 
 ## 0.3.2
 
