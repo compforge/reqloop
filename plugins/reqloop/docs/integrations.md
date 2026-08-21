@@ -94,8 +94,8 @@ ReqLoop 的 Requirement 与 Forge 配置从 Baton 注入的 global、project、s
 Connector 只读取 global config，因为它们物化到全局 `v1`。Instance data 不承载配置，Resource
 status 也不写回配置文件。
 
-配置以 source 为 key 支持多个 Requirement 与 Forge Connector。凭据和 provider-specific
-字段属于 Connector；确切 schema、环境变量优先级和 Meegle CLI 初始化步骤见
+Requirement 配置以 source 为 key，Forge 配置以 forge 为 key，从而支持多个具名 Connector。
+凭据和 provider-specific 字段属于 Connector；确切 schema、环境变量优先级和 Meegle CLI 初始化步骤见
 [Plugin README](../README.md)，代码事实源分别是 `config.ts`、Requirement adapter 和 Forge
 config adapter。
 

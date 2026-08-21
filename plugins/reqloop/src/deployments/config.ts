@@ -28,6 +28,7 @@ import {
   productResourceName,
   serviceResourceName,
 } from "./resource.ts";
+import type { RepositoryIdentity } from "../repositories/protocol.ts";
 
 export interface KubernetesConnectorConfig {
   readonly source: string;
@@ -52,6 +53,27 @@ function requiredString(name: string, value: unknown): string {
 function optionalString(name: string, value: unknown): string | undefined {
   if (value === undefined) return undefined;
   return requiredString(name, value);
+}
+
+function componentRepository(
+  componentName: string,
+  value: unknown,
+): RepositoryIdentity | undefined {
+  if (value === undefined) return undefined;
+  const identity = jsonObject(
+    `reqloop component ${componentName} repository`,
+    value,
+  );
+  return Object.freeze({
+    forge: requiredString(
+      `reqloop component ${componentName} repository forge`,
+      identity.forge,
+    ),
+    path: requiredString(
+      `reqloop component ${componentName} repository path`,
+      identity.path,
+    ),
+  });
 }
 
 function strings(
@@ -158,6 +180,10 @@ export function loadDeploymentCatalog(
       );
       const spec = normalizeComponentSpec({
         identity: { product: productName, name },
+        repository: componentRepository(
+          qualifiedName,
+          component.repository,
+        ),
         displayName: optionalString(
           `reqloop component ${qualifiedName} displayName`,
           component.displayName,

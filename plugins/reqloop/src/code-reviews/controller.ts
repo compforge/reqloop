@@ -59,8 +59,8 @@ async function hasBoundPullRequest(
     PULL_REQUEST_RESOURCE_TYPE,
     { namespace },
   )).some(({ spec: { identity } }) =>
-    identity.source === spec.pullRequest.source &&
-    identity.repository === spec.pullRequest.repository &&
+    identity.forge === spec.pullRequest.forge &&
+    identity.path === spec.pullRequest.path &&
     identity.number === spec.pullRequest.number
   );
 }
@@ -79,12 +79,12 @@ export function createCodeReviewController(
 ): Controller<CodeReviewSpec, CodeReviewStatus> {
   const ttlMs = options.codeReviewTtlMs ?? CODE_REVIEW_ACTIVE_TTL_MS;
   const now = options.now ?? (() => new Date());
-  const connectorsBySource = new Map<string, ForgeConnector>();
+  const connectorsByForge = new Map<string, ForgeConnector>();
   for (const connector of connectors) {
-    if (connectorsBySource.has(connector.source)) {
-      throw new Error(`duplicate ForgeConnector source: ${connector.source}`);
+    if (connectorsByForge.has(connector.forge)) {
+      throw new Error(`duplicate ForgeConnector: ${connector.forge}`);
     }
-    connectorsBySource.set(connector.source, connector);
+    connectorsByForge.set(connector.forge, connector);
   }
   return {
     resourceType: CODE_REVIEW_RESOURCE_TYPE,
@@ -93,8 +93,8 @@ export function createCodeReviewController(
       if (resource.metadata.deletionTimestamp !== undefined) return;
 
       let current = resource;
-      const connector = connectorsBySource.get(
-        current.spec.pullRequest.source,
+      const connector = connectorsByForge.get(
+        current.spec.pullRequest.forge,
       );
       if (connector?.comments) {
         const observation = codeReviewObservation(
@@ -153,7 +153,7 @@ export function createCodeReviewController(
           title: "AI review comments found",
           prompt:
             `Ask the current Harness to evaluate the AI review for ` +
-            `${identity.repository} PR/MR ${identity.number}?`,
+            `${identity.path} PR/MR ${identity.number}?`,
           choices: [
             {
               value: REVIEW_ACTION_ACCEPT,
@@ -246,7 +246,7 @@ export function createCodeReviewController(
       const findings = resource.status.result?.findingCount ?? 0;
       const labels = codeReviewLabelProgress(resource.status);
       return {
-        title: `${identity.repository} #${identity.number} AI review`,
+        title: `${identity.path} #${identity.number} AI review`,
         status: failed
           ? "Review failed"
           : `${findings} finding${findings === 1 ? "" : "s"}` +

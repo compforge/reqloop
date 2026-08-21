@@ -274,8 +274,8 @@ function resourceClient(): {
 
 const observation: PullRequest = {
   identity: {
-    source: "github-primary",
-    repository: "compforge/reqloop",
+    forge: "github-primary",
+    path: "compforge/reqloop",
     number: 17,
   },
   title: "Keep Board focused",
@@ -470,7 +470,7 @@ describe("PullRequest Resource", () => {
       observation,
     );
     const forge: ForgeConnector = {
-      source: "github-primary",
+      forge: "github-primary",
       provider: "github",
       async list() {
         return [];
@@ -760,7 +760,7 @@ describe("PullRequest Resource", () => {
       });
       let calls = 0;
       const forge: ForgeConnector = {
-        source: "github-primary",
+        forge: "github-primary",
         provider: "github",
         async list() {
           return [];
@@ -789,7 +789,7 @@ describe("PullRequest Resource", () => {
     });
     let calls = 0;
     const forge: ForgeConnector = {
-      source: "github-primary",
+      forge: "github-primary",
       provider: "github",
       async list() {
         return [];
@@ -825,7 +825,7 @@ describe("PullRequest Resource", () => {
     });
     let calls = 0;
     const forge: ForgeConnector = {
-      source: "github-primary",
+      forge: "github-primary",
       provider: "github",
       async list() {
         return [];
@@ -849,7 +849,7 @@ describe("PullRequest Resource", () => {
     const current = await materializePullRequest(resources, observation);
     let calls = 0;
     const forge: ForgeConnector = {
-      source: "github-primary",
+      forge: "github-primary",
       provider: "github",
       async list() {
         return [];
@@ -878,7 +878,7 @@ describe("PullRequest Resource", () => {
     });
     let calls = 0;
     const forge: ForgeConnector = {
-      source: "github-primary",
+      forge: "github-primary",
       provider: "github",
       async list() {
         return [];
@@ -903,7 +903,7 @@ describe("PullRequest Resource", () => {
     const resources = resourceClient();
     let listCalls = 0;
     const forge: ForgeConnector = {
-      source: "github-primary",
+      forge: "github-primary",
       provider: "github",
       async list() {
         listCalls += 1;
@@ -932,8 +932,8 @@ describe("PullRequest Resource", () => {
       name: "repo_test",
       spec: {
         identity: {
-        source: "github-primary",
-        repository: "compforge/reqloop",
+        forge: "github-primary",
+        path: "compforge/reqloop",
         },
       },
     });
@@ -942,14 +942,14 @@ describe("PullRequest Resource", () => {
       PULL_REQUEST_RESOURCE_TYPE,
       {
         name: pullRequestResourceId({
-          source: "github-primary",
-          repository: "compforge/reqloop",
+          forge: "github-primary",
+          path: "compforge/reqloop",
           number: 18,
         }),
         spec: {
           identity: {
-            source: "github-primary",
-            repository: "compforge/reqloop",
+            forge: "github-primary",
+            path: "compforge/reqloop",
             number: 18,
           },
         },
@@ -967,8 +967,8 @@ describe("PullRequest Resource", () => {
     const result = await controller.reconcile({} as never, repository);
 
     expect(resources.current()?.spec.identity).toEqual({
-      source: "github-primary",
-      repository: "compforge/reqloop",
+      forge: "github-primary",
+      path: "compforge/reqloop",
       number: 18,
     });
     await createPullRequestController(

@@ -208,8 +208,8 @@ describe("ReqLoop PluginPackage", () => {
       name: expect.stringMatching(/^repo-/),
       spec: {
         identity: {
-          source: "github.com",
-          repository: "compforge/reqloop",
+          forge: "github.com",
+          path: "compforge/reqloop",
         },
       },
     }]);
@@ -236,13 +236,13 @@ describe("ReqLoop PluginPackage", () => {
 
     const calls: unknown[] = [];
     const forge: ForgeConnector = {
-      source: "github.com",
+      forge: "github.com",
       provider: "github",
-      async list(repository, query) {
-        calls.push({ repository, query });
+      async list(path, query) {
+        calls.push({ path, query });
         return [30, 29].map((number) => ({
-          source: "github.com",
-          repository,
+          forge: "github.com",
+          path,
           number,
         }));
       },
@@ -274,21 +274,21 @@ describe("ReqLoop PluginPackage", () => {
       name: expect.stringMatching(/^repo-/),
       spec: {
         identity: {
-          source: "github.com",
-          repository: "compforge/reqloop",
+          forge: "github.com",
+          path: "compforge/reqloop",
         },
       },
     }]);
     expect(calls).toEqual([{
-      repository: "compforge/reqloop",
+      path: "compforge/reqloop",
       query: { state: "open", limit: 2 },
     }]);
     expect(pullRequestEmits).toEqual([{
       name: expect.stringMatching(/^pr_/),
       spec: {
         identity: {
-          source: "github.com",
-          repository: "compforge/reqloop",
+          forge: "github.com",
+          path: "compforge/reqloop",
           number: 30,
         },
       },
@@ -378,8 +378,8 @@ describe("ReqLoop PluginPackage", () => {
     const policy = new DevloopToolActivityPolicy(root);
     await expect(policy.shouldTrackCheckout(root)).resolves.toBe(true);
     await expect(policy.shouldTrackIdentity({
-      source: "github.com",
-      repository: "compforge/reqloop",
+      forge: "github.com",
+      path: "compforge/reqloop",
     })).resolves.toBe(true);
   });
 
@@ -388,7 +388,7 @@ describe("ReqLoop PluginPackage", () => {
     initializeRepository(root);
     let calls = 0;
     const forge: ForgeConnector = {
-      source: "github.com",
+      forge: "github.com",
       provider: "github",
       async list() {
         calls += 1;
@@ -457,8 +457,8 @@ describe("ReqLoop PluginPackage", () => {
       name: expect.stringMatching(/^pr_/),
       spec: {
         identity: {
-          source: "github.com",
-          repository: "compforge/reqloop",
+          forge: "github.com",
+          path: "compforge/reqloop",
           number: 30,
         },
       },

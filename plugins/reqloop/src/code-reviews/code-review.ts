@@ -214,7 +214,7 @@ export function codeReviewFollowUpText(
   if (!result) {
     throw new Error("CodeReview is missing its result");
   }
-  const subject = `${identity.repository} PR/MR ${identity.number}`;
+  const subject = `${identity.path} PR/MR ${identity.number}`;
   const outcomes = [
     result.findingCount
       ? `${result.findingCount} review finding(s)`

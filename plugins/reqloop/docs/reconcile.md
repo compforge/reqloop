@@ -101,7 +101,7 @@ devloop 的 `review` 是可配置到 lifecycle phase 的异步 signal hook：配
 
 `DevloopCodeReviewSource` 监听各 checkout 的 `review-history.jsonl`，但只把文件变化当成
 低延迟信号，随即要求 Forge Source 重新发现；`ForgeCodeReviewSource` 的周期扫描承担恢复
-兜底。Forge Source 扫描已经准入且未 closed 的有限数量 PullRequest，通过匹配 source 的
+兜底。Forge Source 扫描已经准入且未 closed 的有限数量 PullRequest，通过匹配 forge 的
 `ForgeConnector.comments()` 读取 conversation 与 diff comments。devloop summary marker
 标识一次独立 CodeReview run，summary comment id 成为 `runKey`；带 `ccr:fp` marker 的
 review comments 作为结构化 findings。Source 会准入 TTL 内每一轮已发布结果，而不只恢复

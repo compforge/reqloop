@@ -1,11 +1,8 @@
 import type { ResourceRef } from "@compforge/baton-plugin";
+import type { RepositoryIdentity } from "../repositories/protocol.ts";
 
 /** Stable external identity shared by GitHub PRs and GitLab MRs. */
-export interface PullRequestIdentity {
-  /** Configured ForgeConnector source. */
-  readonly source: string;
-  /** Provider-neutral repository identity, for example owner/repo. */
-  readonly repository: string;
+export interface PullRequestIdentity extends RepositoryIdentity {
   /** GitHub PR number or GitLab MR iid. */
   readonly number: number;
 }
@@ -111,11 +108,11 @@ export function isForgeRateLimitError(
  * the Resource identity.
  */
 export interface ForgeConnector {
-  readonly source: string;
+  readonly forge: string;
   readonly provider: "github" | "gitlab";
   /** Lists provider objects; the calling Source owns the admission policy. */
   list(
-    repository: string,
+    path: string,
     query: PullRequestListQuery,
   ): Promise<readonly PullRequestIdentity[]>;
   get(identity: PullRequestIdentity): Promise<PullRequest>;

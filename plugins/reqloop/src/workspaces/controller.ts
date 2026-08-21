@@ -131,8 +131,8 @@ export function createWorkspaceController(
         for (const pullRequest of pullRequestResources) {
           const { identity } = pullRequest.spec;
           if (
-            identity.source === checkout.identity.source &&
-            identity.repository === checkout.identity.repository &&
+            identity.forge === checkout.identity.forge &&
+            identity.path === checkout.identity.path &&
             pullRequest.status.lifecycle !== "merged" &&
             pullRequest.status.lifecycle !== "closed"
           ) {

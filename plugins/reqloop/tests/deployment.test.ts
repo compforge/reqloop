@@ -35,6 +35,7 @@ import type {
 } from "../src/deployments/protocol.ts";
 import {
   ENVIRONMENT_RESOURCE_TYPE,
+  componentResourceName,
   environmentResourceName,
   normalizeServiceSpec,
   productResourceName,
@@ -202,6 +203,10 @@ describe("Deployment catalog", () => {
           components: {
             "chat-server": {
               displayName: "Chat Server",
+              repository: {
+                forge: " github.com ",
+                path: " compforge/chat-server ",
+              },
             },
           },
           environments: {
@@ -241,7 +246,14 @@ describe("Deployment catalog", () => {
       identity: { name: "agentsphere" },
       displayName: "AgentSphere",
     }]);
-    expect(catalog.components).toHaveLength(1);
+    expect(catalog.components).toEqual([{
+      identity: { product: "agentsphere", name: "chat-server" },
+      repository: {
+        forge: "github.com",
+        path: "compforge/chat-server",
+      },
+      displayName: "Chat Server",
+    }]);
     expect(catalog.environments).toHaveLength(2);
     expect(catalog.environments[1]?.targets).toEqual([]);
     expect(catalog.services).toEqual([serviceSpec]);
@@ -264,10 +276,39 @@ describe("Deployment catalog", () => {
       spec: catalog.products[0],
     });
     expect(emitted).toContainEqual({
+      name: componentResourceName({
+        product: "agentsphere",
+        name: "chat-server",
+      }),
+      namespace: "v1",
+      spec: catalog.components[0],
+    });
+    expect(emitted).toContainEqual({
       name: serviceResourceName(serviceSpec),
       namespace: "v1",
       spec: serviceSpec,
     });
+  });
+
+  test("rejects an incomplete Component Repository identity", () => {
+    const path = configFile({
+      version: 2,
+      products: {
+        agentsphere: {
+          components: {
+            "chat-server": {
+              repository: {
+                forge: "github.com",
+              },
+            },
+          },
+        },
+      },
+    });
+
+    expect(() => loadDeploymentCatalog(path)).toThrow(
+      "reqloop component agentsphere/chat-server repository path must not be empty",
+    );
   });
 
   test("rejects a Service outside its Environment targets", () => {

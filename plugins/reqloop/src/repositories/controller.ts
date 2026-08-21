@@ -75,12 +75,12 @@ export function createRepositoryController(
   connectors: readonly ForgeConnector[] = [],
   sources: readonly Source<RepositorySpec>[] = [],
 ): Controller<RepositorySpec, RepositoryStatus> {
-  const connectorsBySource = new Map<string, ForgeConnector>();
+  const connectorsByForge = new Map<string, ForgeConnector>();
   for (const connector of connectors) {
-    if (connectorsBySource.has(connector.source)) {
-      throw new Error(`duplicate ForgeConnector source: ${connector.source}`);
+    if (connectorsByForge.has(connector.forge)) {
+      throw new Error(`duplicate ForgeConnector: ${connector.forge}`);
     }
-    connectorsBySource.set(connector.source, connector);
+    connectorsByForge.set(connector.forge, connector);
   }
 
   return {
@@ -116,11 +116,11 @@ export function createRepositoryController(
         namespace: current.metadata.namespace as ResourceNamespace,
       }))
         .filter(({ spec }) =>
-          spec.identity.source === identity.source &&
-          spec.identity.repository === identity.repository
+          spec.identity.forge === identity.forge &&
+          spec.identity.path === identity.path
         )
         .length;
-      const connectorAvailable = connectorsBySource.has(identity.source);
+      const connectorAvailable = connectorsByForge.has(identity.forge);
       if (
         current.status.connectorAvailable !== connectorAvailable ||
         current.status.discoveredPullRequests !== discoveredPullRequests

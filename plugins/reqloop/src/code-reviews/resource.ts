@@ -12,7 +12,7 @@ import type {
 } from "./protocol.ts";
 
 export const CODE_REVIEW_RESOURCE_TYPE = Object.freeze({
-  apiVersion: "reqloop.baton.dev/v1alpha1",
+  apiVersion: "reqloop.baton.dev/v1alpha2",
   kind: "CodeReview",
   shortNames: ["cr"],
 } as const);
@@ -20,11 +20,11 @@ export const CODE_REVIEW_RESOURCE_TYPE = Object.freeze({
 export function codeReviewSpec(
   observation: CodeReviewObservation,
 ): CodeReviewSpec {
-  const source = observation.pullRequest.source.trim();
-  const repository = observation.pullRequest.repository.trim();
+  const forge = observation.pullRequest.forge.trim();
+  const path = observation.pullRequest.path.trim();
   const runKey = observation.key.trim();
   const revision = observation.sha.trim();
-  if (!source || !repository || !runKey || !revision) {
+  if (!forge || !path || !runKey || !revision) {
     throw new Error("CodeReview identity fields must not be empty");
   }
   if (
@@ -37,8 +37,8 @@ export function codeReviewSpec(
   }
   return {
     pullRequest: {
-      source,
-      repository,
+      forge,
+      path,
       number: observation.pullRequest.number,
     },
     runKey,
@@ -50,8 +50,8 @@ export function codeReviewSpec(
 export function codeReviewResourceName(spec: CodeReviewSpec): string {
   const digest = createHash("sha256")
     .update(JSON.stringify([
-      spec.pullRequest.source,
-      spec.pullRequest.repository,
+      spec.pullRequest.forge,
+      spec.pullRequest.path,
       spec.pullRequest.number,
       spec.runKey,
     ]))
@@ -67,8 +67,8 @@ function sameCodeReview(
   return (
     spec.runKey === observation.key &&
     spec.revision === observation.sha &&
-    spec.pullRequest.source === observation.pullRequest.source &&
-    spec.pullRequest.repository === observation.pullRequest.repository &&
+    spec.pullRequest.forge === observation.pullRequest.forge &&
+    spec.pullRequest.path === observation.pullRequest.path &&
     spec.pullRequest.number === observation.pullRequest.number
   );
 }

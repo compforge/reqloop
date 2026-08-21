@@ -80,7 +80,7 @@ function authorMatches(
 }
 
 export class GitLabForgeConnector implements ForgeConnector {
-  readonly source: string;
+  readonly forge: string;
   readonly provider = "gitlab" as const;
   readonly #token: string;
   readonly #apiBase: string;
@@ -96,28 +96,28 @@ export class GitLabForgeConnector implements ForgeConnector {
       throw new Error("GitLabForgeConnector requires a gitlab config");
     }
     if (!config.token) throw new Error(`GitLab token missing for ${config.host}`);
-    this.source = config.source;
+    this.forge = config.forge;
     this.#token = config.token;
     this.#uids = config.uids;
-    this.#apiBase = `https://${config.apiHost ?? config.host}/api/v4`;
+    this.#apiBase = `https://${config.host}/api/v4`;
     this.#http = new JsonHttpClient({ fetch: options.fetch });
     this.#now = options.now ?? (() => new Date());
   }
 
   async list(
-    repository: string,
+    path: string,
     query: PullRequestListQuery,
   ): Promise<readonly PullRequestIdentity[]> {
     const limit = positiveLimit(query.limit);
     return await this.#listByState(
-      repository,
+      path,
       query.state === "open" ? "opened" : "merged",
       limit,
     );
   }
 
   async #listByState(
-    repository: string,
+    path: string,
     state: "opened" | "merged",
     limit?: number,
   ): Promise<readonly PullRequestIdentity[]> {
@@ -131,7 +131,7 @@ export class GitLabForgeConnector implements ForgeConnector {
     ) {
       const { data, headers } = await this.#http.request(
         "GET",
-        `${this.#projectBase(repository)}` +
+        `${this.#projectBase(path)}` +
           `/merge_requests?state=${state}&order_by=updated_at&sort=desc` +
           this.#authorQuery() +
           `&per_page=${
@@ -156,8 +156,8 @@ export class GitLabForgeConnector implements ForgeConnector {
         if (seen.has(number as number)) continue;
         seen.add(number as number);
         result.push({
-          source: this.source,
-          repository,
+          forge: this.forge,
+          path,
           number: number as number,
         });
         if (limit !== undefined && result.length === limit) return result;
@@ -176,10 +176,10 @@ export class GitLabForgeConnector implements ForgeConnector {
   }
 
   async get(identity: PullRequestIdentity): Promise<PullRequest> {
-    this.#assertSource(identity);
+    this.#assertForge(identity);
     const { data } = await this.#http.request(
       "GET",
-      `${this.#projectBase(identity.repository)}` +
+      `${this.#projectBase(identity.path)}` +
         `/merge_requests/${identity.number}`,
       { headers: this.#headers() },
     );
@@ -209,13 +209,13 @@ export class GitLabForgeConnector implements ForgeConnector {
   async comments(
     identity: PullRequestIdentity,
   ): Promise<readonly Comment[]> {
-    this.#assertSource(identity);
+    this.#assertForge(identity);
     const result: Comment[] = [];
     let page = 1;
     for (let count = 0; count < MAX_DISCUSSION_PAGES; count += 1) {
       const { data, headers } = await this.#http.request(
         "GET",
-        `${this.#projectBase(identity.repository)}` +
+        `${this.#projectBase(identity.path)}` +
           `/merge_requests/${identity.number}/discussions` +
           `?per_page=100&page=${page}`,
         { headers: this.#headers() },
@@ -314,10 +314,10 @@ export class GitLabForgeConnector implements ForgeConnector {
     return `${this.#apiBase}/projects/${encodedProject(repository)}`;
   }
 
-  #assertSource(identity: PullRequestIdentity): void {
-    if (identity.source !== this.source) {
+  #assertForge(identity: PullRequestIdentity): void {
+    if (identity.forge !== this.forge) {
       throw new Error(
-        `PullRequest source ${identity.source} does not match ${this.source}`,
+        `PullRequest forge ${identity.forge} does not match ${this.forge}`,
       );
     }
   }
@@ -334,7 +334,7 @@ export class GitLabForgeConnector implements ForgeConnector {
     for (let count = 0; count < MAX_DISCUSSION_PAGES; count += 1) {
       const { data, headers } = await this.#http.request(
         "GET",
-        `${this.#projectBase(identity.repository)}` +
+        `${this.#projectBase(identity.path)}` +
           `/merge_requests/${identity.number}/discussions?per_page=100&page=${page}`,
         { headers: this.#headers() },
       );

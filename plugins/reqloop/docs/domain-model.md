@@ -15,16 +15,17 @@ Context 只提供派生读模型。
 | Resource | 稳定身份 | owner 与职责 | Board |
 |---|---|---|---|
 | `Product` | `name` | 全局部署目录 owner，收拢 Component、Environment 与 Service | 不展示 |
-| `Component` | `product + name` | Product 内的全局静态软件单元 | 不展示 |
+| `Component` | `product + name` | Product 内的全局静态软件单元，可登记主代码仓库 | 不展示 |
 | `Environment` | `product + name` | Product 的全局逻辑部署环境，拥有 Kubernetes 等基础设施 target 及其可用性观测 | 展示环境和 target 状态 |
 | `Service` | `component + environment` | 全局 Component 实例，保存部署对象映射、版本、镜像和就绪状态 | 展示环境、版本和部署健康度 |
 | `Workspace` | Project namespace 内的单例 | 表示 BatonSession cwd 的逻辑观察边界，投影已准入仓库和开放 PR 数量 | 不展示 |
-| `Repository` | `source + repository` | 表示一个 Forge 仓库是否仍在观察范围，以及已经存在多少 PullRequest | 不展示 |
-| `PullRequest` | `source + repository + number` | 保存 Forge 生命周期、review/merge blocker 和 Requirement 归属决定 | 展示未关联的开放 PR；绑定待标注 CR 时延长展示 |
+| `Repository` | `forge + path` | 表示一个 Forge 仓库是否仍在观察范围，以及已经存在多少 PullRequest | 不展示 |
+| `PullRequest` | `forge + path + number` | 保存 Forge 生命周期、review/merge blocker 和 Requirement 归属决定 | 展示未关联的开放 PR；绑定待标注 CR 时延长展示 |
 | `CodeReview` | `pullRequest + runKey` | 保存一次已发布 AI review run 的 revision、结果、finding label、决定和有效期 | 绑定 PR 时随 PR 展示；找不到 PR 时独立展示 |
 | `Requirement` | `source + category + id` | 保存用户选中的需求契约、需求平台观测和关联 PR 的派生汇总 | 展示未关闭的需求 |
 
-`source` 是具名 Connector 的稳定配置键。GitHub/GitLab、Meego 等 provider 信息停留在
+`forge` 是具名 ForgeConnector 的稳定配置键，`path` 是该 Forge 内的仓库路径；Requirement
+则继续用 `source` 标识其 RequirementConnector。GitHub/GitLab、Meego 等 provider 信息停留在
 Connector 侧，不进入通用身份分支。
 
 ## 关系与事实归属
@@ -33,6 +34,7 @@ Connector 侧，不进入通用身份分支。
 Product ──owns──▶ Component ───────────────┐
     └────owns──▶ Environment ──target──────┴──▶ Service ──observes──▶ Kubernetes objects
 
+Component.repository {forge, path} ──matches──▶ Repository.spec.identity
 BatonSession cwd
       │
       ▼
@@ -61,14 +63,16 @@ Requirement 不保存实际 PR 列表，只在 reconcile 时扫描仍指向自�
 
 Product、Component、Environment 和 Service 位于 `v1`，不因 Project 或 Session 重复。Product
 拥有部署目录，Component 与 Environment 均以 Product 作为身份的一部分，Service 两端必须属于
-同一 Product。Environment
+同一 Product。Component 可保存一个主代码仓库的 `{forge, path}` 外部身份，与任意 Project
+namespace 下相同身份的 Repository、PullRequest 对齐，而不持有跨 namespace ResourceRef。多个
+Component 可以共享同一仓库；单个 Component 当前只登记一个主仓库。Environment
 拥有部署基础设施 target；Kubernetes target 保存稳定集群身份和 Connector source，Service
 再引用 target 并声明 Deployment、Service、ConfigMap 映射。非 Kubernetes Environment 可以
 没有该 target。三者的身份、观测与只读边界见 [deployment](./deployment.md)。
 
 ## Spec、Status 与 Conditions
 
-Product spec 保存稳定身份与展示信息；Component spec 保存静态身份与展示信息。Environment spec 保存逻辑环境和 target，status 保存
+Product spec 保存稳定身份与展示信息；Component spec 保存静态身份、展示信息和可选主仓库身份。Environment spec 保存逻辑环境和 target，status 保存
 各 target 的可用性与版本。Service spec 保存 Component、Environment 和部署对象映射，status
 保存最近观测的部署 revision、镜像、工作负载就绪度与对象版本；它不是发布历史。
 

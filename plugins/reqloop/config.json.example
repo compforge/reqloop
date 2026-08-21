@@ -42,7 +42,11 @@
       "displayName": "AgentSphere",
       "components": {
         "chat-server": {
-          "displayName": "Chat Server"
+          "displayName": "Chat Server",
+          "repository": {
+            "forge": "github.com",
+            "path": "compforge/chat-server"
+          }
         }
       },
       "environments": {

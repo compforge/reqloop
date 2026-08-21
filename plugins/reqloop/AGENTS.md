@@ -59,11 +59,14 @@ Resource 身份与状态写入，`controller.ts` 负责 reconcile 和 Board proj
    其余领域 Resource 写入稳定的 `v1/project/<project-id>` namespace，Workspace 是 Project
    逻辑观察根；同一目录的多个 Session 共享一组 Resource。PluginPackage 本身不声明 namespace。
    Repository 按
-   `source + repository` 共享，PullRequest 按 `source + repository + number` 独立存在，
+   `forge + path` 共享，PullRequest 按 `forge + path + number` 独立存在，
    Requirement 按 `source + category + id` 唯一；CodeReview 按目标 PR 与一次已发布的 review
    run 唯一。PR 与 Requirement 的归属只写
    `PullRequest.status.requirementAssociation`，一份 PR 最多关联一份 Requirement；
    Requirement 只保存派生汇总，不反向双写关联列表。
+   Component 可按同一 `{forge, path}` 外部身份登记一个主仓库，从而跨 namespace 关联
+   Repository / PullRequest；这里不保存 Project Repository 的 ResourceRef。多个 Component
+   可以共享同一个仓库。
 2. **Source 准入，Controller 收敛**：只有 Command 或 Source 可以让外部对象成为 Resource；
    Watch、cron 和文件变化只负责 enqueue。Controller 每次读取最新 Resource 和必要的外部事实，
    不用 `Connector.list()` 扩张集合；Connector 不持有 `ResourceClient`，也不拥有 loop。

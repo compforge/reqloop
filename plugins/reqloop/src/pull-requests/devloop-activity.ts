@@ -138,8 +138,8 @@ export class DevloopToolActivityPolicy {
 
   async shouldTrackIdentity(identity: RepositoryIdentity): Promise<boolean> {
     const checkout = (await this.checkouts()).find(({ identity: candidate }) =>
-      candidate.source === identity.source &&
-      candidate.repository === identity.repository
+      candidate.forge === identity.forge &&
+      candidate.path === identity.path
     );
     return checkout
       ? await this.shouldTrackCheckout(checkout.path)

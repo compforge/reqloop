@@ -10,6 +10,7 @@ import type {
   ProductSpec,
   ServiceSpec,
 } from "./protocol.ts";
+import { normalizeRepositoryIdentity } from "../repositories/resource.ts";
 
 export const PRODUCT_RESOURCE_TYPE = Object.freeze({
   apiVersion: "reqloop.baton.dev/v1alpha2",
@@ -130,6 +131,9 @@ function normalizeKubernetesDeployment(
 export function normalizeComponentSpec(spec: ComponentSpec): ComponentSpec {
   return Object.freeze({
     identity: normalizeComponentIdentity(spec.identity),
+    ...(spec.repository
+      ? { repository: normalizeRepositoryIdentity(spec.repository) }
+      : {}),
     ...(spec.displayName
       ? { displayName: required("Component displayName", spec.displayName) }
       : {}),
