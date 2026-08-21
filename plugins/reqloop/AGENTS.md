@@ -50,8 +50,9 @@ plugins/reqloop/
 
 ## 关键约定
 
-1. **Resource 身份与事实 owner 唯一**：本 Plugin 声明 `v1/project` namespace，Workspace 是
-   Project 逻辑观察根；同一目录的多个 Session 共享一组 Resource。Repository 按
+1. **Resource 身份与事实 owner 唯一**：本 Plugin 当前的领域 Resource 写入稳定的
+   `v1/project/<project-id>` namespace，Workspace 是 Project 逻辑观察根；同一目录的多个
+   Session 共享一组 Resource。PluginPackage 本身不声明 namespace。Repository 按
    `source + repository` 共享，PullRequest 按 `source + repository + number` 独立存在，
    Requirement 按 `source + category + id` 唯一；CodeReview 按目标 PR 与一次已发布的 review
    run 唯一。PR 与 Requirement 的归属只写

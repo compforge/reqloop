@@ -2,6 +2,7 @@ import type {
   Controller,
   Resource,
   ResourceClient,
+  ResourceNamespace,
   ResourceRef,
   Source,
 } from "@compforge/baton-plugin";
@@ -37,7 +38,10 @@ import {
 const WORKSPACE_RESYNC_CRON = "*/30 * * * * *";
 
 const enqueueWorkspace = enqueueRequestsFromMapFunc<unknown, unknown>(
-  async () => [{ name: WORKSPACE_RESOURCE_NAME }],
+  async (resource) => [{
+    name: WORKSPACE_RESOURCE_NAME,
+    namespace: resource.metadata.namespace as ResourceNamespace,
+  }],
 );
 
 function resourceRef<TSpec, TStatus>(
@@ -104,11 +108,15 @@ export function createWorkspaceController(
       const repositoryResources = await resources.list<
         RepositorySpec,
         RepositoryStatus
-      >(REPOSITORY_RESOURCE_TYPE);
+      >(REPOSITORY_RESOURCE_TYPE, {
+        namespace: resource.metadata.namespace as ResourceNamespace,
+      });
       const pullRequestResources = await resources.list<
         PullRequestSpec,
         PullRequestStatus
-      >(PULL_REQUEST_RESOURCE_TYPE);
+      >(PULL_REQUEST_RESOURCE_TYPE, {
+        namespace: resource.metadata.namespace as ResourceNamespace,
+      });
       for (const checkout of await discoverWorkspaceRepositories(root)) {
         const repositoryName = repositoryResourceName(checkout.identity);
         const repository = repositoryResources.find(({ metadata }) =>

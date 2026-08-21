@@ -52,9 +52,10 @@ import { createWorkspaceController } from "./workspaces/controller.ts";
 import type { WorkspaceSpec } from "./workspaces/protocol.ts";
 import { WorkspaceSource } from "./workspaces/source.ts";
 import { withUserDeletionPolicy } from "./retention.ts";
+import { namespaceSource, projectResourceNamespace } from "./namespace.ts";
 
 export const REQLOOP_PLUGIN_ID = "compforge/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.2.16";
+export const REQLOOP_PACKAGE_VERSION = "0.2.17";
 
 function currentRepo(context: PluginContext): string {
   const cwd = context.session.cwd;
@@ -76,8 +77,9 @@ export function createReqloopPackage(options: {
   const plugin: PluginPackage = Object.freeze({
     pluginId: REQLOOP_PLUGIN_ID,
     version: REQLOOP_PACKAGE_VERSION,
-    namespace: "v1/project",
     async activate(context: PluginContext) {
+      const cwd = currentRepo(context);
+      const projectNamespace = projectResourceNamespace(cwd);
       const requirementConnectors =
         options.requirementConnectors ??
         (options.requirementConnector
@@ -86,10 +88,14 @@ export function createReqloopPackage(options: {
             reqloopConfigPaths(context.dataDirs),
           ));
       context.commands.register(
-        createRequirementsCommand(requirementConnectors, context.resources),
+        createRequirementsCommand(
+          requirementConnectors,
+          context.resources,
+          projectNamespace,
+        ),
       );
       context.mentions.register(
-        createRequirementMention(context.resources),
+        createRequirementMention(context.resources, projectNamespace),
       );
       context.controllers.register(
         withUserDeletionPolicy(
@@ -105,14 +111,14 @@ export function createReqloopPackage(options: {
         options.forgeConnectors ?? createForgeConnectors(
           reqloopConfigPaths(context.dataDirs),
         );
-      const cwd = currentRepo(context);
       const toolActivity = new DevloopToolActivityPolicy(cwd);
       const workspaceSources =
-        options.workspaceSources ?? [new WorkspaceSource(cwd)];
+        (options.workspaceSources ?? [new WorkspaceSource(cwd)])
+          .map((source) => namespaceSource(source, projectNamespace));
       const repositorySources = options.repositorySources ?? [
         new WorkspaceRepositorySource(cwd),
       ];
-      const pullRequestSources = options.pullRequestSources ?? [
+      const pullRequestSources = (options.pullRequestSources ?? [
         new ForgePullRequestSource(cwd, forgeConnectors, {
           logger: context.logger,
           shouldTrack: ({ path }) => toolActivity.shouldTrackCheckout(path),
@@ -120,7 +126,7 @@ export function createReqloopPackage(options: {
         new DevloopPullRequestSource(cwd, {
           logger: context.logger,
         }),
-      ];
+      ]).map((source) => namespaceSource(source, projectNamespace));
       context.controllers.register(
         withUserDeletionPolicy(
           context.resources,
@@ -135,12 +141,12 @@ export function createReqloopPackage(options: {
       const forgeCodeReviews = new ForgeCodeReviewSource(
         context.resources,
         forgeConnectors,
-        { logger: context.logger },
+        { logger: context.logger, namespace: projectNamespace },
       );
-      const codeReviewSources = options.codeReviewSources ?? [
+      const codeReviewSources = (options.codeReviewSources ?? [
         forgeCodeReviews,
         new DevloopCodeReviewSource(cwd, forgeCodeReviews),
-      ];
+      ]).map((source) => namespaceSource(source, projectNamespace));
       context.controllers.register(
         withUserDeletionPolicy(
           context.resources,
@@ -157,7 +163,9 @@ export function createReqloopPackage(options: {
           createRepositoryController(
             context.resources,
             forgeConnectors,
-            repositorySources,
+            repositorySources.map((source) =>
+              namespaceSource(source, projectNamespace)
+            ),
           ),
         ),
       );
@@ -188,6 +196,7 @@ const reqloop = createReqloopPackage();
 
 export default reqloop;
 export * from "./config.ts";
+export * from "./namespace.ts";
 export * from "./repositories/controller.ts";
 export * from "./repositories/protocol.ts";
 export * from "./repositories/resource.ts";

@@ -2,6 +2,7 @@ import type {
   PluginLogger,
   Resource,
   ResourceClient,
+  ResourceNamespace,
   Source,
   SourceContext,
 } from "@compforge/baton-plugin";
@@ -53,6 +54,7 @@ export class ForgeCodeReviewSource implements Source<CodeReviewSpec> {
   private readonly connectors = new Map<string, ForgeConnector>();
   private readonly logger?: PluginLogger;
   private readonly maxPullRequests: number;
+  private readonly namespace: ResourceNamespace;
   private readonly now: () => Date;
   private readonly resyncIntervalMs: number;
   private readonly ttlMs: number;
@@ -65,6 +67,7 @@ export class ForgeCodeReviewSource implements Source<CodeReviewSpec> {
       readonly codeReviewTtlMs?: number;
       readonly logger?: PluginLogger;
       readonly maxPullRequests?: number;
+      readonly namespace?: ResourceNamespace;
       readonly now?: () => Date;
       readonly resyncIntervalMs?: number;
     } = {},
@@ -80,6 +83,7 @@ export class ForgeCodeReviewSource implements Source<CodeReviewSpec> {
       "ForgeCodeReviewSource maxPullRequests",
       options.maxPullRequests ?? DEFAULT_MAX_PULL_REQUESTS,
     );
+    this.namespace = options.namespace ?? "v1";
     this.now = options.now ?? (() => new Date());
     this.resyncIntervalMs = positiveInteger(
       "ForgeCodeReviewSource resyncIntervalMs",
@@ -128,7 +132,7 @@ export class ForgeCodeReviewSource implements Source<CodeReviewSpec> {
     const pullRequests = (await this.resources.list<
       PullRequestSpec,
       PullRequestStatus
-    >(PULL_REQUEST_RESOURCE_TYPE))
+    >(PULL_REQUEST_RESOURCE_TYPE, { namespace: this.namespace }))
       .filter(({ status }) => status.lifecycle !== "closed")
       .sort((left, right) =>
         observationTime(right) - observationTime(left)
@@ -147,6 +151,7 @@ export class ForgeCodeReviewSource implements Source<CodeReviewSpec> {
           const spec = codeReviewSpec(observation);
           await context.emit({
             name: codeReviewResourceName(spec),
+            namespace: this.namespace,
             spec,
           });
           admitted += 1;

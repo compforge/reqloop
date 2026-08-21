@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import type {
   Resource,
   ResourceClient,
+  ResourceNamespace,
 } from "@compforge/baton-plugin";
 
 import type {
@@ -67,10 +68,12 @@ export function pullRequestResourceId(
 export async function updatePullRequestObservation(
   resources: ResourceClient,
   observation: PullRequest,
+  namespace: ResourceNamespace = "v1",
 ): Promise<Readonly<Resource<PullRequestSpec, PullRequestStatus>>> {
   const resource = await existingPullRequestResource(
     resources,
     observation.identity,
+    namespace,
   );
   return await resources.patchStatus(resource, {
     title: observation.title,
@@ -90,11 +93,14 @@ export async function updatePullRequestObservation(
 async function existingPullRequestResource(
   resources: ResourceClient,
   requestedIdentity: PullRequestIdentity,
+  namespace: ResourceNamespace,
 ): Promise<Readonly<Resource<PullRequestSpec, PullRequestStatus>>> {
   const identity = normalizedIdentity(requestedIdentity);
   const name = pullRequestResourceId(identity);
   const resource = (await resources
-    .list<PullRequestSpec, PullRequestStatus>(PULL_REQUEST_RESOURCE_TYPE))
+    .list<PullRequestSpec, PullRequestStatus>(PULL_REQUEST_RESOURCE_TYPE, {
+      namespace,
+    }))
     .find((candidate) => candidate.metadata.name === name);
 
   if (!resource) {

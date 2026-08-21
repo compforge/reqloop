@@ -2,6 +2,7 @@ import type {
   Command,
   PluginCommandResult,
   ResourceClient,
+  ResourceNamespace,
 } from "@compforge/baton-plugin";
 
 import type {
@@ -76,6 +77,7 @@ function decodeRequirementIdentity(value: string): RequirementIdentity {
 export function createRequirementsCommand(
   connectors: readonly RequirementConnector[] = [],
   resources?: ResourceClient,
+  namespace: ResourceNamespace = "v1",
 ): Command {
   const sources = new Set(connectors.map(({ source }) => source));
   if (sources.size !== connectors.length) {
@@ -102,7 +104,9 @@ export function createRequirementsCommand(
           );
         }
         const requirement = await connector.get(identity);
-        if (resources) await upsertRequirement(resources, requirement);
+        if (resources) {
+          await upsertRequirement(resources, requirement, namespace);
+        }
         return message(requirementDetail(requirement));
       }
       const searchQuery =

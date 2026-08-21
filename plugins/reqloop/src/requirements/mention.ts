@@ -2,6 +2,7 @@ import type {
   Mention,
   Resource,
   ResourceClient,
+  ResourceNamespace,
 } from "@compforge/baton-plugin";
 
 import type {
@@ -77,6 +78,7 @@ function requirementContext(resource: RequirementResource): string {
 
 export function createRequirementMention(
   resources: ResourceClient,
+  namespace: ResourceNamespace = "v1",
 ): Mention {
   return {
     namespace: "requirement",
@@ -84,6 +86,7 @@ export function createRequirementMention(
       const normalizedQuery = query.trim().toLocaleLowerCase();
       return (await resources.list<RequirementSpec, RequirementStatus>(
         REQUIREMENT_RESOURCE_TYPE,
+        { namespace },
       ))
         .filter((resource) => isRequirementActive(resource.status))
         .filter((resource) =>
@@ -113,6 +116,7 @@ export function createRequirementMention(
         RequirementStatus
       >(
         REQUIREMENT_RESOURCE_TYPE,
+        { namespace },
       ))
         .find(({ metadata }) => metadata.name === id);
       if (!resource) return;

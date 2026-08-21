@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import type {
   Resource,
   ResourceClient,
+  ResourceNamespace,
 } from "@compforge/baton-plugin";
 
 import type {
@@ -62,11 +63,14 @@ function sameIdentity(
 export async function upsertRequirement(
   resources: ResourceClient,
   requirement: Requirement,
+  namespace: ResourceNamespace = "v1",
 ): Promise<Readonly<Resource<RequirementSpec, RequirementStatus>>> {
   const identity = normalizedIdentity(requirement);
   const name = requirementResourceId(identity);
   let resource = (await resources
-    .list<RequirementSpec, RequirementStatus>(REQUIREMENT_RESOURCE_TYPE))
+    .list<RequirementSpec, RequirementStatus>(REQUIREMENT_RESOURCE_TYPE, {
+      namespace,
+    }))
     .find((candidate) => candidate.metadata.name === name);
 
   if (!resource) {
@@ -74,6 +78,7 @@ export async function upsertRequirement(
       REQUIREMENT_RESOURCE_TYPE,
       {
         name,
+        namespace,
         spec: {
           identity,
           title: requirement.title,

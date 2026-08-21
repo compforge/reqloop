@@ -75,7 +75,6 @@ function resourceClient(): {
     | Readonly<Resource<CodeReviewSpec, CodeReviewStatus>>
     | undefined;
   const client = {
-    namespace: TEST_NAMESPACE,
     get(ref: ResourceRef) {
       const candidate = [
         resource,
@@ -298,7 +297,11 @@ async function materializePullRequest(
       spec: { identity: observed.identity },
     },
   );
-  return await updatePullRequestObservation(resources.client, observed);
+  return await updatePullRequestObservation(
+    resources.client,
+    observed,
+    TEST_NAMESPACE,
+  );
 }
 
 describe("PullRequest Resource", () => {
@@ -312,6 +315,7 @@ describe("PullRequest Resource", () => {
     const repeated = await updatePullRequestObservation(
       resources.client,
       observation,
+      TEST_NAMESPACE,
     );
 
     expect({
@@ -441,7 +445,10 @@ describe("PullRequest Resource", () => {
     expect(await watch?.handler.update?.({
       oldObject: codeReview,
       newObject: codeReview,
-    })).toEqual([{ name: pullRequest.metadata.name }]);
+    })).toEqual([{
+      name: pullRequest.metadata.name,
+      namespace: TEST_NAMESPACE,
+    }]);
 
     resources.addCodeReview({
       ...codeReview.status,
@@ -521,7 +528,10 @@ describe("PullRequest Resource", () => {
     );
     expect(
       await controller.watches?.[0]?.handler.create({ object: requirement }),
-    ).toEqual([{ name: pullRequest.metadata.name }]);
+    ).toEqual([{
+      name: pullRequest.metadata.name,
+      namespace: TEST_NAMESPACE,
+    }]);
 
     const promptContext = reconcileContext({
       answer: {
@@ -669,11 +679,15 @@ describe("PullRequest Resource", () => {
     expect(replayContext.asks).toEqual([]);
     expect(replayContext.drafts).toEqual([]);
 
-    const ready = await updatePullRequestObservation(resources.client, {
-      ...observation,
-      reviewThreads: "resolved",
-      observedAt: "2026-07-26T09:00:00.000Z",
-    });
+    const ready = await updatePullRequestObservation(
+      resources.client,
+      {
+        ...observation,
+        reviewThreads: "resolved",
+        observedAt: "2026-07-26T09:00:00.000Z",
+      },
+      TEST_NAMESPACE,
+    );
     await controller.reconcile(reconcileContext().context, ready);
     expect(resources.current()?.status.mergeConflictDecision).toBeNull();
 
@@ -685,6 +699,7 @@ describe("PullRequest Resource", () => {
         mergeability: "conflicted",
         observedAt: "2026-07-26T10:00:00.000Z",
       },
+      TEST_NAMESPACE,
     );
     const nextContext = reconcileContext({
       answer: { state: "success", value: "accept" },
@@ -944,7 +959,10 @@ describe("PullRequest Resource", () => {
     const repositoryWatch = controller.watches?.[0];
     expect(
       await repositoryWatch?.handler.create({ object: observedWorkspace }),
-    ).toEqual([{ name: repository.metadata.name }]);
+    ).toEqual([{
+      name: repository.metadata.name,
+      namespace: TEST_NAMESPACE,
+    }]);
 
     const result = await controller.reconcile({} as never, repository);
 
@@ -989,10 +1007,16 @@ describe("PullRequest Resource", () => {
     expect(await repositoryWatch?.handler.update({
       oldObject: observedWorkspace,
       newObject: resources.workspaceCurrent()!,
-    })).toEqual([{ name: repository.metadata.name }]);
+    })).toEqual([{
+      name: repository.metadata.name,
+      namespace: TEST_NAMESPACE,
+    }]);
     expect(
       await repositoryWatch?.handler.delete({ object: observedWorkspace }),
-    ).toEqual([{ name: repository.metadata.name }]);
+    ).toEqual([{
+      name: repository.metadata.name,
+      namespace: TEST_NAMESPACE,
+    }]);
     await controller.reconcile(
       {} as never,
       resources.repositoryCurrent()!,

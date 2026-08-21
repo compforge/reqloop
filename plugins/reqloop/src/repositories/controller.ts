@@ -2,6 +2,7 @@ import type {
   Controller,
   Resource,
   ResourceClient,
+  ResourceNamespace,
   Source,
 } from "@compforge/baton-plugin";
 
@@ -34,7 +35,10 @@ const enqueueWorkspaceRepositories = enqueueRequestsFromMapFunc<
     repository.apiVersion === REPOSITORY_RESOURCE_TYPE.apiVersion &&
       repository.kind === REPOSITORY_RESOURCE_TYPE.kind &&
       repository.namespace === workspace.metadata.namespace
-      ? [{ name: repository.name }]
+      ? [{
+        name: repository.name,
+        namespace: workspace.metadata.namespace as ResourceNamespace,
+      }]
       : []
   )
 );
@@ -44,6 +48,7 @@ const enqueuePullRequestRepository = enqueueRequestsFromMapFunc<
   PullRequestStatus
 >(async (pullRequest) => [{
   name: repositoryResourceName(pullRequest.spec.identity),
+  namespace: pullRequest.metadata.namespace as ResourceNamespace,
 }]);
 
 async function inWorkspace(
@@ -51,7 +56,9 @@ async function inWorkspace(
   repository: Readonly<Resource<RepositorySpec, RepositoryStatus>>,
 ): Promise<boolean> {
   return (await resources
-    .list<WorkspaceSpec, WorkspaceStatus>(WORKSPACE_RESOURCE_TYPE))
+    .list<WorkspaceSpec, WorkspaceStatus>(WORKSPACE_RESOURCE_TYPE, {
+      namespace: repository.metadata.namespace as ResourceNamespace,
+    }))
     .some((workspace) =>
       workspace.status.repositories?.some(({ repository: reference }) =>
         reference.apiVersion === repository.apiVersion &&
@@ -105,7 +112,9 @@ export function createRepositoryController(
       const discoveredPullRequests = (await resources.list<
         PullRequestSpec,
         PullRequestStatus
-      >(PULL_REQUEST_RESOURCE_TYPE))
+      >(PULL_REQUEST_RESOURCE_TYPE, {
+        namespace: current.metadata.namespace as ResourceNamespace,
+      }))
         .filter(({ spec }) =>
           spec.identity.source === identity.source &&
           spec.identity.repository === identity.repository

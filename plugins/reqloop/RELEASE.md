@@ -1,6 +1,14 @@
 # ReqLoop releases
 
-Current version: `0.2.16`
+Current version: `0.2.17`
+
+## 0.2.17
+
+- Require `@compforge/baton-plugin` 0.8.1 and move project scope from the
+  PluginPackage to each Resource observation and operation.
+- Route Source emissions, watches, reads, and deletes through the stable
+  `v1/project/<project-id>` namespace so same-named Resources cannot cross
+  project boundaries.
 
 ## 0.2.16
 

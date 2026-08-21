@@ -14,7 +14,8 @@ function uniqueRequests(
 ): readonly ReconcileRequest[] {
   const unique = new Map<string, ReconcileRequest>();
   for (const request of requests) {
-    if (!unique.has(request.name)) unique.set(request.name, request);
+    const key = JSON.stringify([request.namespace, request.name]);
+    if (!unique.has(key)) unique.set(key, request);
   }
   return Object.freeze([...unique.values()]);
 }

@@ -5,7 +5,9 @@ import type {
   EventResource,
   Resource,
   ResourceClient,
+  ResourceNamespace,
   ResourceRef,
+  ReconcileRequest,
   Source,
 } from "@compforge/baton-plugin";
 
@@ -65,9 +67,12 @@ function sameIdentity(
 
 async function activeRequirements(
   resources: ResourceClient,
+  namespace: ResourceNamespace,
 ): Promise<readonly Readonly<Resource<RequirementSpec, RequirementStatus>>[]> {
   return (await resources
-    .list<RequirementSpec, RequirementStatus>(REQUIREMENT_RESOURCE_TYPE))
+    .list<RequirementSpec, RequirementStatus>(REQUIREMENT_RESOURCE_TYPE, {
+      namespace,
+    }))
     .filter(({ status }) =>
       status.externalState !== undefined &&
       isRequirementActive(status)
@@ -86,27 +91,36 @@ function activeRequirement(resource: EventResource): boolean {
 
 async function enqueuePendingAssociationPullRequests(
   resources: ResourceClient,
-): Promise<readonly { readonly name: string }[]> {
+  namespace: ResourceNamespace,
+): Promise<readonly ReconcileRequest[]> {
   return (await resources
-    .list<PullRequestSpec, PullRequestStatus>(PULL_REQUEST_RESOURCE_TYPE))
+    .list<PullRequestSpec, PullRequestStatus>(PULL_REQUEST_RESOURCE_TYPE, {
+      namespace,
+    }))
     .filter(({ status }) =>
       status.lifecycle === "open" &&
       status.requirementAssociation === undefined
     )
-    .map(({ metadata }) => ({ name: metadata.name }));
+    .map(({ metadata }) => ({ name: metadata.name, namespace }));
 }
 
 function activeRequirementHandler(resources: ResourceClient): EventHandler {
   const handler: EventHandler = {
     async create(event) {
       return activeRequirement(event.object)
-        ? await enqueuePendingAssociationPullRequests(resources)
+        ? await enqueuePendingAssociationPullRequests(
+          resources,
+          event.object.metadata.namespace as ResourceNamespace,
+        )
         : [];
     },
     async update(event) {
       return !activeRequirement(event.oldObject) &&
           activeRequirement(event.newObject)
-        ? await enqueuePendingAssociationPullRequests(resources)
+        ? await enqueuePendingAssociationPullRequests(
+          resources,
+          event.newObject.metadata.namespace as ResourceNamespace,
+        )
         : [];
     },
     async delete() {
@@ -119,17 +133,24 @@ function activeRequirementHandler(resources: ResourceClient): EventHandler {
 async function codeReviewPullRequest(
   resources: ResourceClient,
   resource: EventResource,
-): Promise<readonly { readonly name: string }[]> {
+): Promise<readonly ReconcileRequest[]> {
   const codeReview = resource as Readonly<
     Resource<CodeReviewSpec, CodeReviewStatus>
   >;
   const pullRequest = (await resources.list<
     PullRequestSpec,
     PullRequestStatus
-  >(PULL_REQUEST_RESOURCE_TYPE)).find(({ spec }) =>
+  >(PULL_REQUEST_RESOURCE_TYPE, {
+    namespace: codeReview.metadata.namespace as ResourceNamespace,
+  })).find(({ spec }) =>
     sameIdentity(spec.identity, codeReview.spec.pullRequest)
   );
-  return pullRequest ? [{ name: pullRequest.metadata.name }] : [];
+  return pullRequest
+    ? [{
+      name: pullRequest.metadata.name,
+      namespace: codeReview.metadata.namespace as ResourceNamespace,
+    }]
+    : [];
 }
 
 function codeReviewHandler(resources: ResourceClient): EventHandler {
@@ -150,9 +171,11 @@ function codeReviewHandler(resources: ResourceClient): EventHandler {
 async function pendingCodeReviews(
   resources: ResourceClient,
   identity: PullRequestIdentity,
+  namespace: ResourceNamespace,
 ): Promise<readonly Readonly<Resource<CodeReviewSpec, CodeReviewStatus>>[]> {
   return (await resources.list<CodeReviewSpec, CodeReviewStatus>(
     CODE_REVIEW_RESOURCE_TYPE,
+    { namespace },
   )).filter((review) =>
     sameIdentity(review.spec.pullRequest, identity) &&
     review.metadata.deletionTimestamp === undefined &&
@@ -320,6 +343,7 @@ export function createPullRequestController(
           RequirementStatus
         >(
           REQUIREMENT_RESOURCE_TYPE,
+          { namespace: current.metadata.namespace as ResourceNamespace },
         ))
           .find(({ metadata }) =>
             metadata.namespace === legacyAssociation.requirement.namespace &&
@@ -348,7 +372,11 @@ export function createPullRequestController(
           if (!sameIdentity(observation.identity, identity)) {
             throw new Error("ForgeConnector returned a different PullRequest");
           }
-          current = await updatePullRequestObservation(resources, observation);
+          current = await updatePullRequestObservation(
+            resources,
+            observation,
+            current.metadata.namespace as ResourceNamespace,
+          );
         }
       }
       if (observationComplete(current.status)) return;
@@ -449,7 +477,10 @@ export function createPullRequestController(
       if (current.status.lifecycle === "open") {
         const association = current.status.requirementAssociation;
         if (!association) {
-          const requirements = await activeRequirements(resources);
+          const requirements = await activeRequirements(
+            resources,
+            current.metadata.namespace as ResourceNamespace,
+          );
           const decision = requirements.length > 0
             ? await context.verbs.ask(associationAsk(identity, requirements))
             : undefined;
@@ -490,6 +521,7 @@ export function createPullRequestController(
               if (name) {
                 const latestRequirements = await activeRequirements(
                   resources,
+                  current.metadata.namespace as ResourceNamespace,
                 );
                 const requirement = latestRequirements.find(({ metadata }) =>
                   metadata.namespace === current.metadata.namespace &&
@@ -515,7 +547,11 @@ export function createPullRequestController(
     },
     async present(resource) {
       const reviews = resources
-        ? await pendingCodeReviews(resources, resource.spec.identity)
+        ? await pendingCodeReviews(
+          resources,
+          resource.spec.identity,
+          resource.metadata.namespace as ResourceNamespace,
+        )
         : [];
       const hasPendingCodeReview = reviews.length > 0;
       if (

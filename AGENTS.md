@@ -38,9 +38,10 @@ reqloop/
 
 ## 关键约定
 
-1. Marketplace 只负责发现和交付不可变的 PluginPackage；PluginInstance、Binding、Resource、
-   Human Inbox 和调度状态归 Baton Daemon 控制面。Package 通过 namespace 声明 Binding 基数，
-   三方 Package 按活动 Binding 进入 Plugin Worker 进程；`@compforge/baton-plugin` 只用 `import type`，所有公开回调保持 async；
+1. Marketplace 只负责发现和交付不可变的 PluginPackage；PluginInstance、Resource、
+   Human Inbox 和调度状态归 Baton Daemon。Package 只组织 Resource、Controller 与 Connector，
+   每个 Resource 自己携带 namespace；三方 Package 按启用的 PluginInstance 进入 Plugin Worker
+   进程。`@compforge/baton-plugin` 只用 `import type`，所有公开回调保持 async；
    Plugin 自建的 Git/CLI 子进程也必须使用异步 API，并显式设置 timeout、取消和输出上限。
 2. 每个 Plugin 的 manifest 声明稳定身份和可审阅权限；运行期能力通过 Command 与 Controller
    注册，Resource kind 在 Marketplace 内保持唯一。
@@ -49,7 +50,7 @@ reqloop/
    Connector 只负责协议调用和 DTO 映射，不能反向拥有 loop。
    Requirement/Forge 等对象保持 provider-neutral，provider 属于 Connector 或其绑定的
    repository，不摊进每个领域对象。连接参数归 Plugin 配置，cursor/cache 归 Baton 注入的
-   host-owned data 目录，领域 loop 状态归 Binding canonical namespace 下的 Resource。
+   host-owned data 目录，领域 loop 状态归各自 namespace 下的 Resource。
 4. 本地开发可以使用 link 来源，但发布版本必须不可变；来源 provenance 不进入 `pluginId` 或
    PluginInstance 身份。
 5. 新 Plugin 必须放进 `plugins/`，同时更新 Marketplace 索引和根 README；具体配置、限制和

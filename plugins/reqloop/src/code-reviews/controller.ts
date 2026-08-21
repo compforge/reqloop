@@ -1,6 +1,7 @@
 import type {
   Controller,
   ResourceClient,
+  ResourceNamespace,
   Source,
 } from "@compforge/baton-plugin";
 
@@ -52,9 +53,11 @@ function remainingMs(expiresAt: string, nowMs: number): number {
 async function hasBoundPullRequest(
   resources: ResourceClient,
   spec: CodeReviewSpec,
+  namespace: ResourceNamespace,
 ): Promise<boolean> {
   return (await resources.list<PullRequestSpec, PullRequestStatus>(
     PULL_REQUEST_RESOURCE_TYPE,
+    { namespace },
   )).some(({ spec: { identity } }) =>
     identity.source === spec.pullRequest.source &&
     identity.repository === spec.pullRequest.repository &&
@@ -127,6 +130,7 @@ export function createCodeReviewController(
         await resources.delete(
           CODE_REVIEW_RESOURCE_TYPE,
           current.metadata.name,
+          current.metadata.namespace as ResourceNamespace,
         );
         return;
       }
@@ -228,7 +232,13 @@ export function createCodeReviewController(
       }
       // A bound review is projected through its PullRequest card so one user
       // action does not consume two Board slots.
-      if (await hasBoundPullRequest(resources, resource.spec)) {
+      if (
+        await hasBoundPullRequest(
+          resources,
+          resource.spec,
+          resource.metadata.namespace as ResourceNamespace,
+        )
+      ) {
         return undefined;
       }
       const identity = resource.spec.pullRequest;
