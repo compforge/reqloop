@@ -5,7 +5,7 @@
 ReqLoop 用 `Product`、`Component`、`Environment` 和 `Service` 表达当前部署视图：
 
 - `Product` 是部署目录的稳定 owner，收拢属于同一产品的 Component、Environment 和 Service。
-- `Component` 是 Product 内的静态软件单元。
+- `Component` 是 Product 内的静态软件单元，可通过 `{forge, path}` 登记一个主代码仓库。
 - `Environment` 是 Product 的 dev、test、poc 等逻辑部署环境，并拥有组成该环境的部署基础设施 target。
   Kubernetes 是当前已支持的 target 类型，但 Environment 不等同于 Kubernetes 集群，也允许暂时
   没有 Kubernetes target。
@@ -14,13 +14,16 @@ ReqLoop 用 `Product`、`Component`、`Environment` 和 `Service` 表达当前�
 
 四者都位于用户全局 `v1` namespace。集群是客观存在的共享基础设施，不随 Baton Session 或
 Project 复制；Project 下的开发 Resource 后续可通过稳定身份与这些全局 Resource 建立关系。
+Component 的 repository 使用与 Project 下 Repository、PullRequest 相同的外部稳定身份，不引用某个
+Project Repository Resource 的 `uid`。因此 Service 可经 Component 连接代码仓和 Requirement；多个
+Component 也可以共享同一个 repository，以覆盖 monorepo 场景。
 
 ## 主流程
 
 ```text
 global config
     └── Product spec
-          ├── Component spec
+          ├── Component spec ──code-in──▶ Repository identity
           ├── Environment spec ──owns──▶ Kubernetes target
           └── Service spec ──uses──────▶ target + Kubernetes object mapping
                                       │

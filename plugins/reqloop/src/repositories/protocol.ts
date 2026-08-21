@@ -1,8 +1,12 @@
+/**
+ * @spec A Repository is identified by one configured Forge and its provider-neutral path; transport URLs and provider types do not participate in identity.
+ * @see {@link ../../docs/domain-model.md}
+ */
 export interface RepositoryIdentity {
-  /** Configured ForgeConnector source. */
-  readonly source: string;
-  /** Provider-neutral repository identity, for example owner/repo. */
-  readonly repository: string;
+  /** Configured ForgeConnector identity, often the Git host. */
+  readonly forge: string;
+  /** Provider-neutral repository path, for example owner/repo. */
+  readonly path: string;
 }
 
 export interface RepositorySpec {

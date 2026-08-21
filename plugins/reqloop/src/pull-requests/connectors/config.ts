@@ -9,10 +9,10 @@ import { GitLabForgeConnector } from "./gitlab.ts";
 import type { ForgeConnector } from "../protocol.ts";
 
 export interface ForgeConfig {
-  readonly source: string;
+  readonly forge: string;
   readonly provider: "github" | "gitlab";
+  /** Network host used by the provider adapter. */
   readonly host: string;
-  readonly apiHost?: string;
   readonly uids?: readonly string[];
   readonly token?: string;
 }
@@ -86,33 +86,32 @@ export function loadForgeConfigs(
     ? {}
     : jsonObject("reqloop config forges", config.forges);
 
-  return Object.entries(forges).map(([rawHost, rawForge]) => {
-    const host = requiredString("reqloop forge host", rawHost);
-    const forge = jsonObject(`reqloop forge ${host}`, rawForge);
+  return Object.entries(forges).map(([rawForge, rawConfig]) => {
+    const forge = requiredString("reqloop forge identity", rawForge);
+    const config = jsonObject(`reqloop forge ${forge}`, rawConfig);
+    const host = optionalString(
+      `reqloop forge ${forge} api_host`,
+      config.api_host,
+    ) ?? forge;
     const configuredProvider = provider(
-      `reqloop forge ${host} type`,
-      forge.type,
+      `reqloop forge ${forge} type`,
+      config.type,
       host,
     );
     const configuredToken = optionalString(
-      `reqloop forge ${host} token`,
-      forge.token,
-    );
-    const apiHost = optionalString(
-      `reqloop forge ${host} api_host`,
-      forge.api_host,
+      `reqloop forge ${forge} token`,
+      config.token,
     );
     const uids = optionalStrings(
-      `reqloop forge ${host} uids`,
-      forge.uids,
+      `reqloop forge ${forge} uids`,
+      config.uids,
     );
     const token =
       environmentToken(configuredProvider, environment) ?? configuredToken;
     return Object.freeze({
-      source: host,
+      forge,
       provider: configuredProvider,
       host,
-      ...(apiHost ? { apiHost } : {}),
       ...(uids ? { uids } : {}),
       ...(token ? { token } : {}),
     });

@@ -14,7 +14,7 @@ import type {
 } from "./protocol.ts";
 
 export const PULL_REQUEST_RESOURCE_TYPE = Object.freeze({
-  apiVersion: "reqloop.baton.dev/v1alpha1",
+  apiVersion: "reqloop.baton.dev/v1alpha2",
   kind: "PullRequest",
   shortNames: ["pr"],
 } as const);
@@ -22,16 +22,16 @@ export const PULL_REQUEST_RESOURCE_TYPE = Object.freeze({
 function normalizedIdentity(
   identity: PullRequestIdentity,
 ): PullRequestIdentity {
-  const source = identity.source.trim();
-  const repository = identity.repository.trim();
-  if (!source) throw new Error("PullRequest source must not be empty");
-  if (!repository) {
-    throw new Error("PullRequest repository must not be empty");
+  const forge = identity.forge.trim();
+  const path = identity.path.trim();
+  if (!forge) throw new Error("PullRequest forge must not be empty");
+  if (!path) {
+    throw new Error("PullRequest path must not be empty");
   }
   if (!Number.isSafeInteger(identity.number) || identity.number < 1) {
     throw new Error("PullRequest number must be a positive integer");
   }
-  return { source, repository, number: identity.number };
+  return { forge, path, number: identity.number };
 }
 
 function sameIdentity(
@@ -39,8 +39,8 @@ function sameIdentity(
   right: PullRequestIdentity,
 ): boolean {
   return (
-    left.source === right.source &&
-    left.repository === right.repository &&
+    left.forge === right.forge &&
+    left.path === right.path &&
     left.number === right.number
   );
 }
@@ -52,8 +52,8 @@ export function pullRequestResourceId(
   const normalized = normalizedIdentity(identity);
   const digest = createHash("sha256")
     .update(JSON.stringify([
-      normalized.source,
-      normalized.repository,
+      normalized.forge,
+      normalized.path,
       normalized.number,
     ]))
     .digest("hex")

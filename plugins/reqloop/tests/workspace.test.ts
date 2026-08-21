@@ -208,8 +208,8 @@ describe("Workspace Resource", () => {
       path: root,
       relativePath: ".",
       identity: {
-        source: "github.com",
-        repository: "owner/root-repo",
+        forge: "github.com",
+        path: "owner/root-repo",
       },
     }]);
   });
@@ -231,8 +231,8 @@ describe("Workspace Resource", () => {
       name: WORKSPACE_RESOURCE_NAME,
       spec: workspaceSpec(),
     });
-    for (const repository of ["owner/repo-a", "owner/repo-b"]) {
-      const identity = { source: "github.com", repository };
+    for (const path of ["owner/repo-a", "owner/repo-b"]) {
+      const identity = { forge: "github.com", path };
       await resources.client.create<RepositorySpec, RepositoryStatus>(
         REPOSITORY_RESOURCE_TYPE,
         {
@@ -242,8 +242,8 @@ describe("Workspace Resource", () => {
       );
     }
     const pullRequestIdentity = {
-      source: "github.com",
-      repository: "owner/repo-a",
+      forge: "github.com",
+      path: "owner/repo-a",
       number: 7,
     };
     await resources.client.create<PullRequestSpec, PullRequestStatus>(
@@ -271,15 +271,15 @@ describe("Workspace Resource", () => {
     expect(
       resources.list<RepositorySpec, RepositoryStatus>(
         REPOSITORY_RESOURCE_TYPE,
-      ).map((resource) => resource.spec.identity.repository).sort(),
+      ).map((resource) => resource.spec.identity.path).sort(),
     ).toEqual(["owner/repo-a", "owner/repo-b"]);
     expect(
       resources.list<PullRequestSpec, PullRequestStatus>(
         PULL_REQUEST_RESOURCE_TYPE,
       ).map((resource) => resource.spec.identity),
     ).toEqual([{
-      source: "github.com",
-      repository: "owner/repo-a",
+      forge: "github.com",
+      path: "owner/repo-a",
       number: 7,
     }]);
     expect(await controller.present?.(workspace)).toBeUndefined();

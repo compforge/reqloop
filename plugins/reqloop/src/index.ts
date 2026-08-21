@@ -79,7 +79,7 @@ import type {
 } from "./deployments/protocol.ts";
 
 export const REQLOOP_PLUGIN_ID = "compforge/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.3.2";
+export const REQLOOP_PACKAGE_VERSION = "0.3.3";
 
 export function createReqloopPackage(options: {
   codeReviewSources?: readonly Source<CodeReviewSpec>[];

@@ -27,13 +27,13 @@ export async function currentRepositoryIdentity(
   );
   if (!remote) return;
 
-  let source: string;
-  let repository: string;
+  let forge: string;
+  let path: string;
   if (!remote.includes("://")) {
     const match = remote.match(/^(?:[^@]+@)?([^:]+):(.+)$/);
     if (!match) return;
-    source = match[1]!;
-    repository = match[2]!;
+    forge = match[1]!;
+    path = match[2]!;
   } else {
     let url: URL;
     try {
@@ -41,10 +41,10 @@ export async function currentRepositoryIdentity(
     } catch {
       return;
     }
-    source = url.hostname;
-    repository = url.pathname.replace(/^\/+/, "");
+    forge = url.hostname;
+    path = url.pathname.replace(/^\/+/, "");
   }
-  repository = repository.replace(/\.git$/, "");
-  if (!source || !repository) return;
-  return Object.freeze({ source, repository });
+  path = path.replace(/\.git$/, "");
+  if (!forge || !path) return;
+  return Object.freeze({ forge, path });
 }

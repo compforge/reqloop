@@ -6,6 +6,7 @@ import type {
 
 import { discoverWorkspaceRepositories } from "../../workspaces/discovery.ts";
 import type { WorkspaceRepositoryCheckout } from "../../workspaces/discovery.ts";
+import type { RepositoryIdentity } from "../../repositories/protocol.ts";
 import type {
   ForgeConnector,
   PullRequestIdentity,
@@ -63,10 +64,10 @@ export class ForgePullRequestSource implements Source<PullRequestSpec> {
     options: ForgePullRequestSourceOptions = {},
   ) {
     for (const connector of connectors) {
-      if (this.connectors.has(connector.source)) {
-        throw new Error(`duplicate ForgeConnector source: ${connector.source}`);
+      if (this.connectors.has(connector.forge)) {
+        throw new Error(`duplicate ForgeConnector: ${connector.forge}`);
       }
-      this.connectors.set(connector.source, connector);
+      this.connectors.set(connector.forge, connector);
     }
     this.maxPerRepository = positiveInteger(
       "ForgePullRequestSource maxPerRepository",
@@ -126,7 +127,7 @@ export class ForgePullRequestSource implements Source<PullRequestSpec> {
         skippedByActivity += 1;
         continue;
       }
-      const connector = this.connectors.get(checkout.identity.source);
+      const connector = this.connectors.get(checkout.identity.forge);
       if (!connector) {
         skippedWithoutConnector += 1;
         continue;
@@ -141,25 +142,25 @@ export class ForgePullRequestSource implements Source<PullRequestSpec> {
     );
 
     const pullRequests: PullRequestIdentity[] = [];
-    const rateLimitedSources = new Set<string>();
+    const rateLimitedForges = new Set<string>();
     let listedRepositories = 0;
     let failedRepositories = 0;
     let skippedAfterRateLimit = 0;
     for (const { checkout, connector } of tracked) {
       if (context.signal.aborted) return;
       const { identity } = checkout;
-      if (rateLimitedSources.has(identity.source)) {
+      if (rateLimitedForges.has(identity.forge)) {
         skippedAfterRateLimit += 1;
         continue;
       }
       try {
-        const observations = await connector.list(identity.repository, {
+        const observations = await connector.list(identity.path, {
           state: "open",
           limit: this.maxPerRepository,
         });
         listedRepositories += 1;
         this.failureKeys.delete(
-          `${identity.source}/${identity.repository}`,
+          `${identity.forge}/${identity.path}`,
         );
         pullRequests.push(...observations.map((pullRequest) => {
           this.assertWithinRepository(pullRequest, identity);
@@ -169,7 +170,7 @@ export class ForgePullRequestSource implements Source<PullRequestSpec> {
         failedRepositories += 1;
         this.reportFailure(context, identity, error);
         if (isForgeRateLimitError(error)) {
-          rateLimitedSources.add(identity.source);
+          rateLimitedForges.add(identity.forge);
         }
       }
     }
@@ -198,7 +199,7 @@ export class ForgePullRequestSource implements Source<PullRequestSpec> {
     skippedWithoutConnector: number,
   ): void {
     const repositories = tracked.map(({ identity }) =>
-      `${identity.source}/${identity.repository}`
+      `${identity.forge}/${identity.path}`
     ).sort();
     const key = JSON.stringify([
       checkoutCount,
@@ -228,7 +229,7 @@ export class ForgePullRequestSource implements Source<PullRequestSpec> {
     readonly skippedAfterRateLimit: number;
   }): void {
     const pullRequests = result.admitted.map((identity) =>
-      `${identity.source}/${identity.repository}#${identity.number}`
+      `${identity.forge}/${identity.path}#${identity.number}`
     ).sort();
     const key = JSON.stringify([
       pullRequests,
@@ -259,11 +260,11 @@ export class ForgePullRequestSource implements Source<PullRequestSpec> {
 
   private assertWithinRepository(
     pullRequest: PullRequestIdentity,
-    repository: { readonly source: string; readonly repository: string },
+    repository: RepositoryIdentity,
   ): void {
     if (
-      pullRequest.source !== repository.source ||
-      pullRequest.repository !== repository.repository
+      pullRequest.forge !== repository.forge ||
+      pullRequest.path !== repository.path
     ) {
       throw new Error(
         "ForgeConnector listed a PullRequest outside the requested repository",
@@ -273,10 +274,10 @@ export class ForgePullRequestSource implements Source<PullRequestSpec> {
 
   private reportFailure(
     context: SourceContext<PullRequestSpec>,
-    repository: { readonly source: string; readonly repository: string },
+    repository: RepositoryIdentity,
     error: unknown,
   ): void {
-    const repositoryKey = `${repository.source}/${repository.repository}`;
+    const repositoryKey = `${repository.forge}/${repository.path}`;
     const key = error instanceof Error
       ? `${error.name}:${error.message}`
       : String(error);
@@ -288,7 +289,7 @@ export class ForgePullRequestSource implements Source<PullRequestSpec> {
       attributes: { repository: repositoryKey },
     });
     context.reportError(new Error(
-      `Could not list Forge PullRequests for ${repository.repository}`,
+      `Could not list Forge PullRequests for ${repository.path}`,
       { cause: error },
     ));
   }

@@ -46,7 +46,7 @@ afterEach(() => {
 });
 
 describe("Forge config", () => {
-  test("uses host-keyed providers and devloop token precedence", () => {
+  test("separates Forge identity from endpoint host and uses devloop token precedence", () => {
     const path = join(testRoot(), "config.json");
     writeFileSync(path, JSON.stringify({
       version: 2,
@@ -69,17 +69,16 @@ describe("Forge config", () => {
       GITLAB_TOKEN: "environment-gitlab",
     })).toEqual([
       {
-        source: "github.com",
+        forge: "github.com",
         provider: "github",
         host: "github.com",
         uids: ["octocat", "42"],
         token: "environment-github",
       },
       {
-        source: "code.example.com",
+        forge: "code.example.com",
         provider: "gitlab",
-        host: "code.example.com",
-        apiHost: "gitlab-api.example.com",
+        host: "gitlab-api.example.com",
         uids: ["42", "owner"],
         token: "environment-gitlab",
       },
@@ -100,7 +99,7 @@ describe("Forge config", () => {
     }));
 
     expect(createForgeConnectors(path, { environment: {} }).map(
-      (connector) => [connector.source, connector.provider],
+      (connector) => [connector.forge, connector.provider],
     )).toEqual([["gitlab.example.com", "gitlab"]]);
   });
 });
@@ -123,7 +122,7 @@ describe("GitHubForgeConnector", () => {
       );
     };
     const connector = new GitHubForgeConnector({
-      source: "github.com",
+      forge: "github.com",
       provider: "github",
       host: "github.com",
       token: "secret",
@@ -146,15 +145,15 @@ describe("GitHubForgeConnector", () => {
       return json({ errors: [{ message: "API rate limit exceeded" }] });
     };
     const connector = new GitHubForgeConnector({
-      source: "github.com",
+      forge: "github.com",
       provider: "github",
       host: "github.com",
       token: "secret",
     }, { fetch });
 
     await expect(connector.get({
-      source: "github.com",
-      repository: "owner/repo",
+      forge: "github.com",
+      path: "owner/repo",
       number: 3,
     })).rejects.toBeInstanceOf(ForgeRateLimitError);
   });
@@ -224,7 +223,7 @@ describe("GitHubForgeConnector", () => {
       return new Response("not found", { status: 404 });
     };
     const connector = new GitHubForgeConnector({
-      source: "github.com",
+      forge: "github.com",
       provider: "github",
       host: "github.com",
       token: "secret",
@@ -234,13 +233,13 @@ describe("GitHubForgeConnector", () => {
     });
 
     await expect(connector.get({
-      source: "github.com",
-      repository: "compforge/reqloop",
+      forge: "github.com",
+      path: "compforge/reqloop",
       number: 17,
     })).resolves.toEqual({
       identity: {
-        source: "github.com",
-        repository: "compforge/reqloop",
+        forge: "github.com",
+        path: "compforge/reqloop",
         number: 17,
       },
       title: "Keep Board focused",
@@ -256,8 +255,8 @@ describe("GitHubForgeConnector", () => {
       limit: 2,
     })).resolves.toEqual([
       {
-        source: "github.com",
-        repository: "compforge/reqloop",
+        forge: "github.com",
+        path: "compforge/reqloop",
         number: 17,
       },
     ]);
@@ -266,8 +265,8 @@ describe("GitHubForgeConnector", () => {
       limit: 2,
     })).resolves.toEqual([
       {
-        source: "github.com",
-        repository: "compforge/reqloop",
+        forge: "github.com",
+        path: "compforge/reqloop",
         number: 16,
       },
     ]);
@@ -298,15 +297,15 @@ describe("GitHubForgeConnector", () => {
       return new Response("forbidden", { status: 403 });
     };
     const connector = new GitHubForgeConnector({
-      source: "github.com",
+      forge: "github.com",
       provider: "github",
       host: "github.com",
       token: "secret",
     }, { fetch });
 
     await expect(connector.get({
-      source: "github.com",
-      repository: "owner/repo",
+      forge: "github.com",
+      path: "owner/repo",
       number: 3,
     })).resolves.toMatchObject({
       lifecycle: "merged",
@@ -343,7 +342,7 @@ describe("GitHubForgeConnector", () => {
       ]);
     };
     const connector = new GitHubForgeConnector({
-      source: "github.com",
+      forge: "github.com",
       provider: "github",
       host: "github.com",
       token: "secret",
@@ -354,8 +353,8 @@ describe("GitHubForgeConnector", () => {
       limit: 1,
     })).resolves.toEqual([
       {
-        source: "github.com",
-        repository: "owner/repo",
+        forge: "github.com",
+        path: "owner/repo",
         number: 3,
       },
     ]);
@@ -364,8 +363,8 @@ describe("GitHubForgeConnector", () => {
       limit: 1,
     })).resolves.toEqual([
       {
-        source: "github.com",
-        repository: "owner/repo",
+        forge: "github.com",
+        path: "owner/repo",
         number: 2,
       },
     ]);
@@ -395,7 +394,7 @@ describe("GitHubForgeConnector", () => {
       ]);
     };
     const connector = new GitHubForgeConnector({
-      source: "github.com",
+      forge: "github.com",
       provider: "github",
       host: "github.com",
       token: "secret",
@@ -407,13 +406,13 @@ describe("GitHubForgeConnector", () => {
       limit: 2,
     })).resolves.toEqual([
       {
-        source: "github.com",
-        repository: "owner/repo",
+        forge: "github.com",
+        path: "owner/repo",
         number: 2,
       },
       {
-        source: "github.com",
-        repository: "owner/repo",
+        forge: "github.com",
+        path: "owner/repo",
         number: 1,
       },
     ]);
@@ -459,14 +458,14 @@ describe("GitHubForgeConnector", () => {
       return new Response("not found", { status: 404 });
     };
     const connector = new GitHubForgeConnector({
-      source: "github.com",
+      forge: "github.com",
       provider: "github",
       host: "github.com",
       token: "secret",
     }, { fetch });
     const identity = {
-      source: "github.com",
-      repository: "owner/repo",
+      forge: "github.com",
+      path: "owner/repo",
       number: 5,
     };
 
@@ -513,15 +512,15 @@ describe("GitHubForgeConnector", () => {
       return new Response("not found", { status: 404 });
     };
     const connector = new GitHubForgeConnector({
-      source: "github.com",
+      forge: "github.com",
       provider: "github",
       host: "github.com",
       token: "secret",
     }, { fetch });
 
     await expect(connector.comments!({
-      source: "github.com",
-      repository: "owner/repo",
+      forge: "github.com",
+      path: "owner/repo",
       number: 5,
     })).resolves.toEqual([
       {
@@ -601,7 +600,7 @@ describe("GitLabForgeConnector", () => {
       return new Response("not found", { status: 404 });
     };
     const connector = new GitLabForgeConnector({
-      source: "gitlab.example.com",
+      forge: "gitlab.example.com",
       provider: "gitlab",
       host: "gitlab.example.com",
       token: "secret",
@@ -611,13 +610,13 @@ describe("GitLabForgeConnector", () => {
     });
 
     await expect(connector.get({
-      source: "gitlab.example.com",
-      repository: "group/subgroup/repo",
+      forge: "gitlab.example.com",
+      path: "group/subgroup/repo",
       number: 9,
     })).resolves.toEqual({
       identity: {
-        source: "gitlab.example.com",
-        repository: "group/subgroup/repo",
+        forge: "gitlab.example.com",
+        path: "group/subgroup/repo",
         number: 9,
       },
       title: "Keep Board focused",
@@ -636,8 +635,8 @@ describe("GitLabForgeConnector", () => {
       }),
     ).resolves.toEqual([
       {
-        source: "gitlab.example.com",
-        repository: "group/subgroup/repo",
+        forge: "gitlab.example.com",
+        path: "group/subgroup/repo",
         number: 9,
       },
     ]);
@@ -648,8 +647,8 @@ describe("GitLabForgeConnector", () => {
       }),
     ).resolves.toEqual([
       {
-        source: "gitlab.example.com",
-        repository: "group/subgroup/repo",
+        forge: "gitlab.example.com",
+        path: "group/subgroup/repo",
         number: 8,
       },
     ]);
@@ -693,15 +692,15 @@ describe("GitLabForgeConnector", () => {
       return new Response("not found", { status: 404 });
     };
     const connector = new GitLabForgeConnector({
-      source: "gitlab.example.com",
+      forge: "gitlab.example.com",
       provider: "gitlab",
       host: "gitlab.example.com",
       token: "secret",
     }, { fetch });
 
     await expect(connector.get({
-      source: "gitlab.example.com",
-      repository: "group/repo",
+      forge: "gitlab.example.com",
+      path: "group/repo",
       number: 4,
     })).resolves.toMatchObject({
       lifecycle: "closed",
@@ -728,7 +727,7 @@ describe("GitLabForgeConnector", () => {
       return json([{ iid: 2, state: "merged" }]);
     };
     const connector = new GitLabForgeConnector({
-      source: "gitlab.example.com",
+      forge: "gitlab.example.com",
       provider: "gitlab",
       host: "gitlab.example.com",
       token: "secret",
@@ -739,8 +738,8 @@ describe("GitLabForgeConnector", () => {
       limit: 1,
     })).resolves.toEqual([
       {
-        source: "gitlab.example.com",
-        repository: "group/repo",
+        forge: "gitlab.example.com",
+        path: "group/repo",
         number: 3,
       },
     ]);
@@ -749,8 +748,8 @@ describe("GitLabForgeConnector", () => {
       limit: 1,
     })).resolves.toEqual([
       {
-        source: "gitlab.example.com",
-        repository: "group/repo",
+        forge: "gitlab.example.com",
+        path: "group/repo",
         number: 2,
       },
     ]);
@@ -780,7 +779,7 @@ describe("GitLabForgeConnector", () => {
       ]);
     };
     const connector = new GitLabForgeConnector({
-      source: "gitlab.example.com",
+      forge: "gitlab.example.com",
       provider: "gitlab",
       host: "gitlab.example.com",
       token: "secret",
@@ -792,13 +791,13 @@ describe("GitLabForgeConnector", () => {
       limit: 2,
     })).resolves.toEqual([
       {
-        source: "gitlab.example.com",
-        repository: "group/repo",
+        forge: "gitlab.example.com",
+        path: "group/repo",
         number: 2,
       },
       {
-        source: "gitlab.example.com",
-        repository: "group/repo",
+        forge: "gitlab.example.com",
+        path: "group/repo",
         number: 1,
       },
     ]);
@@ -845,15 +844,15 @@ describe("GitLabForgeConnector", () => {
         },
       ]);
     const connector = new GitLabForgeConnector({
-      source: "gitlab.example.com",
+      forge: "gitlab.example.com",
       provider: "gitlab",
       host: "gitlab.example.com",
       token: "secret",
     }, { fetch });
 
     await expect(connector.comments!({
-      source: "gitlab.example.com",
-      repository: "group/repo",
+      forge: "gitlab.example.com",
+      path: "group/repo",
       number: 5,
     })).resolves.toEqual([
       {

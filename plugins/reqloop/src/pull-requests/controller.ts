@@ -59,8 +59,8 @@ function sameIdentity(
   right: PullRequestIdentity,
 ): boolean {
   return (
-    left.source === right.source &&
-    left.repository === right.repository &&
+    left.forge === right.forge &&
+    left.path === right.path &&
     left.number === right.number
   );
 }
@@ -229,7 +229,7 @@ function associationAsk(
     timeoutMs: USER_DECISION_TIMEOUT_MS,
     title: "Associate pull request",
     prompt:
-      `Which Requirement should ${identity.repository} PR/MR ${identity.number} join?`,
+      `Which Requirement should ${identity.path} PR/MR ${identity.number} join?`,
     choices: [
       ...requirements.map((requirement) => ({
         value: requirementOptionId(requirement.metadata.name),
@@ -270,7 +270,7 @@ function mergeConflictFollowUpText(
   identity: PullRequestIdentity,
   url: string | undefined,
 ): string {
-  const target = `${identity.repository} PR/MR ${identity.number}`;
+  const target = `${identity.path} PR/MR ${identity.number}`;
   return [
     `Resolve the merge conflicts for ${target}${url ? ` (${url})` : ""}.`,
     "",
@@ -294,12 +294,12 @@ export function createPullRequestController(
   PullRequestSpec,
   PullRequestStatus
 > {
-  const connectorsBySource = new Map<string, ForgeConnector>();
+  const connectorsByForge = new Map<string, ForgeConnector>();
   for (const connector of connectors) {
-    if (connectorsBySource.has(connector.source)) {
-      throw new Error(`duplicate ForgeConnector source: ${connector.source}`);
+    if (connectorsByForge.has(connector.forge)) {
+      throw new Error(`duplicate ForgeConnector: ${connector.forge}`);
     }
-    connectorsBySource.set(connector.source, connector);
+    connectorsByForge.set(connector.forge, connector);
   }
   const controllerSources: ControllerSource<PullRequestSpec>[] = [
     ...sources,
@@ -362,7 +362,7 @@ export function createPullRequestController(
       // Requirement completion policy. Closed and settled merged PRs are final.
       if (observationComplete(current.status)) return;
       const { identity } = current.spec;
-      const connector = connectorsBySource.get(identity.source);
+      const connector = connectorsByForge.get(identity.forge);
       if (connector) {
         const pollIntervalMs = await hasRecentWriteActivity(identity)
           ? PULL_REQUEST_ACTIVE_POLL_INTERVAL_MS
@@ -401,7 +401,7 @@ export function createPullRequestController(
             title: "Merge conflict found",
             prompt:
               `Ask the current Harness to resolve merge conflicts for ` +
-              `${identity.repository} PR/MR ${identity.number}?`,
+              `${identity.path} PR/MR ${identity.number}?`,
             choices: [
               {
                 value: MERGE_CONFLICT_ACTION_ACCEPT,
@@ -595,7 +595,7 @@ export function createPullRequestController(
           : -100;
       return {
         title:
-          `${resource.spec.identity.repository} #` +
+          `${resource.spec.identity.path} #` +
           resource.spec.identity.number,
         ...(resource.status.url ? { url: resource.status.url } : {}),
         status: status.length > 0 ? status.join(" · ") : "Open",

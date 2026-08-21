@@ -73,10 +73,10 @@ export class ForgeCodeReviewSource implements Source<CodeReviewSpec> {
     } = {},
   ) {
     for (const connector of connectors) {
-      if (this.connectors.has(connector.source)) {
-        throw new Error(`duplicate ForgeConnector source: ${connector.source}`);
+      if (this.connectors.has(connector.forge)) {
+        throw new Error(`duplicate ForgeConnector: ${connector.forge}`);
       }
-      this.connectors.set(connector.source, connector);
+      this.connectors.set(connector.forge, connector);
     }
     this.logger = options.logger;
     this.maxPullRequests = positiveInteger(
@@ -142,7 +142,7 @@ export class ForgeCodeReviewSource implements Source<CodeReviewSpec> {
     for (const pullRequest of pullRequests) {
       if (context.signal.aborted) return;
       const identity = pullRequest.spec.identity;
-      const connector = this.connectors.get(identity.source);
+      const connector = this.connectors.get(identity.forge);
       if (!connector?.comments) continue;
       try {
         const comments = await connector.comments(identity);
@@ -162,7 +162,7 @@ export class ForgeCodeReviewSource implements Source<CodeReviewSpec> {
           error,
           attributes: {
             pullRequest:
-              `${identity.source}/${identity.repository}#${identity.number}`,
+              `${identity.forge}/${identity.path}#${identity.number}`,
           },
         });
         context.reportError(error);
