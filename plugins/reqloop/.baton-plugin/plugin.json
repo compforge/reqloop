@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "pluginId": "compforge/reqloop",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "entry": "./src/index.ts",
   "displayName": "ReqLoop",
   "description": "Requirement and deployment coordination with global Environment and Service visibility."
