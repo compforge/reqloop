@@ -1,6 +1,11 @@
 # ReqLoop releases
 
-Current version: `0.3.0`
+Current version: `0.3.1`
+
+## 0.3.1
+
+- Clear stale deployment revision, artifact, workload, and object observations
+  whenever a Service becomes unavailable.
 
 ## 0.3.0
 

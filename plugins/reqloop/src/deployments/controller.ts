@@ -83,6 +83,22 @@ function servicePriority(phase: ServicePhase): number {
   return 100;
 }
 
+/** @rule An unavailable Service must not expose facts from an earlier successful observation. */
+function unavailableServiceStatus(
+  observedAt: string,
+  message: string,
+): Partial<ServiceStatus> {
+  return {
+    phase: "unavailable",
+    deployedRevision: null,
+    artifacts: Object.freeze([]),
+    workloads: Object.freeze([]),
+    objects: Object.freeze([]),
+    observedAt,
+    message,
+  };
+}
+
 export function createComponentController(
   sources: readonly Source<ComponentSpec>[] = [],
 ): Controller<ComponentSpec, ComponentStatus> {
@@ -243,11 +259,13 @@ export function createServiceController(
         resource.spec.environment,
       );
       if (!environment) {
-        await resources.patchStatus(resource, {
-          phase: "unavailable",
-          observedAt,
-          message: `Environment is not materialized: ${resource.spec.environment.name}`,
-        });
+        await resources.patchStatus(
+          resource,
+          unavailableServiceStatus(
+            observedAt,
+            `Environment is not materialized: ${resource.spec.environment.name}`,
+          ),
+        );
         return;
       }
       const target = kubernetesTarget(
@@ -255,20 +273,24 @@ export function createServiceController(
         resource.spec.deployment.target,
       );
       if (!target) {
-        await resources.patchStatus(resource, {
-          phase: "unavailable",
-          observedAt,
-          message: `Environment Kubernetes target is not available: ${resource.spec.deployment.target}`,
-        });
+        await resources.patchStatus(
+          resource,
+          unavailableServiceStatus(
+            observedAt,
+            `Environment Kubernetes target is not available: ${resource.spec.deployment.target}`,
+          ),
+        );
         return;
       }
       const connector = connectorMap.get(target.source);
       if (!connector) {
-        await resources.patchStatus(resource, {
-          phase: "unavailable",
-          observedAt,
-          message: `Kubernetes Connector is not configured: ${target.source}`,
-        });
+        await resources.patchStatus(
+          resource,
+          unavailableServiceStatus(
+            observedAt,
+            `Kubernetes Connector is not configured: ${target.source}`,
+          ),
+        );
         return;
       }
       try {
@@ -281,11 +303,10 @@ export function createServiceController(
           message: null,
         });
       } catch (error) {
-        await resources.patchStatus(resource, {
-          phase: "unavailable",
-          observedAt,
-          message: errorMessage(error),
-        });
+        await resources.patchStatus(
+          resource,
+          unavailableServiceStatus(observedAt, errorMessage(error)),
+        );
       }
     },
     async present(resource) {

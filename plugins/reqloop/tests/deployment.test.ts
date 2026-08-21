@@ -402,6 +402,7 @@ describe("Kubernetes deployment observation", () => {
       {},
     );
     const resources = memoryResources([environment, service]);
+    let serviceObservationError: Error | undefined;
     const connector: KubernetesConnector = {
       source: "dev-cluster",
       async observeEnvironment() {
@@ -411,6 +412,7 @@ describe("Kubernetes deployment observation", () => {
         };
       },
       async observeService() {
+        if (serviceObservationError) throw serviceObservationError;
         return {
           phase: "ready",
           deployedRevision: "sha-abc123",
@@ -453,7 +455,7 @@ describe("Kubernetes deployment observation", () => {
       [connector],
     );
     await serviceController.reconcile({} as never, service);
-    const current = resources.get<ServiceSpec, ServiceStatus>(
+    let current = resources.get<ServiceSpec, ServiceStatus>(
       SERVICE_RESOURCE_TYPE,
       service.metadata.name,
     )!;
@@ -478,5 +480,25 @@ describe("Kubernetes deployment observation", () => {
       name: service.metadata.name,
       namespace: "v1",
     }]);
+
+    serviceObservationError = new Error("cluster unavailable");
+    await serviceController.reconcile({} as never, current);
+    current = resources.get<ServiceSpec, ServiceStatus>(
+      SERVICE_RESOURCE_TYPE,
+      service.metadata.name,
+    )!;
+    expect(current.status).toMatchObject({
+      phase: "unavailable",
+      deployedRevision: null,
+      artifacts: [],
+      workloads: [],
+      objects: [],
+      message: "cluster unavailable",
+    });
+    expect(await serviceController.present?.(current)).toMatchObject({
+      status: "dev · unavailable",
+      detail: "cluster unavailable",
+      tone: "error",
+    });
   });
 });
