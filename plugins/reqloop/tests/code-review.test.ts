@@ -170,7 +170,6 @@ function codeReviewClient(
   const deleted: string[] = [];
   return {
     client: {
-      namespace: TEST_NAMESPACE,
       async get<TSpec, TStatus>(
         ref: ResourceRef,
       ): Promise<Readonly<Resource<TSpec, TStatus>> | undefined> {
@@ -319,6 +318,7 @@ describe("CodeReview Resource", () => {
     expect(emitted).toEqual([
       {
         name: expect.stringMatching(/^code-review-/),
+        namespace: "v1",
         spec: {
           pullRequest: PULL_REQUEST,
           runKey: "summary-1",
@@ -327,6 +327,7 @@ describe("CodeReview Resource", () => {
       },
       {
         name: expect.stringMatching(/^code-review-/),
+        namespace: "v1",
         spec: {
           pullRequest: PULL_REQUEST,
           runKey: "summary-2",

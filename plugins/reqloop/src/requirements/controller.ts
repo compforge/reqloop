@@ -2,6 +2,7 @@ import type {
   Controller,
   Resource,
   ResourceClient,
+  ResourceNamespace,
   ToastSink,
 } from "@compforge/baton-plugin";
 
@@ -75,7 +76,10 @@ const enqueueLinkedRequirement = enqueueRequestsFromMapFunc<
   ) {
     return [];
   }
-  return [{ name: association.requirement.name }];
+  return [{
+    name: association.requirement.name,
+    namespace: pullRequest.metadata.namespace as ResourceNamespace,
+  }];
 });
 
 async function linkedPullRequests(
@@ -84,6 +88,7 @@ async function linkedPullRequests(
 ): Promise<readonly Readonly<Resource<PullRequestSpec, PullRequestStatus>>[]> {
   return (await resources.list<PullRequestSpec, PullRequestStatus>(
     PULL_REQUEST_RESOURCE_TYPE,
+    { namespace: requirement.metadata.namespace as ResourceNamespace },
   ))
     .filter(({ status }) =>
       status.requirementAssociation?.state === "linked" &&
@@ -251,7 +256,11 @@ export function createRequirementController(
               "RequirementConnector returned a different Requirement",
             );
           }
-          current = await upsertRequirement(resources, observation);
+          current = await upsertRequirement(
+            resources,
+            observation,
+            current.metadata.namespace as ResourceNamespace,
+          );
           current = await resources.patchStatus(current, {
             lastObservedAt: new Date().toISOString(),
           });

@@ -30,11 +30,9 @@ import reqloop, {
   CODE_REVIEW_RESOURCE_TYPE,
   type CodeReviewSpec,
   createReqloopPackage,
-  DevloopCodeReviewSource,
   DevloopPullRequestSource,
   DevloopToolActivityPolicy,
   type ForgeConnector,
-  ForgeCodeReviewSource,
   ForgePullRequestSource,
   interpretToolActivity,
   REPOSITORY_RESOURCE_TYPE,
@@ -47,7 +45,6 @@ import reqloop, {
   REQUIREMENT_RESOURCE_TYPE,
   type WorkspaceSpec,
   WorkspaceRepositorySource,
-  WorkspaceSource,
   WORKSPACE_RESOURCE_TYPE,
 } from "../src/index.ts";
 
@@ -126,7 +123,6 @@ describe("ReqLoop PluginPackage", () => {
     ) as {
       pluginId: string;
       version: string;
-      namespace: "v1/project";
       entry: string;
     };
     const packageJson = JSON.parse(
@@ -136,8 +132,7 @@ describe("ReqLoop PluginPackage", () => {
     expect(reqloop.pluginId).toBe(manifest.pluginId);
     expect(reqloop.version).toBe(manifest.version);
     expect(packageJson.version).toBe(manifest.version);
-    expect(manifest.namespace).toBe("v1/project");
-    expect(reqloop.namespace).toBe(manifest.namespace);
+    expect("namespace" in manifest).toBe(false);
     expect(manifest.entry).toBe("./src/index.ts");
   });
 
@@ -522,9 +517,10 @@ describe("ReqLoop PluginPackage", () => {
       REPOSITORY_RESOURCE_TYPE,
       WORKSPACE_RESOURCE_TYPE,
     ]);
-    expect(workspaceController?.sources?.[0]).toBeInstanceOf(
-      WorkspaceSource,
-    );
+    expect(workspaceController?.sources?.[0]).toMatchObject({
+      type: "resource",
+      sourceId: "workspace-filesystem",
+    });
     expect(logs).toContainEqual({
       level: "info",
       message: "ReqLoop activated",
@@ -926,16 +922,28 @@ describe("ReqLoop PluginPackage", () => {
     }).activate(context);
 
     expect(controllers.get(REPOSITORY_RESOURCE_TYPE.kind)?.sources).toEqual([
-      repositorySource,
+      expect.objectContaining({
+        type: repositorySource.type,
+        sourceId: repositorySource.sourceId,
+      }),
     ]);
     expect(
       controllers.get(PULL_REQUEST_RESOURCE_TYPE.kind)?.sources?.[0],
-    ).toBe(pullRequestSource);
+    ).toEqual(expect.objectContaining({
+      type: pullRequestSource.type,
+      sourceId: pullRequestSource.sourceId,
+    }));
     expect(
       controllers.get(CODE_REVIEW_RESOURCE_TYPE.kind)?.sources,
-    ).toEqual([codeReviewSource]);
+    ).toEqual([expect.objectContaining({
+      type: codeReviewSource.type,
+      sourceId: codeReviewSource.sourceId,
+    })]);
     expect(controllers.get(WORKSPACE_RESOURCE_TYPE.kind)?.sources).toEqual([
-      workspaceSource,
+      expect.objectContaining({
+        type: workspaceSource.type,
+        sourceId: workspaceSource.sourceId,
+      }),
       {
         type: "cron",
         sourceId: "workspace-resync",
@@ -986,12 +994,13 @@ describe("ReqLoop PluginPackage", () => {
     ]);
     const defaultCodeReviewSources =
       controllers.get(CODE_REVIEW_RESOURCE_TYPE.kind)?.sources;
-    expect(defaultCodeReviewSources?.[0]).toBeInstanceOf(
-      ForgeCodeReviewSource,
-    );
-    expect(defaultCodeReviewSources?.[1]).toBeInstanceOf(
-      DevloopCodeReviewSource,
-    );
+    expect(defaultCodeReviewSources?.map(({ type, sourceId }) => ({
+      type,
+      sourceId,
+    }))).toEqual([
+      { type: "resource", sourceId: "forge-code-review" },
+      { type: "resource", sourceId: "devloop-code-review" },
+    ]);
   });
 
 });

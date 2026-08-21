@@ -40,7 +40,6 @@ function resourceClient(): {
     | Readonly<Resource<PullRequestSpec, PullRequestStatus>>
     | undefined;
   const client = {
-    namespace: TEST_NAMESPACE,
     get(ref: ResourceRef) {
       const candidate = [resource, pullRequest].find((item) =>
         item?.apiVersion === ref.apiVersion &&
@@ -304,19 +303,22 @@ describe("Requirement Resource", () => {
     expect(await watch?.handler.update({
       oldObject: pullRequest,
       newObject: linked,
-    })).toEqual([{ name: requirement.metadata.name }]);
+    })).toEqual([{
+      name: requirement.metadata.name,
+      namespace: TEST_NAMESPACE,
+    }]);
     expect(await watch?.handler.create({ object: linked })).toEqual([
-      { name: requirement.metadata.name },
+      { name: requirement.metadata.name, namespace: TEST_NAMESPACE },
     ]);
     expect(await watch?.handler.update({
       oldObject: linked,
       newObject: moved,
     })).toEqual([
-      { name: requirement.metadata.name },
-      { name: "req_other" },
+      { name: requirement.metadata.name, namespace: TEST_NAMESPACE },
+      { name: "req_other", namespace: TEST_NAMESPACE },
     ]);
     expect(await watch?.handler.delete({ object: moved })).toEqual([
-      { name: "req_other" },
+      { name: "req_other", namespace: TEST_NAMESPACE },
     ]);
   });
 

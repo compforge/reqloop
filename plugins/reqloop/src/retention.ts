@@ -2,6 +2,7 @@ import type {
   Controller,
   Resource,
   ResourceClient,
+  ResourceNamespace,
 } from "@compforge/baton-plugin";
 
 export const DELETE_AFTER_ANNOTATION =
@@ -58,6 +59,7 @@ export function withUserDeletionPolicy<TSpec, TStatus>(
             kind: resource.kind,
           },
           resource.metadata.name,
+          resource.metadata.namespace as ResourceNamespace,
         );
         return;
       }
