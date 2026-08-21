@@ -15,7 +15,7 @@ Harness Plugin 则约束 Harness 内部的开发小闭环。
 ![Baton、Plugin 与 Harness](./docs/baton-plugin-harness.svg)
 
 ReqLoop 当前接入需求平台、Forge、devloop 和 Kubernetes observation，把外部状态和用户的持久
-决定整理为 Resource。全局 Component/Environment/Service 目录已经提供只读部署视图；Delivery、
+决定整理为 Resource。全局 Product/Component/Environment/Service 目录已经提供只读部署视图；Delivery、
 Evaluation 和部署写操作仍是长期方向。
 
 ![ReqLoop 工作框图](./docs/reqloop-workflow.svg)
@@ -36,7 +36,7 @@ Evaluation 和部署写操作仍是长期方向。
 
 本仓库随 Baton 的 Plugin host 与 per-Instance Worker 进程一起演进。Hello 验证最小 Package
 生命周期，Hello Counter 和 Turn Coach 验证 Resource/Reconcile、Baton-owned Resource watch
-和持久 Proposal；ReqLoop 协调全局 Component、Environment、Service 与 Project 下的开发闭环
+和持久 Proposal；ReqLoop 协调全局 Product、Component、Environment、Service 与 Project 下的开发闭环
 Resource，并汇总需求平台、Forge、devloop 与 Kubernetes observation。
 
 ## 在 Baton 中安装和使用

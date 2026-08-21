@@ -33,6 +33,15 @@ afterEach(() => {
 });
 
 describe("ReqLoop scoped configuration", () => {
+  test("requires config format version 2", () => {
+    const path = join(testRoot(), "config.json");
+    writeFileSync(path, JSON.stringify({ version: 1 }));
+
+    expect(() => loadReqloopConfig(path)).toThrow(
+      "reqloop config version must be 2",
+    );
+  });
+
   test("resolves only global, Project, and Session config paths", () => {
     expect(reqloopConfigPaths({
       global: "/global",
@@ -54,7 +63,7 @@ describe("ReqLoop scoped configuration", () => {
     mkdirSync(project);
     mkdirSync(session);
     writeFileSync(join(global, "config.json"), JSON.stringify({
-      version: 1,
+      version: 2,
       forges: {
         "github.com": {
           type: "github",
@@ -70,7 +79,7 @@ describe("ReqLoop scoped configuration", () => {
       },
     }));
     writeFileSync(join(project, "config.json"), JSON.stringify({
-      version: 1,
+      version: 2,
       forges: {
         "github.com": {
           api_host: "github.example.com",
@@ -88,7 +97,7 @@ describe("ReqLoop scoped configuration", () => {
       project,
       session,
     }))).toEqual({
-      version: 1,
+      version: 2,
       forges: {
         "github.com": {
           type: "github",

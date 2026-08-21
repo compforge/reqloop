@@ -15,6 +15,7 @@ import type {
   EnvironmentSpec,
   EnvironmentTarget,
   KubernetesServiceDeployment,
+  ProductSpec,
   ServiceSpec,
 } from "./protocol.ts";
 import {
@@ -22,7 +23,9 @@ import {
   environmentResourceName,
   normalizeComponentSpec,
   normalizeEnvironmentSpec,
+  normalizeProductSpec,
   normalizeServiceSpec,
+  productResourceName,
   serviceResourceName,
 } from "./resource.ts";
 
@@ -33,6 +36,7 @@ export interface KubernetesConnectorConfig {
 }
 
 export interface DeploymentCatalog {
+  readonly products: readonly ProductSpec[];
   readonly components: readonly ComponentSpec[];
   readonly environments: readonly EnvironmentSpec[];
   readonly services: readonly ServiceSpec[];
@@ -115,146 +119,173 @@ function environmentTargets(
   }));
 }
 
-/** Reads the global Component, Environment, and Service catalog. */
+/** Reads the global Product deployment catalog. */
 export function loadDeploymentCatalog(
   paths: ReqloopConfigPaths,
 ): DeploymentCatalog {
   const root = loadReqloopConfig(paths);
-  const componentsByKey = new Map<string, ComponentSpec>();
-  for (const [rawName, rawComponent] of Object.entries(
-    configMap(root, "components"),
-  )) {
-    const name = requiredString("reqloop component name", rawName);
-    const component = jsonObject(`reqloop component ${name}`, rawComponent);
-    const spec = normalizeComponentSpec({
-      identity: {
-        product: requiredString(
-          `reqloop component ${name} product`,
-          component.product,
-        ),
-        name,
-      },
-      displayName: optionalString(
-        `reqloop component ${name} displayName`,
-        component.displayName,
-      ),
-      description: optionalString(
-        `reqloop component ${name} description`,
-        component.description,
-      ),
-    });
-    componentsByKey.set(name, spec);
-  }
-
-  const environmentsByKey = new Map<string, EnvironmentSpec>();
-  for (const [rawName, rawEnvironment] of Object.entries(
-    configMap(root, "environments"),
-  )) {
-    const name = requiredString("reqloop environment name", rawName);
-    const environment = jsonObject(
-      `reqloop environment ${name}`,
-      rawEnvironment,
-    );
-    const spec = normalizeEnvironmentSpec({
-      identity: { name },
-      displayName: optionalString(
-        `reqloop environment ${name} displayName`,
-        environment.displayName,
-      ),
-      description: optionalString(
-        `reqloop environment ${name} description`,
-        environment.description,
-      ),
-      targets: environmentTargets(name, environment.targets),
-    });
-    environmentsByKey.set(name, spec);
-  }
-
+  const products: ProductSpec[] = [];
+  const components: ComponentSpec[] = [];
+  const environments: EnvironmentSpec[] = [];
   const services: ServiceSpec[] = [];
   const serviceNames = new Set<string>();
-  for (const [rawKey, rawService] of Object.entries(
-    configMap(root, "services"),
+  for (const [rawProductName, rawProduct] of Object.entries(
+    configMap(root, "products"),
   )) {
-    const key = requiredString("reqloop service key", rawKey);
-    const service = jsonObject(`reqloop service ${key}`, rawService);
-    const componentKey = requiredString(
-      `reqloop service ${key} component`,
-      service.component,
-    );
-    const environmentKey = requiredString(
-      `reqloop service ${key} environment`,
-      service.environment,
-    );
-    const component = componentsByKey.get(componentKey);
-    if (!component) {
-      throw new Error(
-        `reqloop service ${key} references unknown Component: ${componentKey}`,
-      );
-    }
-    const environment = environmentsByKey.get(environmentKey);
-    if (!environment) {
-      throw new Error(
-        `reqloop service ${key} references unknown Environment: ${environmentKey}`,
-      );
-    }
-    const deployment = jsonObject(
-      `reqloop service ${key} deployment`,
-      service.deployment,
-    );
-    if (deployment.kind !== "kubernetes") {
-      throw new Error(
-        `reqloop service ${key} deployment kind must be "kubernetes"`,
-      );
-    }
-    const kubernetes: KubernetesServiceDeployment = {
-      kind: "kubernetes",
-      target: requiredString(
-        `reqloop service ${key} Kubernetes target`,
-        deployment.target,
+    const productName = requiredString("reqloop product name", rawProductName);
+    const product = jsonObject(`reqloop product ${productName}`, rawProduct);
+    products.push(normalizeProductSpec({
+      identity: { name: productName },
+      displayName: optionalString(
+        `reqloop product ${productName} displayName`,
+        product.displayName,
       ),
-      namespace: requiredString(
-        `reqloop service ${key} Kubernetes namespace`,
-        deployment.namespace,
+      description: optionalString(
+        `reqloop product ${productName} description`,
+        product.description,
       ),
-      deployments: strings(
-        `reqloop service ${key} Kubernetes deployments`,
-        deployment.deployments,
-      ),
-      services: optionalStrings(
-        `reqloop service ${key} Kubernetes services`,
-        deployment.services,
-      ),
-      configMaps: optionalStrings(
-        `reqloop service ${key} Kubernetes configMaps`,
-        deployment.configMaps,
-      ),
-    };
-    if (!environment.targets.some(({ name, kind }) =>
-      kind === "kubernetes" && name === kubernetes.target
+    }));
+
+    const componentsByKey = new Map<string, ComponentSpec>();
+    for (const [rawName, rawComponent] of Object.entries(
+      configMap(product, "components"),
     )) {
-      throw new Error(
-        `reqloop service ${key} references unknown Kubernetes target: ${kubernetes.target}`,
+      const name = requiredString("reqloop component name", rawName);
+      const qualifiedName = `${productName}/${name}`;
+      const component = jsonObject(
+        `reqloop component ${qualifiedName}`,
+        rawComponent,
       );
+      const spec = normalizeComponentSpec({
+        identity: { product: productName, name },
+        displayName: optionalString(
+          `reqloop component ${qualifiedName} displayName`,
+          component.displayName,
+        ),
+        description: optionalString(
+          `reqloop component ${qualifiedName} description`,
+          component.description,
+        ),
+      });
+      componentsByKey.set(name, spec);
+      components.push(spec);
     }
-    const spec = normalizeServiceSpec({
-      component: component.identity,
-      environment: environment.identity,
-      deployment: kubernetes,
-      url: optionalString(`reqloop service ${key} url`, service.url),
-    });
-    const name = serviceResourceName(spec);
-    if (serviceNames.has(name)) {
-      throw new Error(
-        `duplicate Service for ${componentKey} in ${environmentKey}`,
+
+    const environmentsByKey = new Map<string, EnvironmentSpec>();
+    for (const [rawName, rawEnvironment] of Object.entries(
+      configMap(product, "environments"),
+    )) {
+      const name = requiredString("reqloop environment name", rawName);
+      const qualifiedName = `${productName}/${name}`;
+      const environment = jsonObject(
+        `reqloop environment ${qualifiedName}`,
+        rawEnvironment,
       );
+      const spec = normalizeEnvironmentSpec({
+        identity: { product: productName, name },
+        displayName: optionalString(
+          `reqloop environment ${qualifiedName} displayName`,
+          environment.displayName,
+        ),
+        description: optionalString(
+          `reqloop environment ${qualifiedName} description`,
+          environment.description,
+        ),
+        targets: environmentTargets(qualifiedName, environment.targets),
+      });
+      environmentsByKey.set(name, spec);
+      environments.push(spec);
     }
-    serviceNames.add(name);
-    services.push(spec);
+
+    for (const [rawKey, rawService] of Object.entries(
+      configMap(product, "services"),
+    )) {
+      const key = requiredString("reqloop service key", rawKey);
+      const qualifiedKey = `${productName}/${key}`;
+      const service = jsonObject(`reqloop service ${qualifiedKey}`, rawService);
+      const componentKey = requiredString(
+        `reqloop service ${qualifiedKey} component`,
+        service.component,
+      );
+      const environmentKey = requiredString(
+        `reqloop service ${qualifiedKey} environment`,
+        service.environment,
+      );
+      const component = componentsByKey.get(componentKey);
+      if (!component) {
+        throw new Error(
+          `reqloop service ${qualifiedKey} references unknown Component: ${componentKey}`,
+        );
+      }
+      const environment = environmentsByKey.get(environmentKey);
+      if (!environment) {
+        throw new Error(
+          `reqloop service ${qualifiedKey} references unknown Environment: ${environmentKey}`,
+        );
+      }
+      const deployment = jsonObject(
+        `reqloop service ${qualifiedKey} deployment`,
+        service.deployment,
+      );
+      if (deployment.kind !== "kubernetes") {
+        throw new Error(
+          `reqloop service ${qualifiedKey} deployment kind must be "kubernetes"`,
+        );
+      }
+      const kubernetes: KubernetesServiceDeployment = {
+        kind: "kubernetes",
+        target: requiredString(
+          `reqloop service ${qualifiedKey} Kubernetes target`,
+          deployment.target,
+        ),
+        namespace: requiredString(
+          `reqloop service ${qualifiedKey} Kubernetes namespace`,
+          deployment.namespace,
+        ),
+        deployments: strings(
+          `reqloop service ${qualifiedKey} Kubernetes deployments`,
+          deployment.deployments,
+        ),
+        services: optionalStrings(
+          `reqloop service ${qualifiedKey} Kubernetes services`,
+          deployment.services,
+        ),
+        configMaps: optionalStrings(
+          `reqloop service ${qualifiedKey} Kubernetes configMaps`,
+          deployment.configMaps,
+        ),
+      };
+      if (!environment.targets.some(({ name, kind }) =>
+        kind === "kubernetes" && name === kubernetes.target
+      )) {
+        throw new Error(
+          `reqloop service ${qualifiedKey} references unknown Kubernetes target: ${kubernetes.target}`,
+        );
+      }
+      const spec = normalizeServiceSpec({
+        component: component.identity,
+        environment: environment.identity,
+        deployment: kubernetes,
+        url: optionalString(
+          `reqloop service ${qualifiedKey} url`,
+          service.url,
+        ),
+      });
+      const name = serviceResourceName(spec);
+      if (serviceNames.has(name)) {
+        throw new Error(
+          `duplicate Service for ${productName}/${componentKey} in ${productName}/${environmentKey}`,
+        );
+      }
+      serviceNames.add(name);
+      services.push(spec);
+    }
   }
 
   return Object.freeze({
-    components: Object.freeze([...componentsByKey.values()]),
-    environments: Object.freeze([...environmentsByKey.values()]),
+    products: Object.freeze(products),
+    components: Object.freeze(components),
+    environments: Object.freeze(environments),
     services: Object.freeze(services),
   });
 }
@@ -313,11 +344,19 @@ class CatalogSource<TSpec> implements Source<TSpec> {
 }
 
 export function deploymentCatalogSources(catalog: DeploymentCatalog): {
+  readonly products: readonly Source<ProductSpec>[];
   readonly components: readonly Source<ComponentSpec>[];
   readonly environments: readonly Source<EnvironmentSpec>[];
   readonly services: readonly Source<ServiceSpec>[];
 } {
   return Object.freeze({
+    products: [new CatalogSource(
+      "deployment-catalog-products",
+      catalog.products.map((spec) => ({
+        name: productResourceName(spec.identity),
+        spec,
+      })),
+    )],
     components: [new CatalogSource(
       "deployment-catalog-components",
       catalog.components.map((spec) => ({

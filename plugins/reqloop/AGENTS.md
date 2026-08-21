@@ -4,7 +4,7 @@
 
 `compforge/reqloop` 是 reqloop Marketplace 中负责 Requirement Loop 的 Baton Plugin。它在
 Baton core 之外拥有 Requirement、Workspace、Repository、PullRequest、CodeReview，以及
-Component、Environment、Service 领域模型，
+Product、Component、Environment、Service 领域模型，
 通过 Baton 的 Resource、Controller、Source、Watch、Board、Mention、Context 和 Plugin verb 契约运行。
 
 当前阶段以观察、关联、提醒和建议为主：可以读取需求平台、Forge、devloop 与 Kubernetes 事实，
@@ -34,7 +34,7 @@ plugins/reqloop/
 │   ├── index.ts                  # PluginPackage 装配与唯一注册入口
 │   ├── config.ts                 # global/project/session 配置覆盖
 │   ├── retention.ts              # 用户显式删除期限 policy
-│   ├── deployments/              # 全局 Component/Environment/Service 与 Kubernetes 感知
+│   ├── deployments/              # 全局 Product 部署目录与 Kubernetes 感知
 │   ├── workspaces/               # Project 观察根与 checkout 发现
 │   ├── repositories/             # 仓库观察范围与 PR 集合汇总
 │   ├── pull-requests/            # PR/MR 准入、Forge/devloop 观察与用户决定
@@ -53,7 +53,9 @@ Resource 身份与状态写入，`controller.ts` 负责 reconcile 和 Board proj
 
 ## 关键约定
 
-1. **Resource 身份与事实 owner 唯一**：Component、Environment、Service 位于用户全局 `v1`；
+1. **Resource 身份与事实 owner 唯一**：Product、Component、Environment、Service 位于用户全局 `v1`；
+   Product 按 name 唯一并拥有部署目录，Component 与 Environment 均按 `product + name` 唯一，
+   Service 的 Component 与 Environment 必须属于同一 Product；
    其余领域 Resource 写入稳定的 `v1/project/<project-id>` namespace，Workspace 是 Project
    逻辑观察根；同一目录的多个 Session 共享一组 Resource。PluginPackage 本身不声明 namespace。
    Repository 按
@@ -82,7 +84,8 @@ Resource 身份与状态写入，`controller.ts` 负责 reconcile 和 Board proj
    修改本 Plugin 的代码时，同一变更必须通过 `make bump-version`
    （`PLUGIN=reqloop VERSION=<next>`）同步 Package、manifest、package.json 与发布记录；
    纯文档改动不单独 bump。
-6. **Environment 拥有部署基础设施**：Kubernetes 是 Environment 的显式 target 类型，但不是
+6. **Product 拥有部署目录，Environment 拥有部署基础设施**：Product 收拢 Component、Environment
+   与 Service 的归属；Kubernetes 是 Environment 的显式 target 类型，但不是
    Environment 的定义；Service 引用 target 并声明具体 K8s 对象映射。Connector 只保存
    kubeconfig/context 等访问细节并进行只读观察，详见 `docs/deployment.md`。
 
@@ -90,8 +93,8 @@ Resource 身份与状态写入，`controller.ts` 负责 reconcile 和 Board proj
 
 - `README.md` — 安装、配置和当前用户能力
 - `RELEASE.md` — 当前版本与发布记录
-- `docs/domain-model.md` — 八种 Resource 的身份、owner 与 Board 语义
-- `docs/deployment.md` — Component、Environment、Service 与 Kubernetes 感知
+- `docs/domain-model.md` — 九种 Resource 的身份、owner 与 Board 语义
+- `docs/deployment.md` — Product 部署目录与 Kubernetes 感知
 - `docs/reconcile.md` — Command/Source/Watch/Controller 流程、保留与恢复
 - `docs/integrations.md` — Requirement/Forge/devloop/Harness 集成边界
 - `docs/roadmap.md` — 尚未实现的长期闭环与引入新概念的条件

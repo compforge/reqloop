@@ -28,8 +28,8 @@ ReqLoop。Harness 负责智能执行，devloop 约束 Harness 内的开发小闭
 
 当前已落地：
 
-- Requirement、Workspace、Repository、PullRequest、CodeReview，以及全局 Component、
-  Environment、Service 八种 Resource；
+- Requirement、Workspace、Repository、PullRequest、CodeReview，以及全局 Product、Component、
+  Environment、Service 九种 Resource；
 - 需求选择、Forge/devloop 观察、PR 与 Requirement 的持久关联；
 - CodeReview 的 devloop 触发、Forge comment/finding label 收敛、review 决定、PR Board
   聚合和短期 TTL；

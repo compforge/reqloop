@@ -16,6 +16,8 @@ import type {
   EnvironmentTargetStatus,
   KubernetesConnector,
   KubernetesEnvironmentTarget,
+  ProductSpec,
+  ProductStatus,
   ServicePhase,
   ServiceSpec,
   ServiceStatus,
@@ -23,6 +25,7 @@ import type {
 import {
   COMPONENT_RESOURCE_TYPE,
   ENVIRONMENT_RESOURCE_TYPE,
+  PRODUCT_RESOURCE_TYPE,
   SERVICE_RESOURCE_TYPE,
 } from "./resource.ts";
 
@@ -109,6 +112,16 @@ export function createComponentController(
   };
 }
 
+export function createProductController(
+  sources: readonly Source<ProductSpec>[] = [],
+): Controller<ProductSpec, ProductStatus> {
+  return {
+    resourceType: PRODUCT_RESOURCE_TYPE,
+    ...(sources.length > 0 ? { sources } : {}),
+    async reconcile() {},
+  };
+}
+
 export function createEnvironmentController(
   resources: ResourceClient,
   connectors: readonly KubernetesConnector[] = [],
@@ -174,7 +187,9 @@ export function createEnvironmentController(
           `${kind}:${name} (${cluster})`
         ).join(" · ");
       return {
-        title: resource.spec.displayName ?? resource.spec.identity.name,
+        title: `${resource.spec.identity.product}/${
+          resource.spec.displayName ?? resource.spec.identity.name
+        }`,
         status: phase,
         detail: targetSummary,
         tone: environmentTone(phase),
@@ -191,7 +206,7 @@ function sameEnvironment(
   left: EnvironmentSpec["identity"],
   right: EnvironmentSpec["identity"],
 ): boolean {
-  return left.name === right.name;
+  return left.product === right.product && left.name === right.name;
 }
 
 function environmentServices(resources: ResourceClient) {
@@ -263,7 +278,7 @@ export function createServiceController(
           resource,
           unavailableServiceStatus(
             observedAt,
-            `Environment is not materialized: ${resource.spec.environment.name}`,
+            `Environment is not materialized: ${resource.spec.environment.product}/${resource.spec.environment.name}`,
           ),
         );
         return;
@@ -319,7 +334,7 @@ export function createServiceController(
       ).join(" · ") ?? "Deployment not observed";
       return {
         title: `${resource.spec.component.product}/${resource.spec.component.name}`,
-        status: `${resource.spec.environment.name} · ${phase}${revision}`,
+        status: `${resource.spec.environment.product}/${resource.spec.environment.name} · ${phase}${revision}`,
         detail: resource.status.message ?? workloads,
         ...(resource.spec.url ? { url: resource.spec.url } : {}),
         tone: serviceTone(phase),
