@@ -8,6 +8,7 @@ import type {
   Resource,
   ResourceClient,
   ResourceRef,
+  ResourceType,
   SourceContext,
 } from "@compforge/baton-plugin";
 
@@ -27,7 +28,7 @@ import {
   type PullRequestSpec,
   type PullRequestStatus,
 } from "../src/index.ts";
-import { reconcileContext } from "./reconcile-context.ts";
+import { reconcileContext, TEST_NAMESPACE } from "./reconcile-context.ts";
 
 const NOW = "2026-07-30T10:00:00.000Z";
 const PULL_REQUEST = {
@@ -139,7 +140,7 @@ function pullRequestResource(): Readonly<
     ...PULL_REQUEST_RESOURCE_TYPE,
     metadata: {
       name: "pr_68",
-      namespace: "reqloop_default",
+      namespace: TEST_NAMESPACE,
       uid: "uid-pr-68",
       generation: 1,
       resourceVersion: "1",
@@ -169,6 +170,7 @@ function codeReviewClient(
   const deleted: string[] = [];
   return {
     client: {
+      namespace: TEST_NAMESPACE,
       async get<TSpec, TStatus>(
         ref: ResourceRef,
       ): Promise<Readonly<Resource<TSpec, TStatus>> | undefined> {
@@ -190,13 +192,16 @@ function codeReviewClient(
         }
         return candidate as unknown as Readonly<Resource<TSpec, TStatus>>;
       },
-      async list(type) {
+      async list(type: ResourceType) {
         if (type.kind === PULL_REQUEST_RESOURCE_TYPE.kind) {
           return pullRequests;
         }
         return type.kind === CODE_REVIEW_RESOURCE_TYPE.kind ? [current] : [];
       },
-      async patchStatus(candidate, patch) {
+      async patchStatus(
+        candidate: Readonly<Resource<CodeReviewSpec, CodeReviewStatus>>,
+        patch: Partial<CodeReviewStatus>,
+      ) {
         current = {
           ...candidate,
           metadata: {
@@ -209,10 +214,10 @@ function codeReviewClient(
         } as typeof current;
         return current;
       },
-      async delete(_type, name) {
+      async delete(_type: ResourceType, name: string) {
         deleted.push(name);
       },
-    } as ResourceClient,
+    } as unknown as ResourceClient,
     current: () => current,
     deleted,
   };
@@ -284,6 +289,7 @@ describe("CodeReview Resource", () => {
     const emitted: Parameters<SourceContext<CodeReviewSpec>["emit"]>[0][] = [];
     const abort = new AbortController();
     const resources = {
+      namespace: TEST_NAMESPACE,
       async list(type: { kind: string }) {
         return type.kind === PULL_REQUEST_RESOURCE_TYPE.kind
           ? [pullRequestResource()]
@@ -341,7 +347,7 @@ describe("CodeReview Resource", () => {
       ...CODE_REVIEW_RESOURCE_TYPE,
       metadata: {
         name: codeReviewResourceName(spec),
-        namespace: "reqloop_default",
+        namespace: TEST_NAMESPACE,
         uid: "uid-code-review-1",
         generation: 1,
         resourceVersion: "1",
@@ -431,7 +437,7 @@ describe("CodeReview Resource", () => {
       ...CODE_REVIEW_RESOURCE_TYPE,
       metadata: {
         name: codeReviewResourceName(spec),
-        namespace: "reqloop_default",
+        namespace: TEST_NAMESPACE,
         uid: "uid-code-review-bound",
         generation: 1,
         resourceVersion: "1",

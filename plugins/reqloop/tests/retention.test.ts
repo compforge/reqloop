@@ -4,13 +4,14 @@ import type {
   Controller,
   Resource,
   ResourceClient,
+  ResourceType,
 } from "@compforge/baton-plugin";
 
 import {
   DELETE_AFTER_ANNOTATION,
   withUserDeletionPolicy,
 } from "../src/retention.ts";
-import { reconcileContext } from "./reconcile-context.ts";
+import { reconcileContext, TEST_NAMESPACE } from "./reconcile-context.ts";
 
 const TYPE = {
   apiVersion: "reqloop.baton.dev/v1alpha1",
@@ -26,7 +27,7 @@ function resource(
     ...TYPE,
     metadata: {
       name: "example",
-      namespace: "reqloop_default",
+      namespace: TEST_NAMESPACE,
       uid: "pr_example",
       generation: 1,
       resourceVersion: "1",
@@ -49,10 +50,11 @@ function resourceClient(
   deleted: Array<{ readonly kind: string; readonly name: string }>,
 ): ResourceClient {
   return {
-    async delete(type, name) {
+    namespace: TEST_NAMESPACE,
+    async delete(type: ResourceType, name: string) {
       deleted.push({ kind: type.kind, name });
     },
-  } as ResourceClient;
+  } as unknown as ResourceClient;
 }
 
 function controller(

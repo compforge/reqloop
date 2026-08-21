@@ -10,6 +10,8 @@ import type {
   ReconcileSnapshot,
 } from "@compforge/baton-plugin";
 
+export const TEST_NAMESPACE = "v1/project/project-test" as const;
+
 const SNAPSHOT: ReconcileSnapshot = {
   session: {
     batonSessionId: "bs_test",

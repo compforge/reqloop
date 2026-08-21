@@ -72,8 +72,8 @@ export function createReqloopPackage(options: {
   workspaceSources?: readonly Source<WorkspaceSpec>[];
   repositorySources?: readonly Source<RepositorySpec>[];
   pullRequestSources?: readonly Source<PullRequestSpec>[];
-} = {}): PluginPackage & { readonly namespace: "v1/project" } {
-  const plugin: PluginPackage & { readonly namespace: "v1/project" } = Object.freeze({
+} = {}): PluginPackage {
+  const plugin: PluginPackage = Object.freeze({
     pluginId: REQLOOP_PLUGIN_ID,
     version: REQLOOP_PACKAGE_VERSION,
     namespace: "v1/project",
