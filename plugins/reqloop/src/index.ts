@@ -54,7 +54,7 @@ import { WorkspaceSource } from "./workspaces/source.ts";
 import { withUserDeletionPolicy } from "./retention.ts";
 
 export const REQLOOP_PLUGIN_ID = "compforge/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.2.15";
+export const REQLOOP_PACKAGE_VERSION = "0.2.16";
 
 function currentRepo(context: PluginContext): string {
   const cwd = context.session.cwd;
@@ -72,10 +72,11 @@ export function createReqloopPackage(options: {
   workspaceSources?: readonly Source<WorkspaceSpec>[];
   repositorySources?: readonly Source<RepositorySpec>[];
   pullRequestSources?: readonly Source<PullRequestSpec>[];
-} = {}): PluginPackage {
-  return Object.freeze({
+} = {}): PluginPackage & { readonly namespace: "v1/project" } {
+  const plugin: PluginPackage & { readonly namespace: "v1/project" } = Object.freeze({
     pluginId: REQLOOP_PLUGIN_ID,
     version: REQLOOP_PACKAGE_VERSION,
+    namespace: "v1/project",
     async activate(context: PluginContext) {
       const requirementConnectors =
         options.requirementConnectors ??
@@ -180,6 +181,7 @@ export function createReqloopPackage(options: {
       });
     },
   });
+  return plugin;
 }
 
 const reqloop = createReqloopPackage();

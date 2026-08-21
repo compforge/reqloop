@@ -33,7 +33,7 @@ plugins/reqloop/
 │   ├── index.ts                  # PluginPackage 装配与唯一注册入口
 │   ├── config.ts                 # global/project/session 配置覆盖
 │   ├── retention.ts              # 用户显式删除期限 policy
-│   ├── workspaces/               # Session 本地观察根与 checkout 发现
+│   ├── workspaces/               # Project 观察根与 checkout 发现
 │   ├── repositories/             # 仓库观察范围与 PR 集合汇总
 │   ├── pull-requests/            # PR/MR 准入、Forge/devloop 观察与用户决定
 │   ├── code-reviews/             # AI code-review 运行、结果、决定与短期生命周期
@@ -50,7 +50,8 @@ plugins/reqloop/
 
 ## 关键约定
 
-1. **Resource 身份与事实 owner 唯一**：Workspace 是 Session 逻辑观察根，Repository 按
+1. **Resource 身份与事实 owner 唯一**：本 Plugin 声明 `v1/project` namespace，Workspace 是
+   Project 逻辑观察根；同一目录的多个 Session 共享一组 Resource。Repository 按
    `source + repository` 共享，PullRequest 按 `source + repository + number` 独立存在，
    Requirement 按 `source + category + id` 唯一；CodeReview 按目标 PR 与一次已发布的 review
    run 唯一。PR 与 Requirement 的归属只写

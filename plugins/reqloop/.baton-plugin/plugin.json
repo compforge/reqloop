@@ -1,7 +1,8 @@
 {
   "manifestVersion": 1,
   "pluginId": "compforge/reqloop",
-  "version": "0.2.15",
+  "version": "0.2.16",
+  "namespace": "v1/project",
   "entry": "./src/index.ts",
   "displayName": "ReqLoop",
   "description": "Requirement-loop coordination with provider-neutral requirements and PullRequest resources."
