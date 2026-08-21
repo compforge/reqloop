@@ -1,6 +1,11 @@
 # ReqLoop releases
 
-Current version: `0.2.15`
+Current version: `0.2.16`
+
+## 0.2.16
+
+- Declare the project-scoped `v1/project` Baton namespace so multiple Sessions
+  in the same checkout share one Binding and one Plugin Worker.
 
 ## 0.2.15
 

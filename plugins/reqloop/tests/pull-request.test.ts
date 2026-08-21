@@ -34,7 +34,7 @@ import {
   type WorkspaceSpec,
   type WorkspaceStatus,
 } from "../src/index.ts";
-import { reconcileContext } from "./reconcile-context.ts";
+import { reconcileContext, TEST_NAMESPACE } from "./reconcile-context.ts";
 
 function resourceClient(): {
   readonly client: ResourceClient;
@@ -75,6 +75,7 @@ function resourceClient(): {
     | Readonly<Resource<CodeReviewSpec, CodeReviewStatus>>
     | undefined;
   const client = {
+    namespace: TEST_NAMESPACE,
     get(ref: ResourceRef) {
       const candidate = [
         resource,
@@ -125,7 +126,7 @@ function resourceClient(): {
         ...type,
         metadata: {
           name: input.name,
-          namespace: "pi_reqloop",
+          namespace: TEST_NAMESPACE,
           uid: `uid-${input.name}`,
           generation: 1,
           resourceVersion: "1",
@@ -192,7 +193,7 @@ function resourceClient(): {
         ...REQUIREMENT_RESOURCE_TYPE,
         metadata: {
           name,
-          namespace: "pi_reqloop",
+          namespace: TEST_NAMESPACE,
           uid: `uid-${name}`,
           generation: 1,
           resourceVersion: "1",
@@ -210,11 +211,11 @@ function resourceClient(): {
       };
     },
     addCodeReview(status) {
-      codeReview = {
+      const created = {
         ...CODE_REVIEW_RESOURCE_TYPE,
         metadata: {
           name: "code-review-test",
-          namespace: "pi_reqloop",
+          namespace: TEST_NAMESPACE,
           uid: "uid-code-review-test",
           generation: 1,
           resourceVersion: "1",
@@ -227,7 +228,8 @@ function resourceClient(): {
         },
         status,
       };
-      return codeReview;
+      codeReview = created;
+      return created;
     },
     observeRepository(observed) {
       workspace = {
@@ -377,7 +379,7 @@ describe("PullRequest Resource", () => {
           state: "linked",
           requirement: {
             ...REQUIREMENT_RESOURCE_TYPE,
-            namespace: "pi_reqloop",
+            namespace: TEST_NAMESPACE,
             name: "req_active",
             uid: "uid-req_active",
           },
@@ -546,7 +548,7 @@ describe("PullRequest Resource", () => {
       state: "linked",
       requirement: {
         ...REQUIREMENT_RESOURCE_TYPE,
-        namespace: "pi_reqloop",
+        namespace: TEST_NAMESPACE,
         name: "req_active",
         uid: "uid-req_active",
       },
@@ -707,7 +709,7 @@ describe("PullRequest Resource", () => {
         state: "linked",
         requirement: {
           ...REQUIREMENT_RESOURCE_TYPE,
-          namespace: "pi_reqloop",
+          namespace: TEST_NAMESPACE,
           name: "req_active",
         },
       },

@@ -123,7 +123,12 @@ describe("ReqLoop PluginPackage", () => {
         new URL("../.baton-plugin/plugin.json", import.meta.url),
         "utf8",
       ),
-    ) as { pluginId: string; version: string; entry: string };
+    ) as {
+      pluginId: string;
+      version: string;
+      namespace: "v1/project";
+      entry: string;
+    };
     const packageJson = JSON.parse(
       readFileSync(new URL("../package.json", import.meta.url), "utf8"),
     ) as { version: string };
@@ -131,6 +136,8 @@ describe("ReqLoop PluginPackage", () => {
     expect(reqloop.pluginId).toBe(manifest.pluginId);
     expect(reqloop.version).toBe(manifest.version);
     expect(packageJson.version).toBe(manifest.version);
+    expect(manifest.namespace).toBe("v1/project");
+    expect(reqloop.namespace).toBe(manifest.namespace);
     expect(manifest.entry).toBe("./src/index.ts");
   });
 

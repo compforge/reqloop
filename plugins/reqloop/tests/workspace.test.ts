@@ -20,7 +20,7 @@ import type {
   ResourceType,
   SourceContext,
 } from "@compforge/baton-plugin";
-import { reconcileContext } from "./reconcile-context.ts";
+import { reconcileContext, TEST_NAMESPACE } from "./reconcile-context.ts";
 
 import {
   createWorkspaceController,
@@ -82,6 +82,7 @@ function memoryResourceClient(): {
         resource.kind === type.kind
       ) as readonly Readonly<Resource<TSpec, TStatus>>[];
   const client: ResourceClient = {
+    namespace: TEST_NAMESPACE,
     async get<TSpec, TStatus>(ref: ResourceRef) {
       const resource = resources.get(key(ref, ref.name));
       if (
@@ -104,7 +105,7 @@ function memoryResourceClient(): {
         ...type,
         metadata: {
           name: input.name,
-          namespace: "pi_reqloop",
+          namespace: TEST_NAMESPACE,
           uid: `uid-${input.name}`,
           generation: 1,
           resourceVersion: "1",
@@ -112,7 +113,7 @@ function memoryResourceClient(): {
         },
         spec: input.spec,
         status: {},
-      } as Readonly<Resource<TSpec, TStatus>>;
+      } as unknown as Readonly<Resource<TSpec, TStatus>>;
       resources.set(key(type, input.name), resource);
       return resource;
     },

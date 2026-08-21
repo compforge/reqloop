@@ -25,7 +25,7 @@ import {
   type RequirementStatus,
   upsertRequirement,
 } from "../src/index.ts";
-import { reconcileContext } from "./reconcile-context.ts";
+import { reconcileContext, TEST_NAMESPACE } from "./reconcile-context.ts";
 
 function resourceClient(): {
   readonly client: ResourceClient;
@@ -40,6 +40,7 @@ function resourceClient(): {
     | Readonly<Resource<PullRequestSpec, PullRequestStatus>>
     | undefined;
   const client = {
+    namespace: TEST_NAMESPACE,
     get(ref: ResourceRef) {
       const candidate = [resource, pullRequest].find((item) =>
         item?.apiVersion === ref.apiVersion &&
@@ -75,7 +76,7 @@ function resourceClient(): {
         ...type,
         metadata: {
           name: input.name,
-          namespace: "pi_reqloop",
+          namespace: TEST_NAMESPACE,
           uid: `uid-${input.name}`,
           generation: 1,
           resourceVersion: "1",
