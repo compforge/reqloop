@@ -28,10 +28,12 @@ import type {
 
 import reqloop, {
   CODE_REVIEW_RESOURCE_TYPE,
+  COMPONENT_RESOURCE_TYPE,
   type CodeReviewSpec,
   createReqloopPackage,
   DevloopPullRequestSource,
   DevloopToolActivityPolicy,
+  ENVIRONMENT_RESOURCE_TYPE,
   type ForgeConnector,
   ForgePullRequestSource,
   interpretToolActivity,
@@ -43,6 +45,7 @@ import reqloop, {
   type RepositorySpec,
   type RequirementConnector,
   REQUIREMENT_RESOURCE_TYPE,
+  SERVICE_RESOURCE_TYPE,
   type WorkspaceSpec,
   WorkspaceRepositorySource,
   WORKSPACE_RESOURCE_TYPE,
@@ -79,6 +82,15 @@ function testRoot(): string {
   const root = mkdtempSync(join(tmpdir(), "reqloop-review-"));
   roots.push(root);
   return root;
+}
+
+function testDataDirs(root: string) {
+  return {
+    global: join(root, "global"),
+    project: join(root, "project"),
+    session: join(root, "session"),
+    instance: join(root, "instance"),
+  };
 }
 
 function initializeRepository(root: string): void {
@@ -134,6 +146,41 @@ describe("ReqLoop PluginPackage", () => {
     expect(packageJson.version).toBe(manifest.version);
     expect("namespace" in manifest).toBe(false);
     expect(manifest.entry).toBe("./src/index.ts");
+  });
+
+  test("activates the global deployment catalog without a Session cwd", async () => {
+    const root = testRoot();
+    const resourceTypes: { apiVersion: string; kind: string }[] = [];
+    let commandRegistered = false;
+    const context = {
+      session: { batonSessionId: "bs_global" },
+      dataDirs: testDataDirs(root),
+      resources: { list() { return []; } },
+      logger: noopLogger,
+      commands: { register() { commandRegistered = true; } },
+      mentions: { register() {} },
+      controllers: {
+        register(controller: Controller<unknown, unknown>) {
+          resourceTypes.push(controller.resourceType);
+        },
+      },
+    } as unknown as PluginContext;
+
+    await createReqloopPackage({
+      deploymentCatalog: {
+        components: [],
+        environments: [],
+        services: [],
+      },
+      kubernetesConnectors: [],
+    }).activate(context);
+
+    expect(resourceTypes).toEqual([
+      COMPONENT_RESOURCE_TYPE,
+      ENVIRONMENT_RESOURCE_TYPE,
+      SERVICE_RESOURCE_TYPE,
+    ]);
+    expect(commandRegistered).toBe(false);
   });
 
   test("contributes the current checkout through the Workspace Source", async () => {
@@ -481,6 +528,7 @@ describe("ReqLoop PluginPackage", () => {
     let workspaceController: Controller<unknown, unknown> | undefined;
     const context = {
       session: { batonSessionId: "bs_test", cwd: root },
+      dataDirs: testDataDirs(root),
       logger: recordingLogger(logs),
       commands: {
         register(contribution: Command) {
@@ -511,6 +559,9 @@ describe("ReqLoop PluginPackage", () => {
       name: "requirements",
     });
     expect(resourceTypes).toEqual([
+      COMPONENT_RESOURCE_TYPE,
+      ENVIRONMENT_RESOURCE_TYPE,
+      SERVICE_RESOURCE_TYPE,
       REQUIREMENT_RESOURCE_TYPE,
       PULL_REQUEST_RESOURCE_TYPE,
       CODE_REVIEW_RESOURCE_TYPE,
@@ -530,6 +581,7 @@ describe("ReqLoop PluginPackage", () => {
           cwd: root,
           requirementConnectors: 1,
           forgeConnectors: 0,
+          kubernetesConnectors: 0,
         },
       },
     });
@@ -826,8 +878,10 @@ describe("ReqLoop PluginPackage", () => {
       },
     });
     let command: Command | undefined;
+    const root = testRoot();
     const context = {
-      session: { batonSessionId: "bs_test", cwd: testRoot() },
+      session: { batonSessionId: "bs_test", cwd: root },
+      dataDirs: testDataDirs(root),
       logger: noopLogger,
       commands: {
         register(contribution: Command) {
@@ -895,8 +949,10 @@ describe("ReqLoop PluginPackage", () => {
       string,
       Controller<unknown, unknown>
     >();
+    const root = testRoot();
     const context = {
-      session: { batonSessionId: "bs_test", cwd: testRoot() },
+      session: { batonSessionId: "bs_test", cwd: root },
+      dataDirs: testDataDirs(root),
       resources: {
         list() {
           return [];

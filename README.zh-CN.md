@@ -14,8 +14,9 @@ Harness Plugin 则约束 Harness 内部的开发小闭环。
 
 ![Baton、Plugin 与 Harness](./docs/baton-plugin-harness.svg)
 
-ReqLoop 当前接入需求平台、Forge 和 devloop observation，把外部状态和用户的持久决定整理为
-Resource。下图同时包含 Delivery、Evaluation 和受控自动化等长期方向；这些阶段尚未全部实现。
+ReqLoop 当前接入需求平台、Forge、devloop 和 Kubernetes observation，把外部状态和用户的持久
+决定整理为 Resource。全局 Component/Environment/Service 目录已经提供只读部署视图；Delivery、
+Evaluation 和部署写操作仍是长期方向。
 
 ![ReqLoop 工作框图](./docs/reqloop-workflow.svg)
 
@@ -26,17 +27,17 @@ Resource。下图同时包含 Delivery、Evaluation 和受控自动化等长期�
   → 构建并校验 manifest
   → 将 Marketplace 或 Plugin link 到 Baton
   → 在 /plugins 中为当前 BatonSession 创建并启用 PluginInstance
-  → 激活 PluginBinding
+  → 启动 Plugin Worker
   → 使用 Command 与 Resource/Reconcile 工作流
   → Baton 重启后恢复同一条 loop
 ```
 
 ## 当前状态
 
-本仓库随 Baton 的 Plugin host 与 per-Binding Runner 进程一起演进。Hello 验证最小 Package
+本仓库随 Baton 的 Plugin host 与 per-Instance Worker 进程一起演进。Hello 验证最小 Package
 生命周期，Hello Counter 和 Turn Coach 验证 Resource/Reconcile、Baton-owned Resource watch
-和持久 Proposal；ReqLoop 协调 Workspace、Repository、PullRequest 和 Requirement 四种
-Resource，并汇总需求平台、Forge 与 devloop observation。
+和持久 Proposal；ReqLoop 协调全局 Component、Environment、Service 与 Project 下的开发闭环
+Resource，并汇总需求平台、Forge、devloop 与 Kubernetes observation。
 
 ## 在 Baton 中安装和使用
 
@@ -74,7 +75,7 @@ AGENTS.md                       架构与维护约束
 ```
 
 领域模型与 Connector 留在拥有它们的 Plugin 内。Baton core 只提供通用的 Package、Instance、
-Binding、Resource/Controller 和 Proposal 契约。
+Resource/Controller 和 Interaction 契约。
 
 ## Plugins
 
@@ -84,9 +85,8 @@ Binding、Resource/Controller 和 Proposal 契约。
   `baton.turn` Controller 的组合。
 - [Turn Coach](./plugins/turn-coach/README.md) — 验证 Baton-owned Resource replay、持久状态和
   proposed input 的端到端 canary。
-- [ReqLoop](./plugins/reqloop/README.md) — 需求级闭环协调；物化 Requirement Resource，
-  将活跃 Requirement 暴露为可搜索的 Harness context、通过 Repository Resource 发现
-  PullRequest，并只询问一次 PullRequest 是否关联 Requirement。
+- [ReqLoop](./plugins/reqloop/README.md) — 需求级闭环协调；连接开发与部署 Resource，将活跃
+  Requirement 暴露为 Harness context，并按 Environment 观察 Kubernetes Service 实例。
 
 领域模型、reconcile、Connector 边界与长期方向见
 [ReqLoop 架构索引](./plugins/reqloop/AGENTS.md)。

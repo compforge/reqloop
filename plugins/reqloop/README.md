@@ -1,8 +1,11 @@
 # ReqLoop
 
-ReqLoop owns requirement-level coordination outside Baton core. `/requirements`
-lists provider-neutral requirements through a `RequirementConnector`; selecting
-one reads its normalized detail. The first concrete provider is Meego.
+ReqLoop owns requirement and deployment coordination outside Baton core.
+`/requirements` lists provider-neutral requirements through a
+`RequirementConnector`; selecting one reads its normalized detail. The first
+concrete requirement provider is Meego. A global deployment catalog also maps
+Components into Environments and observes their Service instances; Kubernetes
+is the first supported Environment target.
 
 ```text
 /requirements
@@ -85,6 +88,44 @@ cp plugins/reqloop/config.json.example \
       "type": "github",
       "api_host": "github.example.com"
     }
+  },
+  "components": {
+    "chat-server": {
+      "product": "agentsphere",
+      "displayName": "Chat Server"
+    }
+  },
+  "environments": {
+    "dev": {
+      "displayName": "Development",
+      "targets": [{
+        "kind": "kubernetes",
+        "name": "primary",
+        "source": "dev-cluster",
+        "cluster": "dev.example"
+      }]
+    }
+  },
+  "services": {
+    "chat-server-dev": {
+      "component": "chat-server",
+      "environment": "dev",
+      "deployment": {
+        "kind": "kubernetes",
+        "target": "primary",
+        "namespace": "agentsphere",
+        "deployments": ["chat-server"],
+        "services": ["chat-server"],
+        "configMaps": ["chat-server"]
+      },
+      "url": "https://dev.example/chat"
+    }
+  },
+  "kubernetes": {
+    "dev-cluster": {
+      "kubeconfig": "/absolute/path/to/dev.kubeconfig",
+      "context": "dev"
+    }
   }
 }
 ```
@@ -107,8 +148,12 @@ before use.
 | `api_host` | Optional real API host when the source key is an alias. |
 | `uids` | Optional PR/MR author accounts; any match is admitted. |
 | `token` | Optional fallback after the provider token environment variables. |
+| `components.<name>` | Static Component identity; `product` is its product grouping. |
+| `environments.<name>.targets` | Deployment infrastructure owned by an Environment; targets may be omitted for a non-Kubernetes Environment. |
+| `services.<key>` | One Component instance in one Environment and its concrete deployment mapping. |
+| `kubernetes.<source>` | Kubernetes access keyed by the target `source`; `kubeconfig` is required and `context` is optional. |
 
-`categories` defaults to `["story", "issue"]`. Configuration is runtime data,
+`categories` defaults to `["story", "issue"]`. Configuration is external data,
 not part of the PluginPackage, and must not be committed to this repository.
 When `userKeys` is present, `/requirements` returns only work items where any
 configured user is a participant; omitting it preserves the unfiltered behavior.
@@ -123,37 +168,54 @@ any configured provider account; omitting it preserves unfiltered discovery.
 Tokens use `GITHUB_TOKEN`, then `GH_TOKEN`, for GitHub and `GITLAB_TOKEN` for
 GitLab; a per-forge `token` field is the fallback.
 
+Deployment catalog configuration is read only from the Plugin's global
+`config.json`, because Components, Environments, clusters, and Services are
+shared facts rather than Session-local state. Install `kubectl` and provide an
+explicit kubeconfig for every configured Kubernetes source. ReqLoop performs
+bounded, read-only `kubectl version` and `kubectl get` calls; it does not apply,
+roll out, restart, or delete workloads.
+
 ## Resources and flow
 
-ReqLoop owns five provider-neutral Resources:
+ReqLoop owns eight Resources across two scopes:
 
-- `Workspace` — the BatonSession working directory and its discovered checkouts.
-- `Repository` — one external repository currently in the observation scope.
-- `PullRequest` — a GitHub PR or GitLab MR and its Forge state.
-- `CodeReview` — one published devloop AI code-review run associated with a
-  PullRequest.
-- `Requirement` — a selected requirement and the aggregate progress of its
-  associated PullRequests.
+- Global `v1` deployment catalog:
+  - `Component` — a static software unit grouped by product.
+  - `Environment` — a logical deployment environment and its infrastructure
+    targets; Kubernetes is one explicit target kind, not the definition of an
+    Environment.
+  - `Service` — one Component instance in one Environment, including its
+    Deployment, Service, and ConfigMap mapping and latest observed revision.
+- Project `v1/project/<project-id>` development loop:
+  - `Workspace` — the BatonSession working directory and its discovered checkouts.
+  - `Repository` — one external repository currently in the observation scope.
+  - `PullRequest` — a GitHub PR or GitLab MR and its Forge state.
+  - `CodeReview` — one published devloop AI code-review run associated with a
+    PullRequest.
+  - `Requirement` — a selected requirement and the aggregate progress of its
+    associated PullRequests.
 
 The main data flow is:
 
 ```text
+Component + Environment target → Service → Kubernetes observation
+                                      └→ revision / readiness / objects
 BatonSession cwd → Workspace → Repository → PullRequest
                                             └→ CodeReview
 /requirements   → Requirement ← associated PullRequests
 Forge/devloop   → latest observations → Resource status → Board / context
 ```
 
-Controllers keep these Resources aligned with the filesystem, Forge,
-requirement platform, and Forge comments published by devloop. When user
+Controllers keep these Resources aligned with Kubernetes, the filesystem,
+Forge, requirement platform, and Forge comments published by devloop. When user
 judgment is needed, ReqLoop opens a durable Interaction; accepted decisions can
 open a `draft` suggested-input Interaction for the current Harness. The user can
 edit and submit that draft, after which the Harness can use
 devloop's label-review workflow while ReqLoop observes the resulting
 `ccr:label` replies through Forge. ReqLoop does not directly drive a Harness or
-mutate external Requirement state. The Board currently presents active
-Requirements and PullRequests, projecting a bound actionable CodeReview and its
-label progress through the PullRequest card. A merged PullRequest with an
+mutate external Requirement state. The Board presents Environments, Services,
+active Requirements, and PullRequests, projecting a bound actionable CodeReview
+and its label progress through the PullRequest card. A merged PullRequest with an
 unlabeled review remains a low-priority Board candidate, so active blockers can
 still displace it. PullRequest and
 Requirement cards link to their external source and show the external title on
@@ -179,7 +241,15 @@ for the BatonSession that owns the repository.
 
 ---
 
-ReqLoop 在 Baton core 之外拥有需求级闭环，核心有五种 Resource：
+ReqLoop 在 Baton core 之外拥有需求与部署闭环，核心有八种 Resource。全局 `v1` 下包括：
+
+- `Component`：按 product 分组的静态软件单元；
+- `Environment`：逻辑部署环境及其基础设施 target；Kubernetes 是显式 target 类型，但不等同于
+  Environment；
+- `Service`：一个 Component 在一个 Environment 中的实例，保存 K8s Deployment、Service、
+  ConfigMap 映射以及最近观测的部署版本和就绪状态。
+
+Project namespace 下包括：
 
 - `Workspace`：当前 BatonSession 的工作目录及其中发现的 checkout；
 - `Repository`：进入当前观察范围的外部仓库；
@@ -190,6 +260,8 @@ ReqLoop 在 Baton core 之外拥有需求级闭环，核心有五种 Resource：
 整体数据流与控制流如下：
 
 ```text
+Component + Environment target → Service → Kubernetes observation
+                                      └→ 部署版本 / 就绪度 / 对象版本
 BatonSession cwd → Workspace → Repository → PullRequest
                                             └→ CodeReview
 /requirements   → Requirement ← 关联的 PullRequests
@@ -197,8 +269,8 @@ Forge / devloop / 需求平台 → 最新观察 → Resource status → Board / 
 需要用户判断 → `ask` Interaction → Resource status / `draft` Interaction
 ```
 
-Controller 负责让本地 Resource 与文件系统、代码平台、需求平台及 devloop 发布到 Forge 的
-review comments 持续收敛。已绑定 PullRequest 的待处理 CodeReview 及 label 进度跟随 PR
+Controller 负责让 Resource 与 Kubernetes、文件系统、代码平台、需求平台及 devloop 发布到
+Forge 的 review comments 持续收敛。已绑定 PullRequest 的待处理 CodeReview 及 label 进度跟随 PR
 卡片展示；merged PR 可因此继续成为低优先级 Board 候选，但不会挤掉 open merge conflict
 等活跃阻塞项。Harness 通过 devloop label-review 写入的 `ccr:label` 回复仍以 Forge comment
 为事实源。

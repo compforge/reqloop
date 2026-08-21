@@ -1,6 +1,16 @@
 # ReqLoop releases
 
-Current version: `0.2.17`
+Current version: `0.3.0`
+
+## 0.3.0
+
+- Add global Component, Environment, and Service Resources for deployment
+  visibility across Projects and Sessions.
+- Model Kubernetes as an explicit Environment target and observe configured
+  Deployment, Service, and ConfigMap objects through bounded, read-only kubectl
+  calls.
+- Project deployed revision, artifacts, workload readiness, and object versions
+  into Service status and the Baton Board.
 
 ## 0.2.17
 

@@ -36,5 +36,51 @@
         "<optional GitHub Enterprise login or numeric user ID>"
       ]
     }
+  },
+  "components": {
+    "chat-server": {
+      "product": "agentsphere",
+      "displayName": "Chat Server"
+    }
+  },
+  "environments": {
+    "dev": {
+      "displayName": "Development",
+      "targets": [
+        {
+          "kind": "kubernetes",
+          "name": "primary",
+          "source": "dev-cluster",
+          "cluster": "dev.example"
+        }
+      ]
+    }
+  },
+  "services": {
+    "chat-server-dev": {
+      "component": "chat-server",
+      "environment": "dev",
+      "deployment": {
+        "kind": "kubernetes",
+        "target": "primary",
+        "namespace": "agentsphere",
+        "deployments": [
+          "chat-server"
+        ],
+        "services": [
+          "chat-server"
+        ],
+        "configMaps": [
+          "chat-server"
+        ]
+      },
+      "url": "https://dev.example/chat"
+    }
+  },
+  "kubernetes": {
+    "dev-cluster": {
+      "kubeconfig": "/absolute/path/to/dev.kubeconfig",
+      "context": "dev"
+    }
   }
 }

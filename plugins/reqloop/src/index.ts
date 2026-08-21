@@ -4,7 +4,10 @@ import type {
   Source,
 } from "@compforge/baton-plugin";
 
-import { reqloopConfigPaths } from "./config.ts";
+import {
+  reqloopConfigPaths,
+  reqloopGlobalConfigPath,
+} from "./config.ts";
 import {
   createRepositoryController,
 } from "./repositories/controller.ts";
@@ -53,32 +56,80 @@ import type { WorkspaceSpec } from "./workspaces/protocol.ts";
 import { WorkspaceSource } from "./workspaces/source.ts";
 import { withUserDeletionPolicy } from "./retention.ts";
 import { namespaceSource, projectResourceNamespace } from "./namespace.ts";
+import {
+  createComponentController,
+  createEnvironmentController,
+  createServiceController,
+} from "./deployments/controller.ts";
+import {
+  deploymentCatalogSources,
+  type DeploymentCatalog,
+  loadDeploymentCatalog,
+} from "./deployments/config.ts";
+import {
+  createKubernetesConnectors,
+} from "./deployments/connectors/kubernetes.ts";
+import type {
+  ComponentSpec,
+  EnvironmentSpec,
+  KubernetesConnector,
+  ServiceSpec,
+} from "./deployments/protocol.ts";
 
 export const REQLOOP_PLUGIN_ID = "compforge/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.2.17";
-
-function currentRepo(context: PluginContext): string {
-  const cwd = context.session.cwd;
-  if (!cwd?.trim()) {
-    throw new Error("reqloop requires a BatonSession cwd");
-  }
-  return cwd;
-}
+export const REQLOOP_PACKAGE_VERSION = "0.3.0";
 
 export function createReqloopPackage(options: {
   codeReviewSources?: readonly Source<CodeReviewSpec>[];
+  componentSources?: readonly Source<ComponentSpec>[];
+  deploymentCatalog?: DeploymentCatalog;
+  environmentSources?: readonly Source<EnvironmentSpec>[];
   requirementConnector?: RequirementConnector;
   requirementConnectors?: readonly RequirementConnector[];
   forgeConnectors?: readonly ForgeConnector[];
+  kubernetesConnectors?: readonly KubernetesConnector[];
   workspaceSources?: readonly Source<WorkspaceSpec>[];
   repositorySources?: readonly Source<RepositorySpec>[];
   pullRequestSources?: readonly Source<PullRequestSpec>[];
+  serviceSources?: readonly Source<ServiceSpec>[];
 } = {}): PluginPackage {
   const plugin: PluginPackage = Object.freeze({
     pluginId: REQLOOP_PLUGIN_ID,
     version: REQLOOP_PACKAGE_VERSION,
     async activate(context: PluginContext) {
-      const cwd = currentRepo(context);
+      const globalConfigPath = reqloopGlobalConfigPath(context.dataDirs);
+      const catalog = options.deploymentCatalog ??
+        loadDeploymentCatalog(globalConfigPath);
+      const catalogSources = deploymentCatalogSources(catalog);
+      const kubernetesConnectors = options.kubernetesConnectors ??
+        createKubernetesConnectors(globalConfigPath);
+      context.controllers.register(createComponentController(
+        options.componentSources ?? catalogSources.components,
+      ));
+      context.controllers.register(createEnvironmentController(
+        context.resources,
+        kubernetesConnectors,
+        options.environmentSources ?? catalogSources.environments,
+      ));
+      context.controllers.register(createServiceController(
+        context.resources,
+        kubernetesConnectors,
+        options.serviceSources ?? catalogSources.services,
+      ));
+
+      const cwd = context.session.cwd?.trim();
+      if (!cwd) {
+        context.logger.info("ReqLoop global deployment catalog activated", {
+          component: "lifecycle",
+          attributes: {
+            components: catalog.components.length,
+            environments: catalog.environments.length,
+            services: catalog.services.length,
+            kubernetesConnectors: kubernetesConnectors.length,
+          },
+        });
+        return;
+      }
       const projectNamespace = projectResourceNamespace(cwd);
       const requirementConnectors =
         options.requirementConnectors ??
@@ -185,6 +236,7 @@ export function createReqloopPackage(options: {
           cwd,
           requirementConnectors: requirementConnectors.length,
           forgeConnectors: forgeConnectors.length,
+          kubernetesConnectors: kubernetesConnectors.length,
         },
       });
     },
@@ -196,6 +248,11 @@ const reqloop = createReqloopPackage();
 
 export default reqloop;
 export * from "./config.ts";
+export * from "./deployments/config.ts";
+export * from "./deployments/connectors/kubernetes.ts";
+export * from "./deployments/controller.ts";
+export * from "./deployments/protocol.ts";
+export * from "./deployments/resource.ts";
 export * from "./namespace.ts";
 export * from "./repositories/controller.ts";
 export * from "./repositories/protocol.ts";

@@ -28,19 +28,22 @@ ReqLoop。Harness 负责智能执行，devloop 约束 Harness 内的开发小闭
 
 当前已落地：
 
-- Requirement、Workspace、Repository、PullRequest、CodeReview 五种 Resource；
+- Requirement、Workspace、Repository、PullRequest、CodeReview，以及全局 Component、
+  Environment、Service 八种 Resource；
 - 需求选择、Forge/devloop 观察、PR 与 Requirement 的持久关联；
 - CodeReview 的 devloop 触发、Forge comment/finding label 收敛、review 决定、PR Board
   聚合和短期 TTL；
 - Board/Context 投影和本地关闭确认；
+- global config 驱动的部署目录，以及 Kubernetes target、部署 revision、镜像、工作负载和对象
+  版本的只读感知；
 - 用户显式删除期限与重启恢复。
 
 当前未落地：
 
-- Delivery、Deployment、Evaluation、Run/Attempt Resource；
+- Delivery、Evaluation、部署尝试/发布历史、Run/Attempt Resource；
 - Requirement 目标仓库、环境和通用 CompletionPolicy；
 - DevelopmentOutcome 等 Baton 归一事件；
-- 外部 Requirement 更新/关闭、PR 合并、部署或评测写操作；
+- 外部 Requirement 更新/关闭、PR 合并、Kubernetes 或其它部署平台写操作、评测写操作；
 - Controller 主动选择并驱动 Harness；
 - 第三方 Connector SDK、secret binding 和持久 cursor。
 
