@@ -7,6 +7,13 @@ export const REQLOOP_CONFIG_FILE = "config.json";
 export type JsonObject = Readonly<Record<string, unknown>>;
 export type ReqloopConfigPaths = string | readonly string[];
 
+/** Global-only config used by user-global Resource catalogs. */
+export function reqloopGlobalConfigPath(
+  dataDirs: Pick<PluginDataDirectories, "global">,
+): string {
+  return join(dataDirs.global, REQLOOP_CONFIG_FILE);
+}
+
 export function jsonObject(name: string, value: unknown): JsonObject {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${name} must be a JSON object`);

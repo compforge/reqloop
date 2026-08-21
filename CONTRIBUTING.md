@@ -36,7 +36,7 @@ plugins/<plugin-name>/
 
 - 只允许以 `import type` 从 `@compforge/baton-plugin` 导入 Baton 公共 Plugin 类型；禁止依赖
   Baton 仓库相对路径、宿主包、运行期 value 或内部模块。
-- Command 和 Controller 共用 Package、Instance 与 Binding 生命周期，不各自建设平行扩展体系。
+- Command 和 Controller 共用 Package、Instance 与 Worker 生命周期，不各自建设平行扩展体系。
 - Plugin 会在独立 Runner 进程执行；`activate`、Command、Context、Source、Watch、
   `reconcile`、`present` 和 ResourceClient 调用保持 async，跨边界只返回可结构化传输的数据。
 - 产品代码不得使用同步子进程。Git/CLI 调用使用异步 API，并显式配置 timeout、取消和输出上限。

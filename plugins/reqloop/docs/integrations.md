@@ -10,7 +10,8 @@ Command / Source / Controller
              ▼
   provider-neutral Connector port
        ├── RequirementConnector ── Meegle CLI
-       └── ForgeConnector ──────── GitHub / GitLab API
+       ├── ForgeConnector ──────── GitHub / GitLab API
+       └── KubernetesConnector ─── kubectl / Kubernetes API
 ```
 
 Connector 负责调用外部协议、校验响应并映射为 ReqLoop 领域对象。它不持有
@@ -56,6 +57,16 @@ HTTP adapter 显式处理超时、响应大小、非法 JSON 和 rate limit。�
 窗口并在 Connector 内暂停后续请求；权限不足可以按契约降级为 unknown，但不能吞掉限流或
 传输失败。
 
+### Kubernetes
+
+Kubernetes 是 Environment 显式拥有的部署 target，不只是一个隐藏的访问实现。Environment spec
+保存 target name、Connector source 和 cluster 身份；kubeconfig/context 留在全局 Connector
+配置。Service spec 引用 target 并声明需要观察的 Deployment、Service 和 ConfigMap。
+
+KubernetesConnector 使用一次有界 `kubectl get` 映射部署 revision、镜像、工作负载就绪度与对象
+resourceVersion，不通过集群 list 扩张 Service 集合，也不执行 apply、rollout、restart 或 delete。
+详细流程见 [deployment](./deployment.md)。
+
 ## devloop 产出
 
 devloop 负责 Harness 内的开发小闭环；ReqLoop 不导入其实现，也不调用其 skill、hook 或
@@ -78,8 +89,10 @@ comment，因此不产生 CodeReview。格式解析和兼容性只存在于 ReqL
 
 ## 配置
 
-ReqLoop 从 Baton 注入的 global、project、session Plugin data 目录依次读取 `config.json`，
-按由宽到窄递归覆盖。Instance data 不承载配置，Resource status 也不写回配置文件。
+ReqLoop 的 Requirement 与 Forge 配置从 Baton 注入的 global、project、session Plugin data 目录
+依次读取 `config.json`，按由宽到窄递归覆盖。Component、Environment、Service 和 Kubernetes
+Connector 只读取 global config，因为它们物化到全局 `v1`。Instance data 不承载配置，Resource
+status 也不写回配置文件。
 
 配置以 source 为 key 支持多个 Requirement 与 Forge Connector。凭据和 provider-specific
 字段属于 Connector；确切 schema、环境变量优先级和 Meegle CLI 初始化步骤见
@@ -95,7 +108,8 @@ ReqLoop 当前向 Baton 注册：
 
 - `/requirements` Command；
 - `requirement` Mention；
-- Workspace、Repository、PullRequest、CodeReview、Requirement 五个 Controller 及其
+- Component、Environment、Service 三个全局 Controller，以及 Workspace、Repository、
+  PullRequest、CodeReview、Requirement 五个 Project Controller 及其
   Source/Watch；
 - Requirement，以及聚合待处理 CodeReview 的 PullRequest Board presentation。
 
@@ -112,7 +126,7 @@ Input、Attempt 与 Harness 路由；ReqLoop 只从 Forge 观察 Harness 写回�
 
 RequirementController 当前只观察、汇总，并在 ReadyToClose 后让用户确认是否结束本地跟踪；
 确认结果以 `ClosureRequested` Condition 持久化并发送 toast。外部 Requirement 写入、
-PR 合并、部署和主动 Harness 调用都不在现有 Connector 接口或 manifest 权限内。
+PR 合并、Kubernetes 写操作和主动 Harness 调用都不在现有 Connector 接口或 manifest 权限内。
 
 ## 权限与失败
 

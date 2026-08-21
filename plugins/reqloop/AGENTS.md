@@ -3,11 +3,12 @@
 ## 项目定位与边界
 
 `compforge/reqloop` 是 reqloop Marketplace 中负责 Requirement Loop 的 Baton Plugin。它在
-Baton core 之外拥有 Requirement、Workspace、Repository、PullRequest 和 CodeReview 领域模型，
+Baton core 之外拥有 Requirement、Workspace、Repository、PullRequest、CodeReview，以及
+Component、Environment、Service 领域模型，
 通过 Baton 的 Resource、Controller、Source、Watch、Board、Mention、Context 和 Plugin verb 契约运行。
 
-当前阶段以观察、关联、提醒和建议为主：可以读取需求平台、Forge 与 devloop 产出的事实，
-但不直接修改外部 Requirement、不合并 PR/MR、不部署环境，也不主动驱动 Harness。长期方向
+当前阶段以观察、关联、提醒和建议为主：可以读取需求平台、Forge、devloop 与 Kubernetes 事实，
+但不直接修改外部 Requirement、不合并 PR/MR、不发布或修改环境，也不主动驱动 Harness。长期方向
 与当前实现严格分开，见 `docs/roadmap.md`。
 
 ## 代表性用户故事
@@ -33,6 +34,7 @@ plugins/reqloop/
 │   ├── index.ts                  # PluginPackage 装配与唯一注册入口
 │   ├── config.ts                 # global/project/session 配置覆盖
 │   ├── retention.ts              # 用户显式删除期限 policy
+│   ├── deployments/              # 全局 Component/Environment/Service 与 Kubernetes 感知
 │   ├── workspaces/               # Project 观察根与 checkout 发现
 │   ├── repositories/             # 仓库观察范围与 PR 集合汇总
 │   ├── pull-requests/            # PR/MR 准入、Forge/devloop 观察与用户决定
@@ -44,15 +46,17 @@ plugins/reqloop/
 └── README.md                     # 安装、配置与用户使用方式
 ```
 
-各领域目录内，`protocol.ts` 定义 provider-neutral 模型和 Connector port，`resource.ts` 负责
-稳定 Resource 身份与状态写入，`controller.ts` 负责 reconcile 和 Board projection；
+各领域目录内，`protocol.ts` 定义领域模型和 Connector port；Requirement/Forge 保持
+provider-neutral，Deployment 用判别类型显式表达基础设施 target。`resource.ts` 负责稳定
+Resource 身份与状态写入，`controller.ts` 负责 reconcile 和 Board projection；
 外部协议适配放在 `connectors/`，集合准入放在 `sources/`。
 
 ## 关键约定
 
-1. **Resource 身份与事实 owner 唯一**：本 Plugin 当前的领域 Resource 写入稳定的
-   `v1/project/<project-id>` namespace，Workspace 是 Project 逻辑观察根；同一目录的多个
-   Session 共享一组 Resource。PluginPackage 本身不声明 namespace。Repository 按
+1. **Resource 身份与事实 owner 唯一**：Component、Environment、Service 位于用户全局 `v1`；
+   其余领域 Resource 写入稳定的 `v1/project/<project-id>` namespace，Workspace 是 Project
+   逻辑观察根；同一目录的多个 Session 共享一组 Resource。PluginPackage 本身不声明 namespace。
+   Repository 按
    `source + repository` 共享，PullRequest 按 `source + repository + number` 独立存在，
    Requirement 按 `source + category + id` 唯一；CodeReview 按目标 PR 与一次已发布的 review
    run 唯一。PR 与 Requirement 的归属只写
@@ -71,18 +75,23 @@ plugins/reqloop/
    terminating 生命周期删除。短期 AI CodeReview 是明确的例外：ignore 或完成 finding
    label 后隐藏，到领域 TTL 后删除。Workspace 是逻辑观察根，不是其它 Resource 的结构
    owner。
-5. **外部对象保持 provider-neutral**：provider 与凭据属于具名 Connector；运行配置只从
-   Plugin 的 global/project/session data 目录读取，Instance data 不承载配置。外部调用失败、
-   限流或重启后重新观察并幂等收敛，不能把缓存、事件或触发原因当作事实。
+5. **外部协议与访问细节隔离**：Requirement/Forge 对象保持 provider-neutral；部署模型显式
+   区分 Kubernetes 等基础设施类型，但凭据和协议 DTO 仍属于具名 Connector。Project loop 配置
+   可按 global/project/session 覆盖，全局部署目录只读 global config；Instance data 不承载配置。
+   外部调用失败、限流或重启后重新观察并幂等收敛，不能把缓存、事件或触发原因当作事实。
    修改本 Plugin 的代码时，同一变更必须通过 `make bump-version`
    （`PLUGIN=reqloop VERSION=<next>`）同步 Package、manifest、package.json 与发布记录；
    纯文档改动不单独 bump。
+6. **Environment 拥有部署基础设施**：Kubernetes 是 Environment 的显式 target 类型，但不是
+   Environment 的定义；Service 引用 target 并声明具体 K8s 对象映射。Connector 只保存
+   kubeconfig/context 等访问细节并进行只读观察，详见 `docs/deployment.md`。
 
 ## References
 
 - `README.md` — 安装、配置和当前用户能力
 - `RELEASE.md` — 当前版本与发布记录
-- `docs/domain-model.md` — 五种 Resource 的身份、owner 与 Board 语义
+- `docs/domain-model.md` — 八种 Resource 的身份、owner 与 Board 语义
+- `docs/deployment.md` — Component、Environment、Service 与 Kubernetes 感知
 - `docs/reconcile.md` — Command/Source/Watch/Controller 流程、保留与恢复
 - `docs/integrations.md` — Requirement/Forge/devloop/Harness 集成边界
 - `docs/roadmap.md` — 尚未实现的长期闭环与引入新概念的条件

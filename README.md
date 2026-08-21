@@ -18,10 +18,11 @@ development loop inside a Harness.
 
 ![Baton, Plugin, and Harness](./docs/baton-plugin-harness.svg)
 
-ReqLoop currently connects requirement, Forge, and devloop observations and
-turns their state and durable user decisions into Resources. The workflow below
-also shows the longer-term direction toward delivery, evaluation, and
-explicitly scoped automation; those stages are not all implemented yet.
+ReqLoop connects requirement, Forge, devloop, and Kubernetes observations and
+turns their state and durable user decisions into Resources. Its global
+Component/Environment/Service catalog now provides read-only deployment
+visibility; delivery, evaluation, and deployment writes remain longer-term
+work.
 
 ![ReqLoop workflow](./docs/reqloop-workflow.svg)
 
@@ -32,18 +33,18 @@ develop a plugin
   → build and validate its manifest
   → link the marketplace or plugin into Baton
   → create and enable a PluginInstance in /plugins
-  → activate its PluginBinding
+  → start its Plugin Worker
   → use its command and Resource/Reconcile workflow
   → restore the same loop after Baton restarts
 ```
 
 ## Status
 
-The repository grows with Baton's external Plugin host and per-Binding Runner
+The repository grows with Baton's external Plugin host and per-Instance Worker
 processes. Hello validates the smallest Package lifecycle; Hello Counter and
 Turn Coach exercise Resource/Reconcile, Baton-owned Resource watches, and
-durable proposals; ReqLoop coordinates Workspace, Repository, PullRequest, and
-Requirement Resources across requirement, Forge, and devloop observations.
+durable proposals; ReqLoop coordinates global Component, Environment, and
+Service Resources together with the Project-scoped development loop.
 
 ## Install and use in Baton
 
@@ -83,8 +84,8 @@ AGENTS.md                       Architecture and maintenance constraints
 ```
 
 Plugin domain models and Connectors stay inside their owning plugin. Baton core
-only supplies the generic Package, Instance, Binding, Resource/Controller and
-Proposal contracts.
+only supplies the generic Package, Instance, Resource/Controller and Interaction
+contracts.
 
 ## Plugins
 
@@ -95,9 +96,8 @@ Proposal contracts.
 - [Turn Coach](./plugins/turn-coach/README.md) — an end-to-end canary for
   Baton-owned Resource replay, persistent state, and proposed input.
 - [ReqLoop](./plugins/reqloop/README.md) — requirement-level coordination
-  connecting Workspace, Repository, PullRequest, and Requirement Resources,
-  exposing active requirements as Harness context, and aggregating merge and
-  review progress on the Board.
+  connecting development and deployment Resources, exposing active requirements
+  as Harness context, and observing Kubernetes-backed Services by Environment.
 
 See the [ReqLoop architecture](./plugins/reqloop/AGENTS.md) for its domain
 model, reconcile flow, integration boundaries, and roadmap.

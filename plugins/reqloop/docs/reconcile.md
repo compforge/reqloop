@@ -31,6 +31,9 @@ ensure 语义落到同一 Resource。
 
 | Resource | 准入入口 | 边界 |
 |---|---|---|
+| Component | global config Source | 只物化静态软件单元，不观察外部平台 |
+| Environment | global config Source | 物化逻辑环境与 target；Controller 只观察已声明 target |
+| Service | global config Source | 物化 Component 在 Environment 的实例；Controller 不从集群列表扩张集合 |
 | Workspace | `WorkspaceSource` | 激活时贡献 Session 单例；文件变化只重新 emit 同一 spec |
 | Repository | `WorkspaceRepositorySource` | 只扫描 Workspace 根和一级候选 checkout，并按稳定身份准入 |
 | PullRequest | `ForgePullRequestSource`、`DevloopPullRequestSource` | Forge 列表有界且受活动策略控制；devloop 提供当前 PR 的低延迟入口 |
@@ -39,6 +42,17 @@ ensure 语义落到同一 Resource。
 
 一次 Source 没有 emit 某个对象可能来自窗口、分页、权限或临时失败，因此 omission 不代表对象
 已经退出或应该删除。
+
+## Deployment
+
+Component、Environment 和 Service 的配置 Source 只读取 global config，并显式写入 `v1`。
+EnvironmentController 周期读取 Kubernetes target 的可访问性和服务端版本；target status 变化
+通过 Watch 唤醒相关 Service。ServiceController 从 Environment 解析 target，再一次读取 spec
+中声明的 Deployment、Service 和 ConfigMap，更新部署 revision、镜像、就绪度和对象版本。
+
+KubernetesConnector 不执行集合发现；未在 Service spec 中声明的对象不会进入观察范围。读取失败
+或对象缺失写入 `unavailable`，保留上一次成功观测的 revision 与对象信息供 UI 判断。完整模型和
+版本提取规则见 [deployment](./deployment.md)。
 
 ## Workspace 与 Repository
 
@@ -137,7 +151,8 @@ PR 关联候选。
 - 到期后请求 Baton 删除；
 - 进入 `deletionTimestamp` 后继续委托原 Controller 完成 terminating cleanup。
 
-Workspace、Repository、PullRequest 和 Requirement 没有自动 terminal TTL、lease 或
+Component、Environment、Service、Workspace、Repository、PullRequest 和 Requirement 没有
+自动 terminal TTL、lease 或
 last-seen GC。离开 Workspace、进入 terminal 和 Board 隐藏只改变观察或展示，不自动设置
 期限。CodeReview 还具有固定的领域 TTL；它不从 Source omission 推断，也不
 影响用户显式删除期限。

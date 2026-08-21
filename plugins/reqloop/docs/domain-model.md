@@ -1,20 +1,23 @@
 # ReqLoop 领域模型
 
 本文只描述 `compforge/reqloop` 当前已经实现的领域模型。具体字段以各领域目录的
-`protocol.ts` 为事实来源；尚未落地的 Delivery、Deployment、Evaluation 和主动 Harness
-执行见 [roadmap](./roadmap.md)。
+`protocol.ts` 为事实来源；部署模型的完整流程见 [deployment](./deployment.md)，尚未落地的
+Delivery、Evaluation 和主动 Harness 执行见 [roadmap](./roadmap.md)。
 
 ## 理念与概念
 
-ReqLoop 把外部需求、工作区、代码仓库和 PR/MR 映射为 BatonSession 内可持续 reconcile 的
-Resource。外部平台继续拥有外部事实，Baton Resource 保存当前需求契约、观测和用户决定，
-Board 与 Context 只提供派生读模型。
+ReqLoop 把全局部署目录，以及外部需求、工作区、代码仓库和 PR/MR 映射为可持续 reconcile 的
+Resource。外部平台继续拥有外部事实，Baton Resource 保存当前契约、观测和用户决定，Board 与
+Context 只提供派生读模型。
 
-当前有五种 Resource：
+当前有八种 Resource：
 
 | Resource | 稳定身份 | owner 与职责 | Board |
 |---|---|---|---|
-| `Workspace` | 当前 PluginInstance namespace 内的单例 | 表示 BatonSession cwd 的逻辑观察边界，投影已准入仓库和开放 PR 数量 | 不展示 |
+| `Component` | `product + name` | 全局静态软件单元；product 当前是身份分组，不单独成为 Resource | 不展示 |
+| `Environment` | `name` | 全局逻辑部署环境，拥有 Kubernetes 等基础设施 target 及其可用性观测 | 展示环境和 target 状态 |
+| `Service` | `component + environment` | 全局 Component 实例，保存部署对象映射、版本、镜像和就绪状态 | 展示环境、版本和部署健康度 |
+| `Workspace` | Project namespace 内的单例 | 表示 BatonSession cwd 的逻辑观察边界，投影已准入仓库和开放 PR 数量 | 不展示 |
 | `Repository` | `source + repository` | 表示一个 Forge 仓库是否仍在观察范围，以及已经存在多少 PullRequest | 不展示 |
 | `PullRequest` | `source + repository + number` | 保存 Forge 生命周期、review/merge blocker 和 Requirement 归属决定 | 展示未关联的开放 PR；绑定待标注 CR 时延长展示 |
 | `CodeReview` | `pullRequest + runKey` | 保存一次已发布 AI review run 的 revision、结果、finding label、决定和有效期 | 绑定 PR 时随 PR 展示；找不到 PR 时独立展示 |
@@ -26,6 +29,10 @@ Connector 侧，不进入通用身份分支。
 ## 关系与事实归属
 
 ```text
+Component ───────────────┐
+                         ▼
+Environment ──owns──▶ Service ──observes──▶ Kubernetes objects
+
 BatonSession cwd
       │
       ▼
@@ -52,7 +59,16 @@ Requirement 不保存实际 PR 列表，只在 reconcile 时扫描仍指向自�
 生成 `linkedPullRequests` 汇总。Requirement 被删除并以同名 Resource 重建后，新 uid 不会
 继承旧关联。
 
+Component、Environment 和 Service 位于 `v1`，不因 Project 或 Session 重复。Environment
+拥有部署基础设施 target；Kubernetes target 保存稳定集群身份和 Connector source，Service
+再引用 target 并声明 Deployment、Service、ConfigMap 映射。非 Kubernetes Environment 可以
+没有该 target。三者的身份、观测与只读边界见 [deployment](./deployment.md)。
+
 ## Spec、Status 与 Conditions
+
+Component spec 保存静态身份与展示信息。Environment spec 保存逻辑环境和 target，status 保存
+各 target 的可用性与版本。Service spec 保存 Component、Environment 和部署对象映射，status
+保存最近观测的部署 revision、镜像、工作负载就绪度与对象版本；它不是发布历史。
 
 Requirement `spec` 保存用户选中时认可的标题、描述和验收标准；`status` 保存需求平台当前
 状态、关联 PR 汇总和条件。PullRequest `spec` 只保存不可变外部身份；Forge 观测和归属决定
@@ -86,7 +102,9 @@ review thread 均为 none 或 resolved。无法观察 review thread 时为 `Unkn
 
 ## Board 投影
 
-Board 当前展示活跃 Requirement 和需要关注的 PullRequest。actionable CodeReview 能匹配
+Board 当前展示 Environment、Service、活跃 Requirement 和需要关注的 PullRequest。Environment
+显示 target 可用性；Service 显示所在环境、部署 revision 和工作负载健康度，使未就绪或不可访问
+的实例优先于健康实例。actionable CodeReview 能匹配
 PullRequest Resource 时，其数量与 finding label 进度聚合到 PR 卡片，不再占第二个槽位；
 找不到 PR 时才降级为独立卡片。accept 只停止重复提醒，CR 保持可见直到全部可标注 finding
 完成 label；关闭或超时的 Interaction 降级为 ignore 并立即隐藏。
