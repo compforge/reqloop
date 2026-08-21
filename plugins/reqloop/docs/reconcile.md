@@ -31,6 +31,7 @@ ensure 语义落到同一 Resource。
 
 | Resource | 准入入口 | 边界 |
 |---|---|---|
+| Product | global config Source | 物化部署目录 owner，不观察外部平台 |
 | Component | global config Source | 只物化静态软件单元，不观察外部平台 |
 | Environment | global config Source | 物化逻辑环境与 target；Controller 只观察已声明 target |
 | Service | global config Source | 物化 Component 在 Environment 的实例；Controller 不从集群列表扩张集合 |
@@ -45,7 +46,7 @@ ensure 语义落到同一 Resource。
 
 ## Deployment
 
-Component、Environment 和 Service 的配置 Source 只读取 global config，并显式写入 `v1`。
+Product、Component、Environment 和 Service 的配置 Source 只读取 global config，并显式写入 `v1`。
 EnvironmentController 周期读取 Kubernetes target 的可访问性和服务端版本；target status 变化
 通过 Watch 唤醒相关 Service。ServiceController 从 Environment 解析 target，再一次读取 spec
 中声明的 Deployment、Service 和 ConfigMap，更新部署 revision、镜像、就绪度和对象版本。
@@ -151,7 +152,7 @@ PR 关联候选。
 - 到期后请求 Baton 删除；
 - 进入 `deletionTimestamp` 后继续委托原 Controller 完成 terminating cleanup。
 
-Component、Environment、Service、Workspace、Repository、PullRequest 和 Requirement 没有
+Product、Component、Environment、Service、Workspace、Repository、PullRequest 和 Requirement 没有
 自动 terminal TTL、lease 或
 last-seen GC。离开 Workspace、进入 terminal 和 Board 隐藏只改变观察或展示，不自动设置
 期限。CodeReview 还具有固定的领域 TTL；它不从 Source omission 推断，也不

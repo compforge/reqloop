@@ -59,6 +59,7 @@ import { namespaceSource, projectResourceNamespace } from "./namespace.ts";
 import {
   createComponentController,
   createEnvironmentController,
+  createProductController,
   createServiceController,
 } from "./deployments/controller.ts";
 import {
@@ -73,17 +74,19 @@ import type {
   ComponentSpec,
   EnvironmentSpec,
   KubernetesConnector,
+  ProductSpec,
   ServiceSpec,
 } from "./deployments/protocol.ts";
 
 export const REQLOOP_PLUGIN_ID = "compforge/reqloop";
-export const REQLOOP_PACKAGE_VERSION = "0.3.1";
+export const REQLOOP_PACKAGE_VERSION = "0.3.2";
 
 export function createReqloopPackage(options: {
   codeReviewSources?: readonly Source<CodeReviewSpec>[];
   componentSources?: readonly Source<ComponentSpec>[];
   deploymentCatalog?: DeploymentCatalog;
   environmentSources?: readonly Source<EnvironmentSpec>[];
+  productSources?: readonly Source<ProductSpec>[];
   requirementConnector?: RequirementConnector;
   requirementConnectors?: readonly RequirementConnector[];
   forgeConnectors?: readonly ForgeConnector[];
@@ -103,6 +106,9 @@ export function createReqloopPackage(options: {
       const catalogSources = deploymentCatalogSources(catalog);
       const kubernetesConnectors = options.kubernetesConnectors ??
         createKubernetesConnectors(globalConfigPath);
+      context.controllers.register(createProductController(
+        options.productSources ?? catalogSources.products,
+      ));
       context.controllers.register(createComponentController(
         options.componentSources ?? catalogSources.components,
       ));
@@ -122,6 +128,7 @@ export function createReqloopPackage(options: {
         context.logger.info("ReqLoop global deployment catalog activated", {
           component: "lifecycle",
           attributes: {
+            products: catalog.products.length,
             components: catalog.components.length,
             environments: catalog.environments.length,
             services: catalog.services.length,

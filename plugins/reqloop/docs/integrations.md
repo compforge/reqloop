@@ -90,7 +90,7 @@ comment，因此不产生 CodeReview。格式解析和兼容性只存在于 ReqL
 ## 配置
 
 ReqLoop 的 Requirement 与 Forge 配置从 Baton 注入的 global、project、session Plugin data 目录
-依次读取 `config.json`，按由宽到窄递归覆盖。Component、Environment、Service 和 Kubernetes
+依次读取 `config.json`，按由宽到窄递归覆盖。Product、Component、Environment、Service 和 Kubernetes
 Connector 只读取 global config，因为它们物化到全局 `v1`。Instance data 不承载配置，Resource
 status 也不写回配置文件。
 
@@ -108,7 +108,7 @@ ReqLoop 当前向 Baton 注册：
 
 - `/requirements` Command；
 - `requirement` Mention；
-- Component、Environment、Service 三个全局 Controller，以及 Workspace、Repository、
+- Product、Component、Environment、Service 四个全局 Controller，以及 Workspace、Repository、
   PullRequest、CodeReview、Requirement 五个 Project Controller 及其
   Source/Watch；
 - Requirement，以及聚合待处理 CodeReview 的 PullRequest Board presentation。

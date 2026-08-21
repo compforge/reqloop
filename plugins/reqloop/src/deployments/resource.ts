@@ -6,23 +6,31 @@ import type {
   EnvironmentIdentity,
   EnvironmentSpec,
   KubernetesServiceDeployment,
+  ProductIdentity,
+  ProductSpec,
   ServiceSpec,
 } from "./protocol.ts";
 
+export const PRODUCT_RESOURCE_TYPE = Object.freeze({
+  apiVersion: "reqloop.baton.dev/v1alpha2",
+  kind: "Product",
+  shortNames: ["product"],
+} as const);
+
 export const COMPONENT_RESOURCE_TYPE = Object.freeze({
-  apiVersion: "reqloop.baton.dev/v1alpha1",
+  apiVersion: "reqloop.baton.dev/v1alpha2",
   kind: "Component",
   shortNames: ["component"],
 } as const);
 
 export const ENVIRONMENT_RESOURCE_TYPE = Object.freeze({
-  apiVersion: "reqloop.baton.dev/v1alpha1",
+  apiVersion: "reqloop.baton.dev/v1alpha2",
   kind: "Environment",
   shortNames: ["env"],
 } as const);
 
 export const SERVICE_RESOURCE_TYPE = Object.freeze({
-  apiVersion: "reqloop.baton.dev/v1alpha1",
+  apiVersion: "reqloop.baton.dev/v1alpha2",
   kind: "Service",
   shortNames: ["svc"],
 } as const);
@@ -39,6 +47,18 @@ function resourceName(prefix: string, identity: unknown): string {
     .digest("hex")
     .slice(0, 24);
   return `${prefix}-${digest}`;
+}
+
+export function normalizeProductIdentity(
+  identity: ProductIdentity,
+): ProductIdentity {
+  return Object.freeze({
+    name: required("Product name", identity.name),
+  });
+}
+
+export function productResourceName(identity: ProductIdentity): string {
+  return resourceName("product", [normalizeProductIdentity(identity).name]);
 }
 
 export function normalizeComponentIdentity(
@@ -59,6 +79,7 @@ export function normalizeEnvironmentIdentity(
   identity: EnvironmentIdentity,
 ): EnvironmentIdentity {
   return Object.freeze({
+    product: required("Environment product", identity.product),
     name: required("Environment name", identity.name),
   });
 }
@@ -66,9 +87,10 @@ export function normalizeEnvironmentIdentity(
 export function environmentResourceName(
   identity: EnvironmentIdentity,
 ): string {
+  const normalized = normalizeEnvironmentIdentity(identity);
   return resourceName(
     "environment",
-    [normalizeEnvironmentIdentity(identity).name],
+    [normalized.product, normalized.name],
   );
 }
 
@@ -117,6 +139,18 @@ export function normalizeComponentSpec(spec: ComponentSpec): ComponentSpec {
   });
 }
 
+export function normalizeProductSpec(spec: ProductSpec): ProductSpec {
+  return Object.freeze({
+    identity: normalizeProductIdentity(spec.identity),
+    ...(spec.displayName
+      ? { displayName: required("Product displayName", spec.displayName) }
+      : {}),
+    ...(spec.description
+      ? { description: required("Product description", spec.description) }
+      : {}),
+  });
+}
+
 export function normalizeEnvironmentSpec(
   spec: EnvironmentSpec,
 ): EnvironmentSpec {
@@ -147,9 +181,16 @@ export function normalizeEnvironmentSpec(
 }
 
 export function normalizeServiceSpec(spec: ServiceSpec): ServiceSpec {
+  const component = normalizeComponentIdentity(spec.component);
+  const environment = normalizeEnvironmentIdentity(spec.environment);
+  if (component.product !== environment.product) {
+    throw new Error(
+      `Service Component and Environment must belong to the same Product: ${component.product} != ${environment.product}`,
+    );
+  }
   return Object.freeze({
-    component: normalizeComponentIdentity(spec.component),
-    environment: normalizeEnvironmentIdentity(spec.environment),
+    component,
+    environment,
     deployment: normalizeKubernetesDeployment(spec.deployment),
     ...(spec.url ? { url: required("Service url", spec.url) } : {}),
   });
@@ -160,6 +201,7 @@ export function serviceResourceName(spec: ServiceSpec): string {
   return resourceName("service", [
     normalized.component.product,
     normalized.component.name,
+    normalized.environment.product,
     normalized.environment.name,
   ]);
 }

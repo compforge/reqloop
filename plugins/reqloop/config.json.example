@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "requirements": {
     "meegle-source-name": {
       "provider": "meego",
@@ -37,44 +37,48 @@
       ]
     }
   },
-  "components": {
-    "chat-server": {
-      "product": "agentsphere",
-      "displayName": "Chat Server"
-    }
-  },
-  "environments": {
-    "dev": {
-      "displayName": "Development",
-      "targets": [
-        {
-          "kind": "kubernetes",
-          "name": "primary",
-          "source": "dev-cluster",
-          "cluster": "dev.example"
+  "products": {
+    "agentsphere": {
+      "displayName": "AgentSphere",
+      "components": {
+        "chat-server": {
+          "displayName": "Chat Server"
         }
-      ]
-    }
-  },
-  "services": {
-    "chat-server-dev": {
-      "component": "chat-server",
-      "environment": "dev",
-      "deployment": {
-        "kind": "kubernetes",
-        "target": "primary",
-        "namespace": "agentsphere",
-        "deployments": [
-          "chat-server"
-        ],
-        "services": [
-          "chat-server"
-        ],
-        "configMaps": [
-          "chat-server"
-        ]
       },
-      "url": "https://dev.example/chat"
+      "environments": {
+        "dev": {
+          "displayName": "Development",
+          "targets": [
+            {
+              "kind": "kubernetes",
+              "name": "primary",
+              "source": "dev-cluster",
+              "cluster": "dev.example"
+            }
+          ]
+        }
+      },
+      "services": {
+        "chat-server-dev": {
+          "component": "chat-server",
+          "environment": "dev",
+          "deployment": {
+            "kind": "kubernetes",
+            "target": "primary",
+            "namespace": "agentsphere",
+            "deployments": [
+              "chat-server"
+            ],
+            "services": [
+              "chat-server"
+            ],
+            "configMaps": [
+              "chat-server"
+            ]
+          },
+          "url": "https://dev.example/chat"
+        }
+      }
     }
   },
   "kubernetes": {

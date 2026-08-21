@@ -36,6 +36,8 @@ import type {
 import {
   ENVIRONMENT_RESOURCE_TYPE,
   environmentResourceName,
+  normalizeServiceSpec,
+  productResourceName,
   SERVICE_RESOURCE_TYPE,
   serviceResourceName,
 } from "../src/deployments/resource.ts";
@@ -166,7 +168,7 @@ function memoryResources(
 }
 
 const environmentSpec: EnvironmentSpec = {
-  identity: { name: "dev" },
+  identity: { product: "agentsphere", name: "dev" },
   displayName: "Development",
   targets: [{
     kind: "kubernetes",
@@ -178,7 +180,7 @@ const environmentSpec: EnvironmentSpec = {
 
 const serviceSpec: ServiceSpec = {
   component: { product: "agentsphere", name: "chat-server" },
-  environment: { name: "dev" },
+  environment: { product: "agentsphere", name: "dev" },
   deployment: {
     kind: "kubernetes",
     target: "primary",
@@ -191,35 +193,39 @@ const serviceSpec: ServiceSpec = {
 };
 
 describe("Deployment catalog", () => {
-  test("materializes global Component, Environment, and Service Resources", async () => {
+  test("materializes global Product, Component, Environment, and Service Resources", async () => {
     const path = configFile({
-      version: 1,
-      components: {
-        "chat-server": {
-          product: "agentsphere",
-          displayName: "Chat Server",
-        },
-      },
-      environments: {
-        dev: {
-          displayName: "Development",
-          targets: [{
-            kind: "kubernetes",
-            name: "primary",
-            source: "dev-cluster",
-            cluster: "dev.example",
-          }],
-        },
-        staging: {
-          displayName: "Staging without Kubernetes",
-        },
-      },
-      services: {
-        "chat-server-dev": {
-          component: "chat-server",
-          environment: "dev",
-          deployment: serviceSpec.deployment,
-          url: serviceSpec.url,
+      version: 2,
+      products: {
+        agentsphere: {
+          displayName: "AgentSphere",
+          components: {
+            "chat-server": {
+              displayName: "Chat Server",
+            },
+          },
+          environments: {
+            dev: {
+              displayName: "Development",
+              targets: [{
+                kind: "kubernetes",
+                name: "primary",
+                source: "dev-cluster",
+                cluster: "dev.example",
+              }],
+            },
+            staging: {
+              displayName: "Staging without Kubernetes",
+            },
+          },
+          services: {
+            "chat-server-dev": {
+              component: "chat-server",
+              environment: "dev",
+              deployment: serviceSpec.deployment,
+              url: serviceSpec.url,
+            },
+          },
         },
       },
       kubernetes: {
@@ -231,6 +237,10 @@ describe("Deployment catalog", () => {
     });
 
     const catalog = loadDeploymentCatalog(path);
+    expect(catalog.products).toEqual([{
+      identity: { name: "agentsphere" },
+      displayName: "AgentSphere",
+    }]);
     expect(catalog.components).toHaveLength(1);
     expect(catalog.environments).toHaveLength(2);
     expect(catalog.environments[1]?.targets).toEqual([]);
@@ -243,10 +253,16 @@ describe("Deployment catalog", () => {
 
     const sources = deploymentCatalogSources(catalog);
     const emitted: unknown[] = [];
+    await sources.products[0]!.start(sourceContext(emitted));
     await sources.components[0]!.start(sourceContext(emitted));
     await sources.environments[0]!.start(sourceContext(emitted));
     await sources.services[0]!.start(sourceContext(emitted));
-    expect(emitted).toHaveLength(4);
+    expect(emitted).toHaveLength(5);
+    expect(emitted).toContainEqual({
+      name: productResourceName({ name: "agentsphere" }),
+      namespace: "v1",
+      spec: catalog.products[0],
+    });
     expect(emitted).toContainEqual({
       name: serviceResourceName(serviceSpec),
       namespace: "v1",
@@ -256,18 +272,22 @@ describe("Deployment catalog", () => {
 
   test("rejects a Service outside its Environment targets", () => {
     const path = configFile({
-      version: 1,
-      components: { api: { product: "product" } },
-      environments: { dev: {} },
-      services: {
-        "api-dev": {
-          component: "api",
-          environment: "dev",
-          deployment: {
-            kind: "kubernetes",
-            target: "primary",
-            namespace: "default",
-            deployments: ["api"],
+      version: 2,
+      products: {
+        product: {
+          components: { api: {} },
+          environments: { dev: {} },
+          services: {
+            "api-dev": {
+              component: "api",
+              environment: "dev",
+              deployment: {
+                kind: "kubernetes",
+                target: "primary",
+                namespace: "default",
+                deployments: ["api"],
+              },
+            },
           },
         },
       },
@@ -276,6 +296,34 @@ describe("Deployment catalog", () => {
     expect(() => loadDeploymentCatalog(path)).toThrow(
       "references unknown Kubernetes target: primary",
     );
+  });
+
+  test("rejects a Service whose Component and Environment cross Products", () => {
+    expect(() => normalizeServiceSpec({
+      ...serviceSpec,
+      environment: { product: "notebook", name: "dev" },
+    })).toThrow(
+      "Service Component and Environment must belong to the same Product",
+    );
+  });
+
+  test("keeps same-named Environments isolated by Product", () => {
+    const path = configFile({
+      version: 2,
+      products: {
+        agentsphere: { environments: { dev: {} } },
+        notebook: { environments: { dev: {} } },
+      },
+    });
+
+    const environments = loadDeploymentCatalog(path).environments;
+    expect(environments.map(({ identity }) => identity)).toEqual([
+      { product: "agentsphere", name: "dev" },
+      { product: "notebook", name: "dev" },
+    ]);
+    expect(new Set(environments.map(({ identity }) =>
+      environmentResourceName(identity)
+    )).size).toBe(2);
   });
 });
 
@@ -466,7 +514,7 @@ describe("Kubernetes deployment observation", () => {
     });
     expect(await serviceController.present?.(current)).toMatchObject({
       title: "agentsphere/chat-server",
-      status: "dev · ready · sha-abc123",
+      status: "agentsphere/dev · ready · sha-abc123",
       tone: "success",
       url: "https://dev.example/chat",
     });
@@ -496,7 +544,7 @@ describe("Kubernetes deployment observation", () => {
       message: "cluster unavailable",
     });
     expect(await serviceController.present?.(current)).toMatchObject({
-      status: "dev · unavailable",
+      status: "agentsphere/dev · unavailable",
       detail: "cluster unavailable",
       tone: "error",
     });

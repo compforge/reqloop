@@ -4,8 +4,8 @@ ReqLoop owns requirement and deployment coordination outside Baton core.
 `/requirements` lists provider-neutral requirements through a
 `RequirementConnector`; selecting one reads its normalized detail. The first
 concrete requirement provider is Meego. A global deployment catalog also maps
-Components into Environments and observes their Service instances; Kubernetes
-is the first supported Environment target.
+each Product's Components into its Environments and observes their Service
+instances; Kubernetes is the first supported Environment target.
 
 ```text
 /requirements
@@ -57,7 +57,7 @@ cp plugins/reqloop/config.json.example \
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "requirements": {
     "llmops": {
       "provider": "meego",
@@ -89,36 +89,40 @@ cp plugins/reqloop/config.json.example \
       "api_host": "github.example.com"
     }
   },
-  "components": {
-    "chat-server": {
-      "product": "agentsphere",
-      "displayName": "Chat Server"
-    }
-  },
-  "environments": {
-    "dev": {
-      "displayName": "Development",
-      "targets": [{
-        "kind": "kubernetes",
-        "name": "primary",
-        "source": "dev-cluster",
-        "cluster": "dev.example"
-      }]
-    }
-  },
-  "services": {
-    "chat-server-dev": {
-      "component": "chat-server",
-      "environment": "dev",
-      "deployment": {
-        "kind": "kubernetes",
-        "target": "primary",
-        "namespace": "agentsphere",
-        "deployments": ["chat-server"],
-        "services": ["chat-server"],
-        "configMaps": ["chat-server"]
+  "products": {
+    "agentsphere": {
+      "displayName": "AgentSphere",
+      "components": {
+        "chat-server": {
+          "displayName": "Chat Server"
+        }
       },
-      "url": "https://dev.example/chat"
+      "environments": {
+        "dev": {
+          "displayName": "Development",
+          "targets": [{
+            "kind": "kubernetes",
+            "name": "primary",
+            "source": "dev-cluster",
+            "cluster": "dev.example"
+          }]
+        }
+      },
+      "services": {
+        "chat-server-dev": {
+          "component": "chat-server",
+          "environment": "dev",
+          "deployment": {
+            "kind": "kubernetes",
+            "target": "primary",
+            "namespace": "agentsphere",
+            "deployments": ["chat-server"],
+            "services": ["chat-server"],
+            "configMaps": ["chat-server"]
+          },
+          "url": "https://dev.example/chat"
+        }
+      }
     }
   },
   "kubernetes": {
@@ -136,7 +140,7 @@ before use.
 
 | Field | Purpose |
 | --- | --- |
-| `version` | ReqLoop configuration format version; currently `1`. |
+| `version` | ReqLoop configuration format version; currently `2`. |
 | `requirements.<source>` | Stable Requirement Connector identity. |
 | `provider` | Connector provider; Requirement currently supports `meego`. |
 | `projectKey` | Meegle project whose work items are queried. |
@@ -148,9 +152,10 @@ before use.
 | `api_host` | Optional real API host when the source key is an alias. |
 | `uids` | Optional PR/MR author accounts; any match is admitted. |
 | `token` | Optional fallback after the provider token environment variables. |
-| `components.<name>` | Static Component identity; `product` is its product grouping. |
-| `environments.<name>.targets` | Deployment infrastructure owned by an Environment; targets may be omitted for a non-Kubernetes Environment. |
-| `services.<key>` | One Component instance in one Environment and its concrete deployment mapping. |
+| `products.<name>` | Stable Product identity and owner of its deployment catalog. |
+| `products.<name>.components.<name>` | Static Component identity within the Product. |
+| `products.<name>.environments.<name>.targets` | Deployment infrastructure owned by a Product Environment; targets may be omitted for a non-Kubernetes Environment. |
+| `products.<name>.services.<key>` | One Component instance in an Environment of the same Product and its concrete deployment mapping. |
 | `kubernetes.<source>` | Kubernetes access keyed by the target `source`; `kubeconfig` is required and `context` is optional. |
 
 `categories` defaults to `["story", "issue"]`. Configuration is external data,
@@ -169,7 +174,7 @@ Tokens use `GITHUB_TOKEN`, then `GH_TOKEN`, for GitHub and `GITLAB_TOKEN` for
 GitLab; a per-forge `token` field is the fallback.
 
 Deployment catalog configuration is read only from the Plugin's global
-`config.json`, because Components, Environments, clusters, and Services are
+`config.json`, because Products, Components, Environments, clusters, and Services are
 shared facts rather than Session-local state. Install `kubectl` and provide an
 explicit kubeconfig for every configured Kubernetes source. ReqLoop performs
 bounded, read-only `kubectl version` and `kubectl get` calls; it does not apply,
@@ -177,11 +182,12 @@ roll out, restart, or delete workloads.
 
 ## Resources and flow
 
-ReqLoop owns eight Resources across two scopes:
+ReqLoop owns nine Resources across two scopes:
 
 - Global `v1` deployment catalog:
-  - `Component` — a static software unit grouped by product.
-  - `Environment` — a logical deployment environment and its infrastructure
+  - `Product` — the stable owner of Components, Environments, and Services.
+  - `Component` — a static software unit within a Product.
+  - `Environment` — a Product's logical deployment environment and its infrastructure
     targets; Kubernetes is one explicit target kind, not the definition of an
     Environment.
   - `Service` — one Component instance in one Environment, including its
@@ -198,8 +204,9 @@ ReqLoop owns eight Resources across two scopes:
 The main data flow is:
 
 ```text
-Component + Environment target → Service → Kubernetes observation
-                                      └→ revision / readiness / objects
+Product ─┬→ Component ───────────────┐
+         └→ Environment target ──────┴→ Service → Kubernetes observation
+                                                     └→ revision / readiness / objects
 BatonSession cwd → Workspace → Repository → PullRequest
                                             └→ CodeReview
 /requirements   → Requirement ← associated PullRequests
@@ -241,10 +248,11 @@ for the BatonSession that owns the repository.
 
 ---
 
-ReqLoop 在 Baton core 之外拥有需求与部署闭环，核心有八种 Resource。全局 `v1` 下包括：
+ReqLoop 在 Baton core 之外拥有需求与部署闭环，核心有九种 Resource。全局 `v1` 下包括：
 
-- `Component`：按 product 分组的静态软件单元；
-- `Environment`：逻辑部署环境及其基础设施 target；Kubernetes 是显式 target 类型，但不等同于
+- `Product`：Component、Environment 和 Service 的稳定 owner；
+- `Component`：Product 内的静态软件单元；
+- `Environment`：Product 的逻辑部署环境及其基础设施 target；Kubernetes 是显式 target 类型，但不等同于
   Environment；
 - `Service`：一个 Component 在一个 Environment 中的实例，保存 K8s Deployment、Service、
   ConfigMap 映射以及最近观测的部署版本和就绪状态。
@@ -260,8 +268,9 @@ Project namespace 下包括：
 整体数据流与控制流如下：
 
 ```text
-Component + Environment target → Service → Kubernetes observation
-                                      └→ 部署版本 / 就绪度 / 对象版本
+Product ─┬→ Component ───────────────┐
+         └→ Environment target ──────┴→ Service → Kubernetes observation
+                                                     └→ 部署版本 / 就绪度 / 对象版本
 BatonSession cwd → Workspace → Repository → PullRequest
                                             └→ CodeReview
 /requirements   → Requirement ← 关联的 PullRequests

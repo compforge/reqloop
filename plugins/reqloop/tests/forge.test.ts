@@ -49,7 +49,7 @@ describe("Forge config", () => {
   test("uses host-keyed providers and devloop token precedence", () => {
     const path = join(testRoot(), "config.json");
     writeFileSync(path, JSON.stringify({
-      version: 1,
+      version: 2,
       forges: {
         "github.com": {
           token: "configured-github",
@@ -89,7 +89,7 @@ describe("Forge config", () => {
   test("creates only authenticated Forge connectors", () => {
     const path = join(testRoot(), "config.json");
     writeFileSync(path, JSON.stringify({
-      version: 1,
+      version: 2,
       forges: {
         "github.com": { type: "github" },
         "gitlab.example.com": {

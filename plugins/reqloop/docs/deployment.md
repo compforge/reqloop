@@ -2,26 +2,27 @@
 
 ## 理念与概念
 
-ReqLoop 用 `Component`、`Environment` 和 `Service` 表达当前部署视图：
+ReqLoop 用 `Product`、`Component`、`Environment` 和 `Service` 表达当前部署视图：
 
-- `Component` 是按 product 分组的静态软件单元；product 当前只是 Component 身份的一部分，
-  不单独成为 Resource。
-- `Environment` 是 dev、test、poc 等逻辑部署环境，并拥有组成该环境的部署基础设施 target。
+- `Product` 是部署目录的稳定 owner，收拢属于同一产品的 Component、Environment 和 Service。
+- `Component` 是 Product 内的静态软件单元。
+- `Environment` 是 Product 的 dev、test、poc 等逻辑部署环境，并拥有组成该环境的部署基础设施 target。
   Kubernetes 是当前已支持的 target 类型，但 Environment 不等同于 Kubernetes 集群，也允许暂时
   没有 Kubernetes target。
-- `Service` 是一个 Component 在一个 Environment 中的实例。它引用 Environment 内的 target，
+- `Service` 是一个 Component 在同一 Product 的 Environment 中的实例。它引用 Environment 内的 target，
   并声明实现该实例的 Deployment、Service、ConfigMap 等对象。
 
-三者都位于用户全局 `v1` namespace。集群是客观存在的共享基础设施，不随 Baton Session 或
+四者都位于用户全局 `v1` namespace。集群是客观存在的共享基础设施，不随 Baton Session 或
 Project 复制；Project 下的开发 Resource 后续可通过稳定身份与这些全局 Resource 建立关系。
 
 ## 主流程
 
 ```text
 global config
-    ├── Component spec
-    ├── Environment spec ──owns──▶ Kubernetes target
-    └── Service spec ──uses──────▶ target + Kubernetes object mapping
+    └── Product spec
+          ├── Component spec
+          ├── Environment spec ──owns──▶ Kubernetes target
+          └── Service spec ──uses──────▶ target + Kubernetes object mapping
                                       │
                                       ▼
                               KubernetesConnector
@@ -61,7 +62,8 @@ kubeconfig 或 kubectl 输出。
 
 ## 边界
 
+- Product 拥有部署目录，Component 与 Environment 的身份都包含 Product。
 - Environment 拥有部署 target；Connector 只负责协议读取和 DTO 映射。
 - Service spec 保存用户认可的对象映射，status 保存可重新观察的集群事实。
-- Component、Environment、Service 的集合来自 global config；一次 Source omission 不代表删除。
+- Product、Component、Environment、Service 的集合来自 global config；一次 Source omission 不代表删除。
 - K8s 写操作、发布策略、凭据分发、发布历史与 Quality 执行不属于当前能力。

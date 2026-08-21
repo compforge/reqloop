@@ -20,7 +20,7 @@ development loop inside a Harness.
 
 ReqLoop connects requirement, Forge, devloop, and Kubernetes observations and
 turns their state and durable user decisions into Resources. Its global
-Component/Environment/Service catalog now provides read-only deployment
+Product/Component/Environment/Service catalog now provides read-only deployment
 visibility; delivery, evaluation, and deployment writes remain longer-term
 work.
 
@@ -43,8 +43,8 @@ develop a plugin
 The repository grows with Baton's external Plugin host and per-Instance Worker
 processes. Hello validates the smallest Package lifecycle; Hello Counter and
 Turn Coach exercise Resource/Reconcile, Baton-owned Resource watches, and
-durable proposals; ReqLoop coordinates global Component, Environment, and
-Service Resources together with the Project-scoped development loop.
+durable proposals; ReqLoop coordinates global Product, Component, Environment,
+and Service Resources together with the Project-scoped development loop.
 
 ## Install and use in Baton
 

@@ -76,8 +76,8 @@ export function loadReqloopConfig(
       throw new Error(`could not read reqloop config ${path}: ${detail}`);
     }
     const config = jsonObject(`reqloop config ${path}`, root);
-    if (config.version !== 1) {
-      throw new Error(`reqloop config version must be 1: ${path}`);
+    if (config.version !== 2) {
+      throw new Error(`reqloop config version must be 2: ${path}`);
     }
     result = result ? mergeJsonObjects(result, config) : config;
   }

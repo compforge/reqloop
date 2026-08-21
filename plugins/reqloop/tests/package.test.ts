@@ -41,6 +41,7 @@ import reqloop, {
   loadMeegoRequirementConfigs,
   MeegleCliRequirementConnector,
   PULL_REQUEST_RESOURCE_TYPE,
+  PRODUCT_RESOURCE_TYPE,
   type PullRequestSpec,
   type RepositorySpec,
   type RequirementConnector,
@@ -168,6 +169,7 @@ describe("ReqLoop PluginPackage", () => {
 
     await createReqloopPackage({
       deploymentCatalog: {
+        products: [],
         components: [],
         environments: [],
         services: [],
@@ -176,6 +178,7 @@ describe("ReqLoop PluginPackage", () => {
     }).activate(context);
 
     expect(resourceTypes).toEqual([
+      PRODUCT_RESOURCE_TYPE,
       COMPONENT_RESOURCE_TYPE,
       ENVIRONMENT_RESOURCE_TYPE,
       SERVICE_RESOURCE_TYPE,
@@ -559,6 +562,7 @@ describe("ReqLoop PluginPackage", () => {
       name: "requirements",
     });
     expect(resourceTypes).toEqual([
+      PRODUCT_RESOURCE_TYPE,
       COMPONENT_RESOURCE_TYPE,
       ENVIRONMENT_RESOURCE_TYPE,
       SERVICE_RESOURCE_TYPE,
@@ -647,7 +651,7 @@ describe("ReqLoop PluginPackage", () => {
     writeFileSync(
       path,
       JSON.stringify({
-        version: 1,
+        version: 2,
         requirements: {
           primary: {
             provider: "meego",

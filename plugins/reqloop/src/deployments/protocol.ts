@@ -1,3 +1,19 @@
+export interface ProductIdentity {
+  readonly name: string;
+}
+
+/**
+ * @spec Product is the stable owner that scopes Component, Environment, and Service identities in one deployment catalog.
+ * @see {@link ../../docs/deployment.md}
+ */
+export interface ProductSpec {
+  readonly identity: ProductIdentity;
+  readonly displayName?: string;
+  readonly description?: string;
+}
+
+export type ProductStatus = Readonly<Record<string, never>>;
+
 export interface ComponentIdentity {
   readonly product: string;
   readonly name: string;
@@ -25,11 +41,12 @@ export interface KubernetesEnvironmentTarget {
 export type EnvironmentTarget = KubernetesEnvironmentTarget;
 
 export interface EnvironmentIdentity {
+  readonly product: string;
   readonly name: string;
 }
 
 /**
- * @spec Environment owns its deployment targets; Kubernetes is an explicit target kind, while a valid non-Kubernetes Environment may currently have no targets.
+ * @spec An Environment belongs to one Product and owns its deployment targets; Kubernetes is an explicit target kind, while a valid non-Kubernetes Environment may currently have no targets.
  * @see {@link ../../docs/deployment.md}
  */
 export interface EnvironmentSpec {
@@ -69,7 +86,7 @@ export interface KubernetesServiceDeployment {
 export type ServiceDeployment = KubernetesServiceDeployment;
 
 /**
- * @spec One Service is one Component instance in one Environment and maps only to a target owned by that Environment.
+ * @spec One Service is one Component instance in an Environment of the same Product and maps only to a target owned by that Environment.
  * @see {@link ../../docs/deployment.md}
  */
 export interface ServiceSpec {

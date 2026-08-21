@@ -1,6 +1,16 @@
 # ReqLoop releases
 
-Current version: `0.3.1`
+Current version: `0.3.2`
+
+## 0.3.2
+
+- Add Product as the owner of each global deployment catalog.
+- Scope Component and Environment identities by Product and reject Services
+  whose Component and Environment belong to different Products.
+- Nest deployment catalog configuration under `products` and require config
+  format version `2`.
+- Move deployment Resources to `reqloop.baton.dev/v1alpha2` so legacy global
+  Environment identities cannot collide with Product-scoped Resources.
 
 ## 0.3.1
 
