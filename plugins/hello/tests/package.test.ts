@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
+import type { PluginContext } from "@compforge/baton-plugin";
+
 import hello from "../src/index.ts";
 
 interface PluginManifest {
@@ -22,6 +24,8 @@ describe("Hello PluginPackage", () => {
   });
 
   test("activates without registering optional capabilities", async () => {
-    await expect(hello.activate()).resolves.toBeUndefined();
+    await expect(
+      hello.activate({} as PluginContext),
+    ).resolves.toBeUndefined();
   });
 });

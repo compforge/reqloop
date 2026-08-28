@@ -2,10 +2,16 @@
   "name": "@compforge/baton-plugin-turn-coach",
   "version": "0.1.0",
   "private": true,
-  "description": "End-to-end canary for Baton Plugin resources, turn watches, and proposed input.",
+  "description": "End-to-end canary for Baton Plugin resources, turn watches, and editable draft verbs.",
   "type": "module",
   "scripts": {
     "test": "bun test"
+  },
+  "peerDependencies": {
+    "@compforge/baton-plugin": "^0.8.2"
+  },
+  "devDependencies": {
+    "@compforge/baton-plugin": "0.8.2"
   },
   "license": "MIT"
 }

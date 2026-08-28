@@ -5,7 +5,7 @@
     "": {
       "name": "reqloop-marketplace",
       "devDependencies": {
-        "@compforge/baton-plugin": "0.2.4",
+        "@compforge/baton-plugin": "0.8.2",
         "@types/bun": "^1.3.0",
         "typescript": "^5.9.0",
       },
@@ -13,34 +13,64 @@
     "plugins/hello": {
       "name": "@compforge/baton-plugin-hello",
       "version": "0.1.0",
+      "devDependencies": {
+        "@compforge/baton-plugin": "0.8.2",
+      },
+      "peerDependencies": {
+        "@compforge/baton-plugin": "^0.8.2",
+      },
     },
     "plugins/hello-counter": {
       "name": "@compforge/baton-plugin-hello-counter",
       "version": "0.1.0",
+      "devDependencies": {
+        "@compforge/baton-plugin": "0.8.2",
+      },
+      "peerDependencies": {
+        "@compforge/baton-plugin": "^0.8.2",
+      },
     },
     "plugins/reqloop": {
       "name": "@compforge/baton-plugin-reqloop",
-      "version": "0.3.0",
+      "version": "0.3.3",
       "devDependencies": {
-        "@compforge/baton-plugin": "0.8.1",
+        "@compforge/baton-plugin": "0.8.2",
       },
       "peerDependencies": {
-        "@compforge/baton-plugin": "^0.8.1",
+        "@compforge/baton-plugin": "^0.8.2",
+      },
+    },
+    "plugins/target-balancer": {
+      "name": "@compforge/baton-plugin-target-balancer",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@compforge/baton-plugin": "0.8.2",
+      },
+      "peerDependencies": {
+        "@compforge/baton-plugin": "^0.8.2",
       },
     },
     "plugins/turn-coach": {
       "name": "@compforge/baton-plugin-turn-coach",
       "version": "0.1.0",
+      "devDependencies": {
+        "@compforge/baton-plugin": "0.8.2",
+      },
+      "peerDependencies": {
+        "@compforge/baton-plugin": "^0.8.2",
+      },
     },
   },
   "packages": {
-    "@compforge/baton-plugin": ["@compforge/baton-plugin@0.2.4", "", {}, "sha512-7VED5814KQHLwEwfk8SPsZkSCFaBWZ4IiwA1HTLMO0iooC/hvFWnPk222OosfbopUIFJaLaAKf1EAVJCKeraKA=="],
+    "@compforge/baton-plugin": ["@compforge/baton-plugin@0.8.2", "", {}, "sha512-SVFtIzs9bEUEraCVZHfBnUTC3qpe+/nD1H78uTPSQ6VnqCd6vGI9ucDJhhMepKXWBpXjGE/kpRgQNBwpNbjLUw=="],
 
     "@compforge/baton-plugin-hello": ["@compforge/baton-plugin-hello@workspace:plugins/hello"],
 
     "@compforge/baton-plugin-hello-counter": ["@compforge/baton-plugin-hello-counter@workspace:plugins/hello-counter"],
 
     "@compforge/baton-plugin-reqloop": ["@compforge/baton-plugin-reqloop@workspace:plugins/reqloop"],
+
+    "@compforge/baton-plugin-target-balancer": ["@compforge/baton-plugin-target-balancer@workspace:plugins/target-balancer"],
 
     "@compforge/baton-plugin-turn-coach": ["@compforge/baton-plugin-turn-coach@workspace:plugins/turn-coach"],
 
@@ -53,7 +83,5 @@
     "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "undici-types": ["undici-types@8.3.0", "", {}, "sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ=="],
-
-    "@compforge/baton-plugin-reqloop/@compforge/baton-plugin": ["@compforge/baton-plugin@0.8.1", "", {}, "sha512-cUT6xjzBhrH3DRLpmBc7jh5e5g/DBL6Djkesu0IaeTmLdowte2qjXMODYdKEFQyhH+EN+Tt94nwUCkTnHlF+Gw=="],
   }
 }

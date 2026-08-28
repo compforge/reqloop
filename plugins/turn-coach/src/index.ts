@@ -1,6 +1,6 @@
 import type {
   BatonTurnResourceData,
-  PluginActivationContext,
+  PluginContext,
   PluginPackage,
 } from "@compforge/baton-plugin";
 
@@ -28,6 +28,7 @@ const RESOURCE_TYPE = Object.freeze({
 } as const);
 const RESOURCE_ID = "main";
 const MAX_REQUEST_LENGTH = 160;
+const DRAFT_TIMEOUT_MS = 7 * 24 * 60 * 60_000;
 
 function requestSummary(userText: string): string {
   const normalized = userText.trim().replace(/\s+/g, " ");
@@ -49,7 +50,7 @@ const turnCoach: PluginPackage = Object.freeze({
   pluginId: "compforge/turn-coach",
   version: "0.1.0",
 
-  async activate(context: PluginActivationContext): Promise<void> {
+  async activate(context: PluginContext): Promise<void> {
     let initialState = (await context.resources
       .list<TurnCoachSpec, TurnCoachStatus>(RESOURCE_TYPE))
       .find((resource) => resource.metadata.name === RESOURCE_ID);
@@ -68,7 +69,7 @@ const turnCoach: PluginPackage = Object.freeze({
       });
     }
 
-    context.registerController<TurnCoachSpec, TurnCoachStatus>({
+    context.controllers.register<TurnCoachSpec, TurnCoachStatus>({
       resourceType: RESOURCE_TYPE,
       async reconcile(_baton, resource) {
         if (resource.status.observedGeneration === resource.metadata.generation) return;
@@ -78,9 +79,9 @@ const turnCoach: PluginPackage = Object.freeze({
       },
     });
 
-    context.registerController<Record<string, never>, BatonTurnResourceData>({
+    context.controllers.register<Record<string, never>, BatonTurnResourceData>({
       resourceType: BATON_TURN_RESOURCE_TYPE,
-      async reconcile(baton, turn) {
+      async reconcile(reconcile, turn) {
         const state = (await context.resources
           .list<TurnCoachSpec, TurnCoachStatus>(RESOURCE_TYPE))
           .find((resource) => resource.metadata.name === RESOURCE_ID);
@@ -102,28 +103,26 @@ const turnCoach: PluginPackage = Object.freeze({
 
         const lastCoachedAt = state.status.lastCoachedAt;
         if (
-          (!lastCoachedAt ||
-            turn.metadata.creationTimestamp >= lastCoachedAt) &&
-          turn.metadata.resourceVersion !==
-            state.status.lastCoachedResourceVersion
+          (lastCoachedAt && turn.metadata.creationTimestamp < lastCoachedAt) ||
+          turn.metadata.resourceVersion === state.status.lastCoachedResourceVersion
         ) {
-          await context.resources.patchStatus(state, {
-            coachedTurns: baton.turns.length,
-            lastCoachedAt: turn.metadata.creationTimestamp,
-            lastCoachedResourceVersion: turn.metadata.resourceVersion,
-            lastTurnId: turn.status.turnId,
-            observedGeneration: state.metadata.generation,
-          });
+          return;
         }
 
-        // Replay must return the same output: Baton persists and deduplicates the
-        // Proposal, so a crash between reconcile and publication cannot lose it.
-        return {
-          output: {
-            kind: "proposed-input",
-            text: proposedInput(turn.status.userText ?? ""),
-          },
-        };
+        // Persist the watermark before requesting a draft. The modern verb is a
+        // live continuation and is intentionally not replayed after a crash.
+        await context.resources.patchStatus(state, {
+          coachedTurns: reconcile.snapshot.turns.length,
+          lastCoachedAt: turn.metadata.creationTimestamp,
+          lastCoachedResourceVersion: turn.metadata.resourceVersion,
+          lastTurnId: turn.status.turnId,
+          observedGeneration: state.metadata.generation,
+        });
+        await reconcile.verbs.draft({
+          title: "Review the previous turn",
+          prompt: proposedInput(turn.status.userText ?? ""),
+          timeoutMs: DRAFT_TIMEOUT_MS,
+        });
       },
     });
   },

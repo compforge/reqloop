@@ -42,9 +42,11 @@ develop a plugin
 
 The repository grows with Baton's external Plugin host and per-Instance Worker
 processes. Hello validates the smallest Package lifecycle; Hello Counter and
-Turn Coach exercise Resource/Reconcile, Baton-owned Resource watches, and
-durable proposals; ReqLoop coordinates global Product, Component, Environment,
-and Service Resources together with the Project-scoped development loop.
+Turn Coach exercise Resource/Reconcile, Baton-owned Resource watches, Board
+presentation, and typed draft verbs; Target Balancer exercises inline Hooks and
+Baton-owned routing Resources; ReqLoop coordinates global Product, Component,
+Environment, and Service Resources together with the Project-scoped development
+loop.
 
 ## Install and use in Baton
 
@@ -52,6 +54,7 @@ Register this Git repository as a Marketplace and install the Package you need:
 
 ```bash
 baton plugins marketplace add https://github.com/compforge/reqloop.git
+baton plugins install compforge/target-balancer --marketplace reqloop
 baton plugins install compforge/turn-coach --marketplace reqloop
 baton plugins install compforge/reqloop --marketplace reqloop
 baton plugins list
@@ -63,10 +66,12 @@ For local development, replace the Git URL with the path to your checkout:
 baton plugins marketplace add /path/to/reqloop
 ```
 
-Package installation makes it available to Baton. To use it in a session, start
-`baton`, enter `/plugins`, open **Installed**, select the Package, and choose
-**Enable in this session**. Turn Coach reviews completed turns and recommends
-the next step; ReqLoop observes devloop review completion across Workspace
+Package installation globally enables it for current and future sessions. Use
+`/plugins` to inspect, disable, update, or uninstall a Package. Turn Coach
+reviews completed turns and recommends the next step; Target Balancer should
+stay enabled so each new session can pin its first default Harness choice to a
+less-used target; ReqLoop observes
+devloop review completion across Workspace
 checkouts, asks the user to accept or ignore actionable comments once, and
 proposes a Harness fix only when accepted.
 
@@ -94,7 +99,10 @@ contracts.
 - [Hello Counter](./plugins/hello-counter/README.md) — demonstrates a writable
   Resource combined with a `baton.turn` Controller.
 - [Turn Coach](./plugins/turn-coach/README.md) — an end-to-end canary for
-  Baton-owned Resource replay, persistent state, and proposed input.
+  Baton-owned Resource replay, persistent state, and typed editable drafts.
+- [Target Balancer](./plugins/target-balancer/README.md) — assigns a new session
+  to the least-used eligible target within the selected Harness family and keeps
+  that binding stable.
 - [ReqLoop](./plugins/reqloop/README.md) — requirement-level coordination
   connecting development and deployment Resources, exposing active requirements
   as Harness context, and observing Kubernetes-backed Services by Environment.

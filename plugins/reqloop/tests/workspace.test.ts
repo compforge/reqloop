@@ -119,6 +119,11 @@ function memoryResourceClient(): {
     async delete(type: ResourceType, name: string) {
       resources.delete(key(type, name));
     },
+    async patch<TSpec, TStatus>(
+      current: Readonly<Resource<TSpec, TStatus>>,
+    ) {
+      return current;
+    },
     async patchMetadata<TSpec, TStatus>(
       current: Readonly<Resource<TSpec, TStatus>>,
       patch: {
