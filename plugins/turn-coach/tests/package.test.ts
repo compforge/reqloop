@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
+import type {
+  DraftInput,
+  PluginContext,
+  ReconcileContext,
+} from "@compforge/baton-plugin";
+
 import turnCoach from "../src/index.ts";
 
 interface StateResource {
@@ -8,15 +14,13 @@ interface StateResource {
   kind: "TurnCoachState";
   metadata: {
     name: "main";
-    namespace: string;
+    namespace: "v1";
     uid: string;
     generation: number;
     resourceVersion: string;
     creationTimestamp: string;
   };
-  spec: {
-    enabled: boolean;
-  };
+  spec: { enabled: boolean };
   status: {
     activatedAt?: string;
     coachedTurns?: number;
@@ -26,20 +30,6 @@ interface StateResource {
     observedGeneration?: number;
   };
 }
-
-interface ReconcileResult {
-  output?: {
-    kind: "proposed-input";
-    text: string;
-  };
-}
-
-type TestReconciler = (
-  baton: {
-    turns: Array<{ turnId: string }>;
-  },
-  resource: StateResource | ReturnType<typeof turnResource>,
-) => Promise<ReconcileResult | void>;
 
 function turnResource(
   revision: number,
@@ -52,18 +42,48 @@ function turnResource(
     kind: "Turn" as const,
     metadata: {
       name: turnId,
-      namespace: "baton-system",
+      namespace: "baton-system" as const,
       uid: `uid-${turnId}`,
       generation: 1,
       resourceVersion: String(revision),
       creationTimestamp: observedAt,
     },
     spec: {},
-    status: {
-      turnId,
-      userText,
-      toolCalls: [],
+    status: { turnId, userText, toolCalls: [] },
+  };
+}
+
+type TestResource = StateResource | ReturnType<typeof turnResource>;
+type TestReconciler = (
+  context: ReconcileContext,
+  resource: TestResource,
+) => Promise<void | { readonly requeueAfterMs?: number }>;
+
+function reconcileContext(turnCount: number, drafts: DraftInput[]): ReconcileContext {
+  const turns = Array.from({ length: turnCount }, (_, index) => ({
+    turnId: `t_${index + 1}`,
+    toolCalls: [],
+  }));
+  return {
+    snapshot: {
+      session: {
+        batonSessionId: "session-1",
+        runState: "idle",
+        revision: turnCount,
+      },
+      activeTurns: [],
+      harnessInputs: [],
+      harnessTargets: [],
+      pendingInteractions: [],
+      turns,
+      latestTurn: turns.at(-1),
     },
+    verbs: {
+      async draft(input) {
+        drafts.push(input);
+        return { state: "dismissed" };
+      },
+    } as ReconcileContext["verbs"],
   };
 }
 
@@ -72,10 +92,10 @@ async function activationHarness() {
   let stateReconciler: TestReconciler | undefined;
   let turnReconciler: TestReconciler | undefined;
   let statusPatches = 0;
+  const drafts: DraftInput[] = [];
 
   const resources = {
     get() {
-      if (!state) throw new Error("resource not found");
       return state;
     },
     list() {
@@ -88,7 +108,7 @@ async function activationHarness() {
         kind: "TurnCoachState",
         metadata: {
           name: "main",
-          namespace: "turn_coach_default",
+          namespace: "v1",
           uid: "uid-main",
           generation: 1,
           resourceVersion: "1",
@@ -99,10 +119,10 @@ async function activationHarness() {
       };
       return state;
     },
-    delete() {
-      state = undefined;
-    },
-    patchStatus(resource: StateResource, patch: Partial<StateResource["status"]>) {
+    patchStatus(
+      resource: StateResource,
+      patch: Partial<StateResource["status"]>,
+    ) {
       if (resource.metadata.resourceVersion !== state?.metadata.resourceVersion) {
         throw new Error("resource version conflict");
       }
@@ -111,19 +131,13 @@ async function activationHarness() {
         ...resource,
         metadata: {
           ...resource.metadata,
-          resourceVersion: String(
-            Number(resource.metadata.resourceVersion) + 1,
-          ),
+          resourceVersion: String(Number(resource.metadata.resourceVersion) + 1),
         },
-        status: {
-          ...resource.status,
-          ...patch,
-        },
+        status: { ...resource.status, ...patch },
       };
       return state;
     },
   };
-
   const context = {
     instance: {
       pluginInstanceId: "turn_coach_default",
@@ -133,22 +147,21 @@ async function activationHarness() {
       config: {},
     },
     resources,
-    registerController(controller: {
-      resourceType: { kind: string };
-      reconcile: TestReconciler;
-    }) {
-      if (controller.resourceType.kind === "TurnCoachState") {
-        stateReconciler = controller.reconcile;
-      } else if (controller.resourceType.kind === "Turn") {
-        turnReconciler = controller.reconcile;
-      } else {
-        throw new Error(
-          `unexpected Resource kind: ${controller.resourceType.kind}`,
-        );
-      }
+    controllers: {
+      register(controller: {
+        resourceType: { kind: string };
+        reconcile: TestReconciler;
+      }) {
+        if (controller.resourceType.kind === "TurnCoachState") {
+          stateReconciler = controller.reconcile;
+        } else if (controller.resourceType.kind === "Turn") {
+          turnReconciler = controller.reconcile;
+        } else {
+          throw new Error(`unexpected Resource kind: ${controller.resourceType.kind}`);
+        }
+      },
     },
-    onClose() {},
-  } as unknown as Parameters<typeof turnCoach.activate>[0];
+  } as unknown as PluginContext;
 
   await turnCoach.activate(context);
 
@@ -167,6 +180,7 @@ async function activationHarness() {
     get statusPatches() {
       return statusPatches;
     },
+    drafts,
   };
 }
 
@@ -174,19 +188,13 @@ describe("Turn Coach PluginPackage", () => {
   test("keeps Package and Marketplace identities aligned", () => {
     const manifest = JSON.parse(
       readFileSync(new URL("../.baton-plugin/plugin.json", import.meta.url), "utf8"),
-    ) as {
-      pluginId: string;
-      version: string;
-      entry: string;
-    };
+    ) as { pluginId: string; version: string; entry: string };
     const packageJson = JSON.parse(
       readFileSync(new URL("../package.json", import.meta.url), "utf8"),
     ) as { version: string };
     const marketplace = JSON.parse(
       readFileSync(new URL("../../../.baton-plugin/marketplace.json", import.meta.url), "utf8"),
-    ) as {
-      plugins: Array<{ pluginId: string; source: string }>;
-    };
+    ) as { plugins: Array<{ pluginId: string; source: string }> };
 
     expect(turnCoach.pluginId).toBe(manifest.pluginId);
     expect(turnCoach.version).toBe(manifest.version);
@@ -198,28 +206,26 @@ describe("Turn Coach PluginPackage", () => {
     });
   });
 
-  test("persists a monotonic turn watermark and returns a replay-safe proposal", async () => {
+  test("persists a monotonic watermark and requests one editable draft", async () => {
     const harness = await activationHarness();
-    const baton = {
-      turns: [{ turnId: "t_1" }, { turnId: "t_2" }],
-    };
     const turn = turnResource(
       12,
       "t_2",
       "  Check the implementation\nand tell me what should happen next.  ",
     );
 
-    const first = await harness.turnReconciler(baton, turn);
+    await harness.turnReconciler(reconcileContext(2, harness.drafts), turn);
 
-    expect(first?.output).toEqual({
-      kind: "proposed-input",
-      text: [
+    expect(harness.drafts).toEqual([{
+      title: "Review the previous turn",
+      prompt: [
         "Review the previous turn against the original request below.",
         "Identify missing work or material risks, then recommend the single best next step.",
         "",
         "Original request: Check the implementation and tell me what should happen next.",
       ].join("\n"),
-    });
+      timeoutMs: 604_800_000,
+    }]);
     const state = harness.state;
     if (!state) throw new Error("TurnCoachState was not created");
     expect(state.status).toEqual({
@@ -232,36 +238,23 @@ describe("Turn Coach PluginPackage", () => {
     });
     expect(harness.statusPatches).toBe(2);
 
-    const replayed = await harness.turnReconciler(baton, turn);
-
-    expect(replayed).toEqual(first);
+    await harness.turnReconciler(reconcileContext(2, harness.drafts), turn);
+    expect(harness.drafts).toHaveLength(1);
     expect(harness.statusPatches).toBe(2);
-    expect(harness.state?.status.lastCoachedResourceVersion).toBe("12");
   });
 
-  test("does not regress state when older ledger turns are replayed", async () => {
+  test("does not regress state or draft when older turns replay", async () => {
     const harness = await activationHarness();
     await harness.turnReconciler(
-      { turns: [{ turnId: "t_new" }] },
-      turnResource(
-        20,
-        "t_new",
-        "new request",
-        "9999-07-27T10:00:00.000Z",
-      ),
+      reconcileContext(1, harness.drafts),
+      turnResource(20, "t_new", "new request", "9999-07-27T10:00:00.000Z"),
+    );
+    await harness.turnReconciler(
+      reconcileContext(2, harness.drafts),
+      turnResource(10, "t_old", "old request", "9999-07-27T09:00:00.000Z"),
     );
 
-    const older = await harness.turnReconciler(
-      { turns: [{ turnId: "t_old" }, { turnId: "t_new" }] },
-      turnResource(
-        10,
-        "t_old",
-        "old request",
-        "9999-07-27T09:00:00.000Z",
-      ),
-    );
-
-    expect(older?.output?.text).toContain("Original request: old request");
+    expect(harness.drafts).toHaveLength(1);
     expect(harness.statusPatches).toBe(2);
     expect(harness.state?.status).toMatchObject({
       lastCoachedResourceVersion: "20",
@@ -269,24 +262,23 @@ describe("Turn Coach PluginPackage", () => {
     });
   });
 
-  test("does not propose turns that predate the first activation", async () => {
+  test("ignores turns that predate the first activation", async () => {
     const harness = await activationHarness();
     const activatedAt = harness.state?.status.activatedAt;
     if (!activatedAt) throw new Error("activation boundary was not persisted");
-    const historicalTime = new Date(Date.parse(activatedAt) - 1).toISOString();
 
-    const historical = await harness.turnReconciler(
-      { turns: [{ turnId: "t_historical" }] },
-      turnResource(3, "t_historical", "old request", historicalTime),
+    await harness.turnReconciler(
+      reconcileContext(1, harness.drafts),
+      turnResource(
+        3,
+        "t_historical",
+        "old request",
+        new Date(Date.parse(activatedAt) - 1).toISOString(),
+      ),
     );
 
-    expect(historical).toBeUndefined();
-    expect(harness.state?.status).toMatchObject({
-      coachedTurns: 0,
-    });
-    expect(
-      harness.state?.status.lastCoachedResourceVersion,
-    ).toBeUndefined();
+    expect(harness.drafts).toEqual([]);
+    expect(harness.state?.status.coachedTurns).toBe(0);
     expect(harness.statusPatches).toBe(1);
   });
 
@@ -296,7 +288,7 @@ describe("Turn Coach PluginPackage", () => {
     if (!state) throw new Error("TurnCoachState was not created");
     state.status.observedGeneration = 0;
 
-    await harness.stateReconciler({ turns: [] }, state);
+    await harness.stateReconciler(reconcileContext(0, harness.drafts), state);
 
     expect(harness.state?.status.observedGeneration).toBe(1);
     expect(harness.statusPatches).toBe(2);

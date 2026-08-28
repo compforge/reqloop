@@ -134,6 +134,11 @@ function memoryResources(
     async delete() {
       throw new Error("not used");
     },
+    async patch<TSpec, TStatus>(
+      current: Readonly<Resource<TSpec, TStatus>>,
+    ) {
+      return current;
+    },
     async patchMetadata<TSpec, TStatus>(
       current: Readonly<Resource<TSpec, TStatus>>,
     ) {

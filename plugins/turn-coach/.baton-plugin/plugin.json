@@ -4,5 +4,5 @@
   "version": "0.1.0",
   "entry": "./src/index.ts",
   "displayName": "Turn Coach",
-  "description": "Reviews completed Baton turns through a persistent proposed-input workflow."
+  "description": "Reviews completed Baton turns through typed editable draft verbs."
 }

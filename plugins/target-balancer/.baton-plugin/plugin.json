@@ -1,0 +1,8 @@
+{
+  "manifestVersion": 1,
+  "pluginId": "compforge/target-balancer",
+  "version": "0.1.0",
+  "entry": "./src/index.ts",
+  "displayName": "Target Balancer",
+  "description": "Pins each new Baton session to the least-loaded eligible target in its selected Harness family."
+}

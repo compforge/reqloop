@@ -35,8 +35,9 @@ Evaluation 和部署写操作仍是长期方向。
 ## 当前状态
 
 本仓库随 Baton 的 Plugin host 与 per-Instance Worker 进程一起演进。Hello 验证最小 Package
-生命周期，Hello Counter 和 Turn Coach 验证 Resource/Reconcile、Baton-owned Resource watch
-和持久 Proposal；ReqLoop 协调全局 Product、Component、Environment、Service 与 Project 下的开发闭环
+生命周期，Hello Counter 和 Turn Coach 验证 Resource/Reconcile、Baton-owned Resource watch、
+Board presentation 和 typed draft verb；Target Balancer 验证 inline Hook 与 Baton-owned 路由
+Resource；ReqLoop 协调全局 Product、Component、Environment、Service 与 Project 下的开发闭环
 Resource，并汇总需求平台、Forge、devloop 与 Kubernetes observation。
 
 ## 在 Baton 中安装和使用
@@ -45,6 +46,7 @@ Resource，并汇总需求平台、Forge、devloop 与 Kubernetes observation。
 
 ```bash
 baton plugins marketplace add https://github.com/compforge/reqloop.git
+baton plugins install compforge/target-balancer --marketplace reqloop
 baton plugins install compforge/turn-coach --marketplace reqloop
 baton plugins install compforge/reqloop --marketplace reqloop
 baton plugins list
@@ -56,8 +58,9 @@ baton plugins list
 baton plugins marketplace add /path/to/reqloop
 ```
 
-安装 Package 后，启动 `baton`，输入 `/plugins`，进入 **Installed**，选择对应 Package，再执行
-**Enable in this session**。Turn Coach 会复盘已完成的 turn 并建议下一步；ReqLoop 会观察
+安装 Package 后会对当前和后续 Session 全局启用；可通过 `/plugins` 检查、禁用、更新或卸载。
+Turn Coach 会复盘已完成的 turn 并建议下一步；Target Balancer 应保持启用，让每个新 Session
+的首次默认 Harness 选择绑定到当前较空闲的 target；ReqLoop 会观察
 Workspace 各 checkout 中的 devloop review 终态，对可处理 comments 只询问一次 accept 或
 ignore，并仅在 accept 后提供一条驱动当前 Harness 修复的建议输入。
 
@@ -84,7 +87,9 @@ Resource/Controller 和 Interaction 契约。
 - [Hello Counter](./plugins/hello-counter/README.md) — 演示可写 Resource 与
   `baton.turn` Controller 的组合。
 - [Turn Coach](./plugins/turn-coach/README.md) — 验证 Baton-owned Resource replay、持久状态和
-  proposed input 的端到端 canary。
+  typed editable draft 的端到端 canary。
+- [Target Balancer](./plugins/target-balancer/README.md) — 将新 Session 绑定到所选 Harness family
+  中当前使用较少的 eligible target，并保持该绑定稳定。
 - [ReqLoop](./plugins/reqloop/README.md) — 需求级闭环协调；连接开发与部署 Resource，将活跃
   Requirement 暴露为 Harness context，并按 Environment 观察 Kubernetes Service 实例。
 
