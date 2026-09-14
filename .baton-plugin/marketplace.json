@@ -19,8 +19,8 @@
       "source": "./plugins/turn-coach"
     },
     {
-      "pluginId": "compforge/target-balancer",
-      "source": "./plugins/target-balancer"
+      "pluginId": "compforge/boost",
+      "source": "./plugins/boost"
     },
     {
       "pluginId": "compforge/reqloop",

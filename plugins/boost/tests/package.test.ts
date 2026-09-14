@@ -13,7 +13,7 @@ import type {
   ResourceMergePatch,
 } from "@compforge/baton-plugin";
 
-import targetBalancer from "../src/index.ts";
+import boost from "../src/index.ts";
 
 const roots: string[] = [];
 
@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 function activationHarness() {
-  const root = mkdtempSync(join(tmpdir(), "target-balancer-"));
+  const root = mkdtempSync(join(tmpdir(), "boost-"));
   roots.push(root);
   const namespace = "baton-system" as const;
   const metadata = (name: string) => ({
@@ -98,8 +98,8 @@ function activationHarness() {
     instance: {
       pluginInstanceId: "target_balancer_default",
       batonSessionId: "current",
-      pluginId: targetBalancer.pluginId,
-      packageVersion: targetBalancer.version,
+      pluginId: boost.pluginId,
+      packageVersion: boost.version,
       enabled: true,
       config: { pools: { codex: ["codex", "codex2"] } },
       createdAt: "2026-08-28T00:00:00.000Z",
@@ -148,6 +148,7 @@ function activationHarness() {
         hook = registered;
       },
     },
+    commands: { register() {} },
     logger: {
       info(message: string, details: unknown) {
         logs.push({ message, details });
@@ -183,7 +184,18 @@ function prompt(targetId: string) {
   } as Parameters<Hook<"view.input">["run"]>[0];
 }
 
-describe("Target Balancer PluginPackage", () => {
+describe("Boost PluginPackage", () => {
+  for (const command of ["easy", "hard"]) {
+    test(`balances first /${command} before model configuration, then keeps affinity`, async () => {
+      const harness = activationHarness();
+      await boost.activate(harness.context);
+      const input = prompt("codex");
+      await harness.hook.run({ ...input, subject: { ...input.subject, input: { kind: "command", command, argument: "task", harnessTargetId: "codex" } } });
+      expect(harness.patches).toHaveLength(1);
+      await harness.hook.run(prompt("codex"));
+      expect(harness.patches).toHaveLength(1);
+    });
+  }
   test("keeps Package and Marketplace identities aligned", () => {
     const manifest = JSON.parse(
       readFileSync(new URL("../.baton-plugin/plugin.json", import.meta.url), "utf8"),
@@ -195,19 +207,19 @@ describe("Target Balancer PluginPackage", () => {
       readFileSync(new URL("../package.json", import.meta.url), "utf8"),
     ) as { version: string };
 
-    expect(manifest.pluginId).toBe(targetBalancer.pluginId);
-    expect(manifest.version).toBe(targetBalancer.version);
-    expect(packageJson.version).toBe(targetBalancer.version);
+    expect(manifest.pluginId).toBe(boost.pluginId);
+    expect(manifest.version).toBe(boost.version);
+    expect(packageJson.version).toBe(boost.version);
     expect(manifest.entry).toBe("./src/index.ts");
     expect(marketplace.plugins).toContainEqual({
-      pluginId: targetBalancer.pluginId,
-      source: "./plugins/target-balancer",
+      pluginId: boost.pluginId,
+      source: "./plugins/boost",
     });
   });
 
   test("patches the first default prompt and keeps the resulting affinity", async () => {
     const harness = activationHarness();
-    await targetBalancer.activate(harness.context);
+    await boost.activate(harness.context);
 
     await harness.hook.run(prompt("codex"));
     expect(harness.patches).toHaveLength(1);

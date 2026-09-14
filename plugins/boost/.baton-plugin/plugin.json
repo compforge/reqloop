@@ -1,0 +1,8 @@
+{
+  "manifestVersion": 1,
+  "pluginId": "compforge/boost",
+  "version": "0.1.0",
+  "entry": "./src/index.ts",
+  "displayName": "Boost",
+  "description": "Switch between fast and capable models with optional session-affine target balancing."
+}

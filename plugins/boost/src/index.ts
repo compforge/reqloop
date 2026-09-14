@@ -1,5 +1,6 @@
 import { mkdir, rmdir, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { registerPresets } from "./presets.ts";
 
 import type {
   BatonSessionResource,
@@ -96,7 +97,7 @@ async function withAssignmentLock(
   const path = join(context.dataDirs.global, ".target-assignment.lock");
   if (!await acquireLock(path)) {
     context.logger.warn("Target assignment lock timed out; keeping default routing", {
-      component: "target-balancer.assignment",
+      component: "boost.assignment",
       attributes: { batonSessionId: context.session.batonSessionId },
     });
     return;
@@ -110,7 +111,7 @@ async function withAssignmentLock(
     } catch (error) {
       if (!hasCode(error, "ENOENT")) {
         context.logger.warn("Failed to release target assignment lock", {
-          component: "target-balancer.assignment",
+          component: "boost.assignment",
           error,
         });
       }
@@ -118,20 +119,24 @@ async function withAssignmentLock(
   }
 }
 
-const targetBalancer: PluginPackage = Object.freeze({
-  pluginId: "compforge/target-balancer",
+const boost: PluginPackage = Object.freeze({
+  pluginId: "compforge/boost",
   version: "0.1.0",
 
   async activate(context: PluginContext): Promise<void> {
     const config = parseTargetBalancerConfig(context.instance.config);
+    registerPresets(context);
+    if (!Object.values(config.pools).some((pool) => pool.length > 0)) return;
 
     context.hooks.register({
       hookId: "assign-least-loaded-target",
       stage: "view.input",
       timeoutMs: 3_000,
       async run(hook): Promise<void> {
-        if (hook.subject.input.kind !== "prompt") return;
-        const requestedTargetId = hook.subject.input.harnessTargetId;
+        const input = hook.subject.input;
+        // Balance before the host resolves the preset target, including /easy <task> as first input.
+        if (input.kind !== "prompt" && !(input.kind === "command" && ["easy", "hard"].includes(input.command))) return;
+        const requestedTargetId = input.harnessTargetId;
 
         const initialTargets = await context.resources.list<
           BatonTargetResource["spec"],
@@ -199,7 +204,7 @@ const targetBalancer: PluginPackage = Object.freeze({
             value: { spec: { targetRef: targetRef(assignment.target) } },
           });
           context.logger.info("Assigned Session to the least-loaded target", {
-            component: "target-balancer.assignment",
+            component: "boost.assignment",
             attributes: {
               batonSessionId: context.session.batonSessionId,
               harness: freshRequestedTarget.spec.harness,
@@ -214,4 +219,4 @@ const targetBalancer: PluginPackage = Object.freeze({
   },
 });
 
-export default targetBalancer;
+export default boost;

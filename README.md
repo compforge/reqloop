@@ -43,7 +43,7 @@ develop a plugin
 The repository grows with Baton's external Plugin host and per-Instance Worker
 processes. Hello validates the smallest Package lifecycle; Hello Counter and
 Turn Coach exercise Resource/Reconcile, Baton-owned Resource watches, Board
-presentation, and typed draft verbs; Target Balancer exercises inline Hooks and
+presentation, and typed draft verbs; Boost exercises inline Hooks and
 Baton-owned routing Resources; ReqLoop coordinates global Product, Component,
 Environment, and Service Resources together with the Project-scoped development
 loop.
@@ -54,7 +54,7 @@ Register this Git repository as a Marketplace and install the Package you need:
 
 ```bash
 baton plugins marketplace add https://github.com/compforge/reqloop.git
-baton plugins install compforge/target-balancer --marketplace reqloop
+baton plugins install compforge/boost --marketplace reqloop
 baton plugins install compforge/turn-coach --marketplace reqloop
 baton plugins install compforge/reqloop --marketplace reqloop
 baton plugins list
@@ -68,9 +68,9 @@ baton plugins marketplace add /path/to/reqloop
 
 Package installation globally enables it for current and future sessions. Use
 `/plugins` to inspect, disable, update, or uninstall a Package. Turn Coach
-reviews completed turns and recommends the next step; Target Balancer should
-stay enabled so each new session can pin its first default Harness choice to a
-less-used target; ReqLoop observes
+reviews completed turns and recommends the next step; Boost provides `/easy` and
+`/hard` presets, with optional target balancing enabled through `config.pools`;
+ReqLoop observes
 devloop review completion across Workspace
 checkouts, asks the user to accept or ignore actionable comments once, and
 proposes a Harness fix only when accepted.
@@ -100,7 +100,8 @@ contracts.
   Resource combined with a `baton.turn` Controller.
 - [Turn Coach](./plugins/turn-coach/README.md) — an end-to-end canary for
   Baton-owned Resource replay, persistent state, and typed editable drafts.
-- [Target Balancer](./plugins/target-balancer/README.md) — assigns a new session
+- [Boost](./plugins/boost/README.md) — `/easy` and `/hard` select fast or capable
+  model/effort presets; optional balancing assigns a new session
   to the least-used eligible target within the selected Harness family and keeps
   that binding stable.
 - [ReqLoop](./plugins/reqloop/README.md) — requirement-level coordination
