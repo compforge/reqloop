@@ -1,6 +1,6 @@
 import type {
-  Command,
-  PluginCommandResult,
+  CommandDefinition,
+  CommandResult,
   ResourceClient,
   ResourceNamespace,
 } from "@compforge/baton-plugin";
@@ -36,7 +36,7 @@ function requirementDetail(requirement: Requirement): string {
   return lines.join("\n");
 }
 
-function message(text: string): PluginCommandResult {
+function message(text: string): CommandResult {
   return { kind: "message", text };
 }
 
@@ -78,13 +78,12 @@ export function createRequirementsCommand(
   connectors: readonly RequirementConnector[] = [],
   resources?: ResourceClient,
   namespace: ResourceNamespace = "v1",
-): Command {
+): CommandDefinition {
   const sources = new Set(connectors.map(({ source }) => source));
   if (sources.size !== connectors.length) {
     throw new Error("requirement connector sources must be unique");
   }
   return {
-    commandId: "requirements",
     name: "requirements",
     description: "Browse requirements from the configured requirement platform",
     async execute(input) {

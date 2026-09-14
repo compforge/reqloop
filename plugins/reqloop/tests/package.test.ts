@@ -15,7 +15,9 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import type {
-  Command,
+  CommandDefinition,
+  CommandInput,
+  CommandContext,
   Controller,
   Mention,
   PluginContext,
@@ -524,7 +526,7 @@ describe("ReqLoop PluginPackage", () => {
         };
       },
     };
-    let command: Command | undefined;
+    let command: CommandDefinition | undefined;
     let mention: Mention | undefined;
     const resourceTypes: { apiVersion: string; kind: string }[] = [];
     const logs: CapturedLog[] = [];
@@ -534,7 +536,7 @@ describe("ReqLoop PluginPackage", () => {
       dataDirs: testDataDirs(root),
       logger: recordingLogger(logs),
       commands: {
-        register(contribution: Command) {
+        register(contribution: CommandDefinition) {
           command = contribution;
         },
       },
@@ -558,7 +560,6 @@ describe("ReqLoop PluginPackage", () => {
       forgeConnectors: [],
     }).activate(context);
     expect(command).toMatchObject({
-      commandId: "requirements",
       name: "requirements",
     });
     expect(resourceTypes).toEqual([
@@ -590,7 +591,7 @@ describe("ReqLoop PluginPackage", () => {
       },
     });
     expect(mention?.namespace).toBe("requirement");
-    expect(await command!.execute({ argument: "intake" })).toMatchObject({
+    expect(await executeCommand(command!, { argument: "intake" })).toMatchObject({
       kind: "picker",
       title: "Requirements · meego",
       search: {
@@ -610,7 +611,7 @@ describe("ReqLoop PluginPackage", () => {
       argument: "intake",
       searchQuery: "recovery",
     };
-    expect(await command!.execute(recoverySearch)).toMatchObject({
+    expect(await executeCommand(command!, recoverySearch)).toMatchObject({
       kind: "picker",
       search: {
         mode: "remote",
@@ -621,7 +622,7 @@ describe("ReqLoop PluginPackage", () => {
       argument: "intake",
       searchQuery: "missing",
     };
-    expect(await command!.execute(missingSearch)).toMatchObject({
+    expect(await executeCommand(command!, missingSearch)).toMatchObject({
       kind: "picker",
       search: {
         mode: "remote",
@@ -630,7 +631,7 @@ describe("ReqLoop PluginPackage", () => {
       options: [],
     });
     expect(
-      await command!.execute({
+      await executeCommand(command!, {
         argument: "intake",
         selectedValue: '["meego","story","REQ-7"]',
       }),
@@ -881,14 +882,14 @@ describe("ReqLoop PluginPackage", () => {
         };
       },
     });
-    let command: Command | undefined;
+    let command: CommandDefinition | undefined;
     const root = testRoot();
     const context = {
       session: { batonSessionId: "bs_test", cwd: root },
       dataDirs: testDataDirs(root),
       logger: noopLogger,
       commands: {
-        register(contribution: Command) {
+        register(contribution: CommandDefinition) {
           command = contribution;
         },
       },
@@ -904,7 +905,7 @@ describe("ReqLoop PluginPackage", () => {
       forgeConnectors: [],
     }).activate(context);
 
-    expect(await command!.execute({ argument: "" })).toMatchObject({
+    expect(await executeCommand(command!, { argument: "" })).toMatchObject({
       kind: "picker",
       title: "Requirements · 2 sources",
       search: {
@@ -917,7 +918,7 @@ describe("ReqLoop PluginPackage", () => {
         { value: '["secondary","issue","BUG-2"]' },
       ],
     });
-    await command!.execute({
+    await executeCommand(command!, {
       argument: "",
       selectedValue: '["secondary","issue","BUG-2"]',
     });
@@ -1064,3 +1065,14 @@ describe("ReqLoop PluginPackage", () => {
   });
 
 });
+
+function executeCommand(command: CommandDefinition, input: CommandInput) {
+  const context: CommandContext = {
+    executionId: "test-command", command: { namespace: "compforge/reqloop", name: command.name },
+    verbs: {
+      async submit() { throw new Error("Requirement browser must not submit Harness turns"); },
+      async configureModel() { throw new Error("Requirement browser must not configure models"); },
+    },
+  };
+  return command.execute(input, context);
+}

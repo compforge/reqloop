@@ -1,6 +1,11 @@
 # ReqLoop releases
 
-Current version: `0.3.3`
+Current version: `0.3.4`
+
+## 0.3.4
+
+- Adopt the shared Command contract from Baton Plugin API 0.9.0; command browsing
+  behavior is unchanged.
 
 ## 0.3.3
 

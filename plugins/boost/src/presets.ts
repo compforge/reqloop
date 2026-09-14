@@ -32,44 +32,41 @@ export function parsePresets(config: Readonly<Record<string, unknown>>): Presets
   return presets;
 }
 
-/** Presets describe intent; only Baton validates and applies actual Harness configuration. */
+/** Presets are shortcuts for Baton's persistent model + effort configuration. */
 export function registerPresets(context: PluginContext): void {
   const presets = parsePresets(context.instance.config);
   for (const name of ["easy", "hard"] as const) {
     context.commands.register({
-      commandId: name,
       name,
       description: name === "easy" ? "Use a fast model for simple tasks" : "Use a capable model for complex tasks",
-      async execute(input) {
-        if (!input.target) throw new Error(`/${name} requires a Baton Session target`);
-        const selection = presets[name]?.[input.target.harness];
+      async execute(input, command) {
+        const prompt = input.argument.trim();
+        if (!command.target) throw new Error(`/${name} requires a Baton Session target`);
+        const selection = presets[name]?.[command.target.harness];
         if (!selection) {
-          throw new Error(`Configure boost presets.${name}.${input.target.harness} with model and effort first`);
+          throw new Error(`Configure boost presets.${name}.${command.target.harness} with model and effort first`);
         }
         const targets = await context.resources.list<BatonTargetResource["spec"], BatonTargetResource["status"]>({ apiVersion: "baton.dev/v1alpha1", kind: "Target" });
-        const listed = targets.find((target) => target.metadata.name === input.target!.id);
-        if (!listed) throw new Error(`Target is unavailable: ${input.target.id}`);
+        const listed = targets.find((target) => target.metadata.name === command.target!.id);
+        if (!listed) throw new Error(`Target is unavailable: ${command.target.id}`);
         const target = await context.resources.get<BatonTargetResource["spec"], BatonTargetResource["status"]>({
           apiVersion: listed.apiVersion, kind: listed.kind, namespace: listed.metadata.namespace,
           name: listed.metadata.name, uid: listed.metadata.uid,
         });
         const catalog = target?.status.modelCatalog;
         if (catalog?.phase !== "Ready") {
-          throw new Error(`Model catalog for ${input.target.id}: ${catalog?.phase ?? "Unavailable"}`);
+          throw new Error(`Model catalog for ${command.target.id}: ${catalog?.phase ?? "Unavailable"}`);
         }
         const model = catalog.models.find((candidate) => candidate.id === selection.model);
         if (!model) {
-          throw new Error(`Unknown model ${selection.model} for ${input.target.id}; available: ${catalog.models.map((candidate) => candidate.id).join(", ")}`);
+          throw new Error(`Unknown model ${selection.model} for ${command.target.id}; available: ${catalog.models.map((candidate) => candidate.id).join(", ")}`);
         }
         if (!model.efforts.some((candidate) => candidate.id === selection.effort)) {
           throw new Error(`Model ${model.id} does not support effort ${selection.effort}; available: ${model.efforts.map((candidate) => candidate.id).join(", ")}`);
         }
-        const prompt = input.argument.trim();
-        return {
-          kind: "model_configuration",
-          ...selection,
-          ...(prompt ? { prompt } : {}),
-        };
+        await command.verbs.configureModel(selection);
+        if (prompt) await command.verbs.submit({ prompt });
+        return { kind: "message", text: `${command.target.id}: ${selection.model} / ${selection.effort}` };
       },
     });
   }

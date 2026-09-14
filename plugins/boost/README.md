@@ -2,8 +2,8 @@
 
 Choose speed for simple questions and capability for difficult work:
 
-- `/easy` selects your fast/lightweight model and effort.
-- `/hard` selects your capable model and effort.
+- `/easy` saves your fast/lightweight model and effort as the Target defaults.
+- `/hard` saves your capable model and effort as the Target defaults.
 - `/easy explain this function` applies the preset, then submits the task as a new turn.
 
 Commands do not guess difficulty or hardcode model names. Boost receives the
@@ -14,7 +14,7 @@ does not interrupt a running turn.
 
 ## Install and configure
 
-Requires Baton 0.4.32+ and public Plugin API 0.9.0+. Model discovery and combined
+Requires Baton 0.4.33+ and public Plugin API 0.9.0+. Model discovery and combined
 configuration are supported by Codex and Claude. Other Harness adapters must
 implement these capabilities before Boost can switch their models.
 
@@ -42,8 +42,9 @@ plugins:
             effort: high
 ```
 
-`default` follows the Harness default. Presets reuse Baton's `/model` and
-`/effort` preferences on the current effective Target. They do not change
+`default` follows the Harness default. These commands are shortcuts for `/model`
+plus `/effort`: they save the same Target preferences and remain effective for
+later turns and Sessions until changed again. They do not change
 accounts, rebalance an existing binding, or store a separate active-preset state.
 
 ## Optional target balancing
