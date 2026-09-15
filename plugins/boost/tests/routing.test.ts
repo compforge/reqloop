@@ -186,9 +186,7 @@ describe("target routing", () => {
   });
 
   test("rejects malformed pool configuration", () => {
-    expect(() => parseTargetBalancerConfig({ pools: { codex: [] } })).toThrow(
-      "config.pools.codex",
-    );
+    expect(parseTargetBalancerConfig({ pools: { codex: [] } }).pools.codex).toEqual([]);
     expect(() => parseTargetBalancerConfig({ pools: "codex" })).toThrow(
       "config.pools must be an object",
     );

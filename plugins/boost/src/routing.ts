@@ -23,23 +23,22 @@ export function parseTargetBalancerConfig(
 ): TargetBalancerConfig {
   if (config.pools === undefined) return { pools: Object.freeze({}) };
   if (!isRecord(config.pools)) {
-    throw new Error("target-balancer config.pools must be an object");
+    throw new Error("boost config.pools must be an object");
   }
 
   const pools: Record<string, readonly string[]> = {};
   for (const [harness, value] of Object.entries(config.pools)) {
     if (!harness.trim()) {
-      throw new Error("target-balancer pool names must not be empty");
+      throw new Error("boost pool names must not be empty");
     }
     if (
       !Array.isArray(value) ||
-      value.length === 0 ||
       value.some((targetId) =>
         typeof targetId !== "string" || !targetId.trim()
       )
     ) {
       throw new Error(
-        `target-balancer config.pools.${harness} must be a non-empty string array`,
+        `boost config.pools.${harness} must be a string array`,
       );
     }
     pools[harness] = Object.freeze([...new Set(value)]);

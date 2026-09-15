@@ -1,8 +1,8 @@
 {
-  "name": "@compforge/baton-plugin-reqloop",
-  "version": "0.3.4",
+  "name": "@compforge/baton-plugin-boost",
+  "version": "0.1.0",
   "private": true,
-  "description": "Requirement and deployment coordination plugin for Baton.",
+  "description": "Fast/capable model presets and optional session-affine target balancing for Baton.",
   "type": "module",
   "scripts": {
     "test": "bun test"
